@@ -1,0 +1,68 @@
+# Logger Configuration
+#
+# See hasp/cli/__init__.py for information on customizing with environment variables.
+
+
+---
+version: 1
+
+formatters:
+  simple:
+    format: '[%(levelname)s] %(message)s'
+  file_fmt:
+    format: '%(asctime)s :: %(threadName)s :: %(name)s: %(funcName)s():%(lineno)d :: %(levelname)s :: %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S %z'
+  rich_fmt:
+    format: '%(message)s <%(name)s.%(funcName)s()>'
+    # datefmt: '%Y-%m-%d %H:%M:%S %z'
+    # Dirty hack to disable date/time column
+    datefmt: " "
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: simple
+    stream: ext://sys.stdout
+  file:
+    class: logging.FileHandler
+    level: INFO
+    formatter: file_fmt
+    filename: /tmp/hasp.log
+    mode: a
+    encoding: utf-8
+  file-debug:
+    class: logging.FileHandler
+    level: DEBUG
+    formatter: file_fmt
+    filename: /tmp/hasp-debug.log
+    mode: w
+    encoding: utf-8
+  rich:
+    class: rich.logging.RichHandler
+    level: INFO
+    formatter: rich_fmt
+
+loggers:
+  hasp.cli:
+    handlers: [file, file-debug]
+    propagate: yes
+
+  hasp.hasp:
+    handlers: [file, file-debug]
+    propagate: yes
+
+  hasp.utils:
+    handlers: [file, file-debug]
+    propagate: yes
+
+  boto3:
+    propagate: no
+  botocore:
+    propagate: no
+  urllib3:
+    propagate: no
+
+root:
+  level: DEBUG
+  handlers: [console]

@@ -1,0 +1,11 @@
+[[project]]
+    name = "asdf"
+    version = "3.8.2"
+    linked = true
+    venv_exists = true
+
+[[project]]
+    name = "qwerty"
+    version = "3.7.1"
+    linked = true
+    venv_exists = true

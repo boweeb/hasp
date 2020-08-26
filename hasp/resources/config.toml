@@ -1,0 +1,19 @@
+[defaults]
+project_name = "__dynamic__"
+python_version = "__dynamic__"
+workspace = "~/workspace"
+
+[hasp]
+debug = false
+
+    [hasp.project]
+    rm_warn = true
+    on_exist = "prompt"
+
+    [hasp.venv]
+    rm_warn = true
+    on_exist = "prompt"
+
+    [hasp.links]
+    rm_warn = true
+    on_exist = "prompt"

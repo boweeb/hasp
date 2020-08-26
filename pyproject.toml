@@ -1,0 +1,90 @@
+# ----------------------------------------------------------------------------------------------------------------------
+# PRIMARY SETTINGS
+[tool.poetry]
+name = "hasp"
+version = "0.1.0"
+description = "Integrated management of SSH config and SSH keys."
+authors = ["Jesse Butcher <boweeb@gmail.com>"]
+license = "MIT"
+
+keywords = ["hasp", "ssh", "key", "keys"]
+
+homepage = "https://github.com/boweeb/hasp"
+repository = "git@github.com:boweeb/hasp.git"
+documentation = "file://./README.md"
+
+include = [
+    { include = "log_conf.yaml", from = "hasp.resources" },
+]
+
+classifiers = [
+    "Development Status :: 1 - Planning",
+#    "Development Status :: 2 - Pre-Alpha",
+#    "Development Status :: 3 - Alpha",
+#    "Development Status :: 4 - Beta",
+#    "Development Status :: 5 - Production/Stable",
+#    "Development Status :: 6 - Mature",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "Programming Language :: Python :: 3",
+#    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+]
+
+[tool.poetry.scripts]
+hasp = 'hasp.cli.entry:main'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# DEPENDENCIES
+[tool.poetry.dependencies]
+python = "^3.8"
+click = "^7.1.2"            # CLI framework
+"ruamel.yaml" = "^0.16.10"  # YAML support
+click-aliases = "^1.0.1"    # Extends Click with command aliases
+colorama = "^0.4.3"         # ASCII color lib -- still needed?
+pyxdg = "^0.26"             # XDG standard paths
+tomlkit = "^0.6.0"          # TOML support
+rich = "^3.3.0"             # ASCII decorator
+alive-progress = "^1.6.1"   # Progress bars
+cerberus = "^1.3.2"         # Schema validation
+
+[tool.poetry.dev-dependencies]
+ipython = "*"               # Alternative REPL
+bpython = "*"               # Alternative REPL
+coverage = "*"              # Code coverage report
+pytest = "*"                # Test suite framework
+pytest-runner = "*"         # Test suite runner
+pytest-cov = "*"            # Integrate coverage with tests
+pytest-bdd = "*"            # Gherkin support for pytest
+#pdoc3 = "*"                 # API documentation generator
+#tox = "*"                   # Test environment management
+#pylama = "*"                # Linting suite
+#Sphinx = "*"                # Project documentation generator
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# TOOLS
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = "black"
+line_length = 120
+atomic = true
+lines_after_imports = 2
+lines_between_types = 0
+
+# Configure custom sections
+#   Reference: default for "sections" = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+known_aws = ["boto3", "botocore"]
+known_click = ["click"]
+sections = ["FUTURE", "STDLIB", "CLICK", "AWS", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+no_lines_before = ["AWS", "THIRDPARTY"]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# FIN
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
