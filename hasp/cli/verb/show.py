@@ -13,17 +13,15 @@ LOG = logging.getLogger(__name__)
 LOG.debug("[show.py]")
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# NEW
-@click.group()
+@click.group("show")
 @click.pass_context
-def show(
+def group(
     ctx,
 ):
     """Report resource details."""
-    LOG.debug("[EDIT]")
+    LOG.debug("[SHOW]")
 
 
-show.add_command(key)
-show.add_command(host)
-show.add_command(config)
+group.add_command(key)
+group.add_command(host)
+group.add_command(config)

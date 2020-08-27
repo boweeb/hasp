@@ -13,17 +13,15 @@ LOG = logging.getLogger(__name__)
 LOG.debug("[new.py]")
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# NEW
-@click.group()
+@click.group("new")
 @click.pass_context
-def new(
+def group(
     ctx,
 ):
     """Create new resource."""
     LOG.debug("[NEW]")
 
 
-new.add_command(key)
-new.add_command(host)
-new.add_command(config)
+group.add_command(key)
+group.add_command(host)
+group.add_command(config)

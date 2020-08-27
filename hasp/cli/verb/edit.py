@@ -13,17 +13,15 @@ LOG = logging.getLogger(__name__)
 LOG.debug("[edit.py]")
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# NEW
-@click.group()
+@click.group("edit")
 @click.pass_context
-def edit(
+def group(
     ctx,
 ):
     """Edit a resource."""
     LOG.debug("[EDIT]")
 
 
-edit.add_command(key)
-edit.add_command(host)
-edit.add_command(config)
+group.add_command(key)
+group.add_command(host)
+group.add_command(config)

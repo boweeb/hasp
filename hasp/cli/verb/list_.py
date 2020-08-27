@@ -10,20 +10,18 @@ from hasp.cli.resource.config import list_ as config
 
 
 LOG = logging.getLogger(__name__)
-LOG.debug("[list.py]")
+LOG.debug("[list_.py]")
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# NEW
 @click.group("list")
 @click.pass_context
-def list_(
+def group(
     ctx,
 ):
     """List all of a resource type."""
-    LOG.debug("[EDIT]")
+    LOG.debug("[LIST]")
 
 
-list_.add_command(key)
-list_.add_command(host)
-list_.add_command(config)
+group.add_command(key)
+group.add_command(host)
+group.add_command(config)

@@ -13,17 +13,15 @@ LOG = logging.getLogger(__name__)
 LOG.debug("[find.py]")
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# NEW
-@click.group()
+@click.group("find")
 @click.pass_context
-def find(
+def group(
     ctx,
 ):
     """Search for a resource."""
-    LOG.debug("[EDIT]")
+    LOG.debug("[FIND]")
 
 
-find.add_command(key)
-find.add_command(host)
-find.add_command(config)
+group.add_command(key)
+group.add_command(host)
+group.add_command(config)

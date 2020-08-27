@@ -11,11 +11,7 @@ from rich import print as rprint
 
 from hasp.cli import console
 
-from hasp.cli.verb.new import new as group_new
-from hasp.cli.verb.edit import edit as group_edit
-from hasp.cli.verb.find import find as group_find
-from hasp.cli.verb.list import list_ as group_list
-from hasp.cli.verb.show import show as group_show
+from hasp.cli import verb as v
 
 
 LOG = logging.getLogger(__name__)
@@ -41,11 +37,11 @@ def root(ctx, verbose, config_file, state_file, ssh_dir):
 def main():
     LOG.debug("[main]")
 
-    root.add_command(group_new)
-    root.add_command(group_edit)
-    root.add_command(group_find)
-    root.add_command(group_list)
-    root.add_command(group_show)
+    root.add_command(v.new)
+    root.add_command(v.edit)
+    root.add_command(v.find)
+    root.add_command(v.list_)
+    root.add_command(v.show)
 
     root(
         auto_envvar_prefix="HASP",
