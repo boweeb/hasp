@@ -22,6 +22,5 @@ def group(
     LOG.debug("[SHOW]")
 
 
-group.add_command(key)
-group.add_command(host)
-group.add_command(config)
+for sub_group in [key, host, config]:
+    group.add_command(sub_group)

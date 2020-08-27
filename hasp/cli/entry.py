@@ -1,4 +1,5 @@
 """Console script for hasp."""
+
 import logging
 import sys
 from functools import partial
@@ -37,11 +38,8 @@ def root(ctx, verbose, config_file, state_file, ssh_dir):
 def main():
     LOG.debug("[main]")
 
-    root.add_command(v.new)
-    root.add_command(v.edit)
-    root.add_command(v.find)
-    root.add_command(v.list_)
-    root.add_command(v.show)
+    for group in [v.new, v.edit, v.find, v.list_, v.show]:
+        root.add_command(group)
 
     root(
         auto_envvar_prefix="HASP",
