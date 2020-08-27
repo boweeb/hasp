@@ -1,7 +1,9 @@
 import logging.config
 import os
 from typing import Dict
+from functools import partial
 
+import click
 import pkg_resources
 from rich.console import Console
 from rich.traceback import install as rich_traceback_install
@@ -9,6 +11,8 @@ from ruamel.yaml import YAML
 
 
 TRUTHY = ["1", "t", "true", "y", "yes"]
+
+option_ = partial(click.option, show_default=True, show_envvar=True)
 
 
 def shim_env_vars(config_data: Dict):

@@ -11,8 +11,15 @@ from rich import print as rprint
 
 from hasp.cli import console
 
+from hasp.cli.verb.new import new as group_new
+from hasp.cli.verb.edit import edit as group_edit
+from hasp.cli.verb.find import find as group_find
+from hasp.cli.verb.list import list_ as group_list
+from hasp.cli.verb.show import show as group_show
+
 
 LOG = logging.getLogger(__name__)
+LOG.debug("[entry.py]")
 
 # Add defaults
 option_ = partial(click.option, show_default=True, show_envvar=True)
@@ -20,41 +27,26 @@ option_ = partial(click.option, show_default=True, show_envvar=True)
 
 # CLI ROOT
 @click.group(context_settings=dict(max_content_width=120))
-@option_(
-    "--type", "-t", "type_", type=click.Choice(["self-managed", "pyenv", "poetry"]), default="self-managed",
-    help="Use alternative function when resource exists"
-)
 @option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @option_("--config-file", "-c", required=False, help="Path to configuration file")
 @option_("--state-file", "-s", required=False, help="Path to state file")
-@option_("--workspace", "-w", envvar="WORKSPACE", help="Path to common home for projects")
+@option_("--ssh-dir", "-w", envvar="WORKSPACE", help="Path to common home for projects")
 @click.version_option(version=version("hasp"))
 @click.pass_context
-def root(ctx, type_, verbose, config_file, state_file, workspace):
+def root(ctx, verbose, config_file, state_file, ssh_dir):
     """hasp -- Make sense of your SSH"""
-    sys.exit(0)
-    if verbose:
-        for handler in logging.getLogger().handlers[:]:
-            handler.setLevel("DEBUG")
-
-    config = dict(Config(config_file))
-    state = dict(State(state_file))
-
-    workspace = validate_workspace(config, workspace)
-
-    ctx.ensure_object(dict)
-    ctx.obj["type_"] = type_
-    ctx.obj["verbose"] = verbose
-    ctx.obj["config"] = config
-    ctx.obj["state"] = state
-    ctx.obj["workspace"] = workspace
-
-    # LOG.debug("|| Click context (ctx):")
-    # for line in pformat(ctx.obj).split("\n"):
-    #     LOG.debug(f"||    {line}")
+    LOG.debug("[ROOT]")
 
 
 def main():
+    LOG.debug("[main]")
+
+    root.add_command(group_new)
+    root.add_command(group_edit)
+    root.add_command(group_find)
+    root.add_command(group_list)
+    root.add_command(group_show)
+
     root(
         auto_envvar_prefix="HASP",
         # https://github.com/pallets/click/pull/1566
