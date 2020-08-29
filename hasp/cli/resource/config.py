@@ -4,7 +4,7 @@ import logging
 
 import click
 
-from hasp.cli import option_
+from hasp.cli import option_, not_implemented
 
 
 LOG = logging.getLogger(__name__)
@@ -12,45 +12,35 @@ LOG.debug("[config.py]")
 
 
 @click.command("config")
-@option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @click.pass_context
-def new(ctx, verbose):
-    """foobar"""
-    print("asdf")
-    print(verbose)
+def new(ctx):
+    """."""
+    not_implemented()
 
 
 @click.command("config")
-@option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @click.pass_context
-def edit(ctx, verbose):
-    """foobar"""
-    print("asdf")
-    print(verbose)
+def edit(ctx):
+    """."""
+    not_implemented()
 
 
 @click.command("config")
-@option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @click.pass_context
-def find(ctx, verbose):
-    """foobar"""
-    print("asdf")
-    print(verbose)
+def find(ctx):
+    """."""
+    not_implemented()
 
 
 @click.command("config")
-@option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @click.pass_context
-def list_(ctx, verbose):
-    """foobar"""
-    print("asdf")
-    print(verbose)
+def list_(ctx):
+    """."""
+    not_implemented()
 
 
 @click.command("config")
-@option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
 @click.pass_context
-def show(ctx, verbose):
-    """foobar"""
-    print("asdf")
-    print(verbose)
+def show(ctx):
+    """."""
+    not_implemented()

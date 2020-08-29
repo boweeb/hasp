@@ -6,6 +6,7 @@ from functools import partial
 from importlib.metadata import version
 from subprocess import run
 from typing import List, Text
+from pathlib import Path
 
 import click
 from rich import print as rprint
@@ -25,14 +26,31 @@ option_ = partial(click.option, show_default=True, show_envvar=True)
 # CLI ROOT
 @click.group(context_settings=dict(max_content_width=120))
 @option_("--verbose", "-v", is_flag=True, required=False, help="Enable debug-level logging")
-@option_("--config-file", "-c", required=False, help="Path to configuration file")
-@option_("--state-file", "-s", required=False, help="Path to state file")
-@option_("--ssh-dir", "-w", envvar="WORKSPACE", help="Path to common home for projects")
+@option_("--config-file", "-c", default="~/.config/hasp/config.toml", required=False, help="Path to configuration file")
+@option_("--state-file", "-s", default="~/.local/share/hasp/state.toml", required=False, help="Path to state file")
+@option_("--ssh-dir", "-w", default="~/.ssh", help="Path to common home for projects")
 @click.version_option(version=version("hasp"))
 @click.pass_context
 def root(ctx, verbose, config_file, state_file, ssh_dir):
     """hasp -- Make sense of your SSH"""
     LOG.debug("[ROOT]")
+    ctx.ensure_object(dict)
+    ctx.obj["config_file"] = Path(config_file).expanduser()
+    ctx.obj["state_file"] = Path(state_file).expanduser()
+    ctx.obj["ssh_dir"] = Path(ssh_dir).expanduser()
+
+    x: Path = ctx.obj["state_file"]
+    state = x.read_text("utf-8")
+
+    from tomlkit.toml_file import TOMLFile
+    t = TOMLFile(x.as_posix())
+    foo = t.read()
+
+    print(foo.)
+    for i in foo.items():
+        print()
+        print(i)
+    exit()
 
 
 def main():

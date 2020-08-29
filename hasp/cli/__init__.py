@@ -15,6 +15,10 @@ TRUTHY = ["1", "t", "true", "y", "yes"]
 option_ = partial(click.option, show_default=True, show_envvar=True)
 
 
+def not_implemented():
+    raise click.UsageError("Sorry, this command is known but not implemented yet. Come back later!")
+
+
 def shim_env_vars(config_data: Dict):
     """Mutates logging configuration dictionary in-place before it is loaded ie. early.
 
