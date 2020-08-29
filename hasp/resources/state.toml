@@ -1,11 +1,13 @@
-[[project]]
-    name = "asdf"
-    version = "3.8.2"
-    linked = true
-    venv_exists = true
+# Example state
 
-[[project]]
-    name = "qwerty"
-    version = "3.7.1"
-    linked = true
-    venv_exists = true
+[keyx.id_rsa_foo]
+type = "rsa"
+comment = ""
+bits = 4096
+aliases = ["foo", "lorem"]
+
+[keyx.id_rsa_bar]
+type = "rsa"
+comment = "xyz"
+bits = 4096
+aliases = ["bar", "ipsum"]
