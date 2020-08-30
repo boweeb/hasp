@@ -44,3 +44,10 @@ def list_(ctx):
 def show(ctx):
     """."""
     not_implemented()
+
+
+@click.command("config")
+@click.pass_context
+def sync(ctx):
+    """Synchronize SSH config state."""
+    not_implemented()  # TODO

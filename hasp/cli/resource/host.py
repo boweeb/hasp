@@ -44,3 +44,10 @@ def list_(ctx):
 def show(ctx):
     """."""
     not_implemented()
+
+
+@click.command("host")
+@click.pass_context
+def sync(ctx):
+    """Synchronize host state."""
+    not_implemented()  # TODO

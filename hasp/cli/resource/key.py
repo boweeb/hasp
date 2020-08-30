@@ -9,7 +9,7 @@ import click
 
 from hasp.cli import option_, not_implemented
 from hasp.io import write_ssh_key
-from hasp.hasp import present_key_list, present_key
+from hasp.hasp import present_key_list, present_key, sync_keys
 
 LOG = logging.getLogger(__name__)
 LOG.debug("[key.py]")
@@ -101,9 +101,9 @@ def find(ctx):
 
 
 @click.command("key")
-@option_("-r", "--refresh", is_flag=True)
+@option_("-r", "--refresh", is_flag=True, help="TODO")
 @click.pass_context
-def list_(ctx):
+def list_(ctx, refresh):
     """List all known SSH keys."""
     present_key_list()
 
@@ -114,3 +114,21 @@ def list_(ctx):
 def show(ctx, name):
     """Show SSH key details."""
     present_key(name)
+
+
+@click.command("key")
+@option_("--all", "-a", "all_", is_flag=True, help="Sync all keys")
+@option_("--name", "-n", help="SSH key to sync")
+# @option_("--prune/--init", "-p/-i", "orientation", default=None, help="+-")
+@option_("--prune", "-p", "orientation", flag_value="prune", help="Remove state entries with no real counterpart")
+@option_("--init", "-i", "orientation", flag_value="init", help="Add missing state entries according to real files")
+@option_("--both", "-b", "orientation", flag_value="both", default="both", help='(default) Both "prune" and "init"')
+@click.pass_context
+def sync(ctx, all_, name, orientation):
+    """Synchronize SSH key state."""
+    # TODO: Not thrilled with this.  There's no way to detect if multiple "orientation" flags were given.
+
+    if all([all_, name]):
+        raise click.UsageError("--all and --name are mutually exclusive.")
+
+    sync_keys(name=name, orientation=orientation)

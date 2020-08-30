@@ -46,7 +46,7 @@ def root(ctx, verbose, config_file, state_file, ssh_dir):
 def main():
     LOG.debug("[main]")
 
-    for group in [v.new, v.edit, v.find, v.list_, v.show]:
+    for group in [v.new, v.edit, v.find, v.list_, v.show, v.sync]:
         root.add_command(group)
 
     root(
