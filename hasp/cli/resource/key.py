@@ -3,12 +3,13 @@
 from pathlib import Path
 import logging
 from subprocess import run, CalledProcessError
-from typing import Dict, List
+from typing import Dict, List, Any
 
 import click
 
 from hasp.cli import option_, not_implemented
-
+from hasp.io import write_ssh_key
+from hasp.hasp import present_key_list, present_key
 
 LOG = logging.getLogger(__name__)
 LOG.debug("[key.py]")
@@ -27,13 +28,10 @@ LOG.debug("[key.py]")
 @option_("--name", "-n", type=click.STRING, required=True)
 @option_("--comment", "-c", type=click.STRING)
 @option_("--bits", "-b", type=click.Choice([str(i * 1024) for i in range(1, 5)]), default="4096")
+@option_("--batch", "-y", is_flag=True, default=False, help="No password (useful for batch testing)")
 @click.pass_context
-def new(ctx, key_type, name, comment, bits):
+def new(ctx, key_type, name, comment, bits, batch):
     """Create a new SSH key."""
-    # print(ctx.obj["ssh_dir"])
-    # exit(0)
-
-    state_file: Path = ctx.obj["state_file"]
     ssh_dir: Path = ctx.obj["ssh_dir"]
     file_path: Path = ssh_dir / name
     type_: str = key_type.lower()
@@ -42,6 +40,10 @@ def new(ctx, key_type, name, comment, bits):
         "ec": "ed25519",
     }
 
+    if ctx.parent.params["force"]:
+        pub_file_path = Path(file_path.name + ".pub")
+        file_path.unlink(missing_ok=True)
+        pub_file_path.unlink(missing_ok=True)
     if file_path.exists():
         LOG.error(f"{file_path} already exists!")
         raise click.Abort
@@ -57,6 +59,8 @@ def new(ctx, key_type, name, comment, bits):
         args += ["-C", comment]
     if type_ == "rsa":
         args += ["-b", bits]
+    if batch:
+        args += ["-N", ""]
 
     cmd = ["ssh-keygen", *args]
     LOG.info(f"{cmd=}")
@@ -68,30 +72,45 @@ def new(ctx, key_type, name, comment, bits):
         LOG.error(result.stdout)
         raise click.Abort
 
+    # Update state
+    new_key_md = {"type": type_}
+    if type_ == "rsa":
+        new_key_md["bits"] = bits
+    if comment:
+        new_key_md["comment"] = comment
+
+    # Commit to state file
+    write_ssh_key(
+        key_file_path=file_path,
+        input_data=new_key_md,
+    )
+
 
 @click.command("key")
 @click.pass_context
 def edit(ctx):
     """Edit an existing SSH key."""
-    not_implemented()
+    not_implemented()  # TODO
 
 
 @click.command("key")
 @click.pass_context
 def find(ctx):
     """Search for an SSH key."""
-    not_implemented()
+    not_implemented()  # TODO
 
 
 @click.command("key")
+@option_("-r", "--refresh", is_flag=True)
 @click.pass_context
 def list_(ctx):
     """List all known SSH keys."""
-    not_implemented()
+    present_key_list()
 
 
 @click.command("key")
+@option_("--name", "-n", type=click.STRING, required=True)
 @click.pass_context
-def show(ctx):
+def show(ctx, name):
     """Show SSH key details."""
-    not_implemented()
+    present_key(name)

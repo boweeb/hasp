@@ -14,6 +14,7 @@ from rich import print as rprint
 from hasp.cli import console
 
 from hasp.cli import verb as v
+from hasp.io import ContextBorg
 
 
 LOG = logging.getLogger(__name__)
@@ -39,18 +40,7 @@ def root(ctx, verbose, config_file, state_file, ssh_dir):
     ctx.obj["state_file"] = Path(state_file).expanduser()
     ctx.obj["ssh_dir"] = Path(ssh_dir).expanduser()
 
-    x: Path = ctx.obj["state_file"]
-    state = x.read_text("utf-8")
-
-    from tomlkit.toml_file import TOMLFile
-    t = TOMLFile(x.as_posix())
-    foo = t.read()
-
-    print(foo.)
-    for i in foo.items():
-        print()
-        print(i)
-    exit()
+    _ = ContextBorg(init_data={**ctx.obj, "state": None, "config": None})
 
 
 def main():

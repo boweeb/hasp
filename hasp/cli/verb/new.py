@@ -4,6 +4,7 @@ import logging
 
 import click
 
+from hasp.cli import option_
 from hasp.cli.resource.key import new as key
 from hasp.cli.resource.host import new as host
 from hasp.cli.resource.config import new as config
@@ -14,9 +15,11 @@ LOG.debug("[new.py]")
 
 
 @click.group("new")
+@option_("--force", "-f", is_flag=True, help="Overwrite existing resource.")
 @click.pass_context
 def group(
     ctx,
+    force
 ):
     """Create new resource."""
     LOG.debug("[NEW]")
