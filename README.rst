@@ -93,3 +93,28 @@ Reference
 Glean lessons-learned from:
 * https://github.com/emre/storm
 * ``advanced-ssh-config`` (at ``./vendor/advanced-ssh-config``)
+
+
+SSH Config directives
+
+AddKeysToAgent
+Ciphers
+ControlMaster
+ControlPath
+ControlPersist
+ForwardAgent
+HashKnownHosts
+HostKeyAlgorithms
+HostName
+IdentitiesOnly
+IdentityFile
+KexAlgorithms
+LogLevel
+MACs
+PasswordAuthentication
+Port
+ProxyCommand
+PubkeyAuthentication
+StrictHostKeyChecking
+User
+UserKnownHostsFile
