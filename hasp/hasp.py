@@ -1,15 +1,14 @@
-from typing import List, Text, Any, Optional, Mapping, Union
-from hasp.io import ContextBorg, get_key_list
-from rich import print as rprint
-from pprint import pprint
-from copy import deepcopy
 import logging
-from pathlib import Path
-import magic
 import re
-import click
-from subprocess import run, CalledProcessError
+from copy import deepcopy
+from pathlib import Path
+from subprocess import run
+from typing import List, Text, Any, Optional, Mapping, Union
+
+import magic
 from tomlkit import table as toml_table
+
+from hasp.io import ContextBorg
 
 
 LOG = logging.getLogger(__name__)
@@ -135,7 +134,7 @@ def init_state_entries(key_file):
         LOG.info(f'Found symlink: "{key_file.name}" --> "{target.name}"')
         update_key(target, aliases=[key_file])
     else:
-        LOG.warning(f'SKIPPING: File does not exist OR is a symlink: "{key_file}"')
+        LOG.debug(f'SKIPPING: Not a file: "{key_file}"')
         # raise click.Abort
 
 
