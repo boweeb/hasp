@@ -15,6 +15,9 @@ from hasp.cli import console
 
 from hasp.cli import verb as v
 from hasp.io import ContextBorg
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from hasp.orm import Base
 
 
 LOG = logging.getLogger(__name__)
@@ -40,7 +43,23 @@ def root(ctx, verbose, config_file, state_file, ssh_dir):
     ctx.obj["state_file"] = Path(state_file).expanduser()
     ctx.obj["ssh_dir"] = Path(ssh_dir).expanduser()
 
-    _ = ContextBorg(init_data={**ctx.obj, "state": None, "config": None})
+    db_path = "/tmp/quicktest.db"
+    db_opts = {
+        "check_same_thread": True,
+        "timeout": 10,
+        "uri": True,
+    }
+    db_opts_str = "&".join(["=".join([key, str(value).lower()]) for key, value in db_opts.items()])
+    engine = create_engine(
+        f'sqlite:///file:{db_path}?{db_opts_str}',
+        # echo=True,
+    )
+    _session = sessionmaker(bind=engine)
+    session = _session()
+
+    Base.metadata.create_all(engine)
+
+    _ = ContextBorg(init_data={**ctx.obj, "session": session})
 
 
 def main():

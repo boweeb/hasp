@@ -9,6 +9,7 @@ import magic
 from tomlkit import table as toml_table
 
 from hasp.io import ContextBorg
+from hasp.orm import SshKey, SshKeyGroup, SshKeyAlias
 
 
 LOG = logging.getLogger(__name__)
@@ -54,21 +55,24 @@ def sync_keys(name: Optional[Text], orientation: Optional[Text]) -> None:
     if orientation in ["prune", "both", None]:
         prune = True
 
-    if init:
-        LOG.info("Begin SSH key initialization")
-        if name:
-            init_state_entries(c.ssh_dir / name)
-        else:
-            for key_file in c.ssh_dir.glob("*"):
-                init_state_entries(key_file)
+    # if init:
+    #     LOG.info("Begin SSH key initialization")
+    #     if name:
+    #         init_state_entries(c.ssh_dir / name)
+    #     else:
+    #         for key_file in c.ssh_dir.glob("*"):
+    #             init_state_entries(key_file)
+    #
+    # if prune:
+    #     LOG.info("Begin SSH key pruning")
+    #     if name:
+    #         prune_state_entries(name)
+    #     else:
+    #         for key in resolve_toml_keys(c.state.toml_doc["ssh_key"]):
+    #             prune_state_entries(key)
 
-    if prune:
-        LOG.info("Begin SSH key pruning")
-        if name:
-            prune_state_entries(name)
-        else:
-            for key in resolve_toml_keys(c.state.toml_doc["ssh_key"]):
-                prune_state_entries(key)
+    init_state_groups()
+    prune_state_groups()
 
 
 def prune_state_entries(key_name: Text):
@@ -138,6 +142,30 @@ def init_state_entries(key_file):
         # raise click.Abort
 
 
+def init_state_groups() -> None:
+    c = ContextBorg()
+
+    for group_, members in c.key_groups.items():
+        group: SshKeyGroup = c.session.query(SshKeyGroup).filter(SshKeyGroup.name == group_).one_or_none()
+        if not group:
+            group = SshKeyGroup(name=group_)
+            LOG.info(f'Adding missing group: "{group.name}"')
+            c.session.add(group)
+
+        for member in members:
+            ssh_key: SshKey = c.session.query(SshKey).filter(SshKey.name == member).one_or_none()
+            if ssh_key:
+                group.ssh_keys.append(ssh_key)
+            else:
+                LOG.info(f'Found host member in config file that has no counterpart: "{group_}/{member}"')
+
+    c.session.commit()
+
+
+def prune_state_groups():
+    pass
+
+
 def update_key(
     key_file: Path,
     data: Optional[Mapping[Text, Union[Text, int]]] = None,
@@ -145,46 +173,114 @@ def update_key(
 ):
     c = ContextBorg()
 
-    key_map = c.state.toml_doc["ssh_key"]
-    resolved_key_list = resolve_toml_keys(key_map)
+    state_key_query = c.session.query(SshKey).order_by(SshKey.name)
+    state_key_list = state_key_query.all()
+    resolved_key_list: List[Text] = [k.name for k in state_key_list]
 
     if key_file.name in resolved_key_list:
-        state_key = key_map[key_file.name]
+        state_key: SshKey = state_key_query.filter(SshKey.name == key_file.name).one()
 
         LOG.debug(f"{state_key=}")
         LOG.debug(f"{data=}")
 
         if data:
-            for attr in ["type", "bits", "comment", "md5", "format"]:
+            for attr in data.keys():
 
-                if attr not in state_key.keys():
+                if not hasattr(state_key, attr):
+                    _state_attr = None
+                else:
+                    _state_attr = getattr(state_key, attr)
+
+                if not _state_attr:
                     print(f"{attr:<10}:            <NEW> --> {data[attr]}")
-                elif state_key[attr] != data[attr]:
-                    print(f'{attr:<10}: {state_key[attr]:>16} --> {data[attr]}')
+                elif _state_attr != data[attr]:
+                    print(f'{attr:<10}: {_state_attr:>16} --> {data[attr]}')
 
-                state_key[attr] = data[attr]
+                setattr(state_key, attr, data[attr])
 
         if aliases:
-            resolved_list = resolve_toml_keys(state_key)
+            # resolved_list = resolve_toml_keys(state_key)
 
             for alias in aliases:
-                if "aliases" not in resolved_list:
-                    state_key["aliases"] = []
+                # if "aliases" not in resolved_list:
+                #     state_key["aliases"] = []
 
-                alias_set = set(state_key["aliases"])
-                alias_set.add(alias.name)
-                state_key["aliases"] = list(alias_set)
+                resolved_alias_list = []
+                for existing_alias in state_key.ssh_key_aliases:
+                    resolved_alias_list.append(existing_alias.name)
+
+                if alias.name not in resolved_alias_list:
+                    state_key_alias = SshKeyAlias(name=alias.name)
+                    state_key.ssh_key_aliases.append(state_key_alias)
+
+                # alias_set = set(state_key["aliases"])
+                # alias_set.add(alias.name)
+                # state_key["aliases"] = list(alias_set)
 
     else:
         # "if aliases" does not apply here.
         if data:
             LOG.info("Importing new SSH key entry into state")
-            key_map[key_file.name] = deepcopy(data)
+            new_key = SshKey(name=key_file.name, **data)
+            c.session.add(new_key)
+            c.session.commit()
+            # key_map[key_file.name] = deepcopy(data)
 
-    c.state.toml_file.write(c.state.toml_doc)
+    # TODO: Left off here
+    # key_group_list: List[Text] = resolve_toml_keys(c.config.toml_doc["key_groups"])
+
+    c.session.commit()
+    # c.state.toml_file.write(c.state.toml_doc)
     # commit_toml()
 
 
+# def update_key(
+#     key_file: Path,
+#     data: Optional[Mapping[Text, Union[Text, int]]] = None,
+#     aliases: Optional[List[Path]] = None
+# ):
+#     c = ContextBorg()
+#
+#     key_map = c.state.toml_doc["ssh_key"]
+#     resolved_key_list = resolve_toml_keys(key_map)
+#
+#     if key_file.name in resolved_key_list:
+#         state_key = key_map[key_file.name]
+#
+#         LOG.debug(f"{state_key=}")
+#         LOG.debug(f"{data=}")
+#
+#         if data:
+#             for attr in ["type", "bits", "comment", "md5", "format"]:
+#
+#                 if attr not in state_key.keys():
+#                     print(f"{attr:<10}:            <NEW> --> {data[attr]}")
+#                 elif state_key[attr] != data[attr]:
+#                     print(f'{attr:<10}: {state_key[attr]:>16} --> {data[attr]}')
+#
+#                 state_key[attr] = data[attr]
+#
+#         if aliases:
+#             resolved_list = resolve_toml_keys(state_key)
+#
+#             for alias in aliases:
+#                 if "aliases" not in resolved_list:
+#                     state_key["aliases"] = []
+#
+#                 alias_set = set(state_key["aliases"])
+#                 alias_set.add(alias.name)
+#                 state_key["aliases"] = list(alias_set)
+#
+#     else:
+#         # "if aliases" does not apply here.
+#         if data:
+#             LOG.info("Importing new SSH key entry into state")
+#             key_map[key_file.name] = deepcopy(data)
+#
+#     c.state.toml_file.write(c.state.toml_doc)
+#     # commit_toml()
+#
+#
 def commit_toml() -> None:
     c = ContextBorg()
     c.state.toml_file.write(c.state.toml_doc)
