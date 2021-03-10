@@ -14,7 +14,7 @@ repository = "git@github.com:boweeb/hasp.git"
 documentation = "file://./README.md"
 
 include = [
-    { include = "log_conf.yaml", from = "hasp.resources" },
+    "hasp.resources.log_conf.yaml"
 ]
 
 classifiers = [
@@ -88,5 +88,5 @@ no_lines_before = ["AWS", "THIRDPARTY"]
 # ----------------------------------------------------------------------------------------------------------------------
 # FIN
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
