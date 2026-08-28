@@ -1,0 +1,933 @@
+# hasp — Decision Log
+
+**Purpose.** The permanent record of design questions that have been *settled*, and why.
+`docs/design.md` describes what hasp is. This file records how it came to say that, which
+alternatives were rejected, and what each decision commits the project to.
+
+**How to use this file.**
+
+- Entries are append-only. A decision is never edited to say something different — it is
+  superseded or amended by a **later** entry that names it. The wrong turn stays visible.
+- IDs are permanent and stable. `D3` means `D3` forever, including in code comments and
+  commit messages.
+- `docs/design.md` is the *current* statement of the design and always reflects every
+  accepted decision here. When the two disagree, this log is the history and the design doc
+  is the truth.
+- An entry needs a **Consequence** to be complete. A decision whose cost nobody wrote down
+  is a decision nobody actually made.
+
+**Status values:** `Accepted` · `Open` · `Amended by Dn` · `Superseded by Dn` · `Rejected`
+
+---
+
+## Index
+
+| ID | Decision | Status |
+| --- | --- | --- |
+| [D1](#d1) | "Profile" is the single organizing concept for personas | Accepted — amended by [D9](#d9) |
+| [D2](#d2) | A key may belong to more than one profile | Accepted |
+| [D3](#d3) | The nouns are key, host, profile; "config" is not a noun | Accepted — refined by [D10](#d10) |
+| [D4](#d4) | hasp forgets records; it never destroys key material | Accepted — mechanism amended by [D12](#d12) |
+| [D5](#d5) | An alias is a name hasp materializes as a link | Accepted |
+| [D6](#d6) | The write model: preview is the default for every write | Accepted — collapsed by [D12](#d12) |
+| [D7](#d7) | hasp owns only the regions of a file it marks as its own | Accepted — amends P2 |
+| [D8](#d8) | The Git/GPG identity direction stays, as direction | Accepted |
+| [D9](#d9) | Host groups exist and are SSH config files | Accepted |
+| [D10](#d10) | Nouns have two classes: first-class and second-class | Accepted — grid resized by [D12](#d12), [D14](#d14) |
+| [D11](#d11) | Offboarding and unified identity are ratified journeys | Accepted |
+| [D12](#d12) | hasp has no persisted state; it is a pure function of the machine | Accepted — completed by [D13](#d13) |
+| [D13](#d13) | Profile membership lives in the filesystem; taxonomy prefers natural structures | Accepted — adds P9; amended by [D15](#d15) |
+| [D14](#d14) | Managed vs. unmanaged resources; `adopt` and `release` | Accepted — amends [D10](#d10), J1; amended by [D15](#d15) |
+| [D15](#d15) | hasp reads the marker's presence, never its contents | Accepted — amends [D13](#d13), [D14](#d14) |
+
+---
+
+<a id="d1"></a>
+## D1 — "Profile" is the single organizing concept for personas
+
+**Date:** 2026-08-26 · **Status:** Accepted — consequence amended by [D9](#d9)
+
+### Context
+
+The original README promised "profiles and profile groups," with groups for `personal` and
+`work` and multiple profiles per group. The original implementation instead built "key groups"
+with one level of nesting, which it then flattened into dotted names like `work.foobarco`. Two
+vocabularies, one underlying idea, and no statement of which was correct.
+
+### Decision
+
+**One concept, hierarchically named.** A profile is a persona. Profile names are paths:
+`work.foobarco` is a profile, and `work` is its parent and also a profile. A "profile group" is
+simply a profile that has children. Nesting is a naming convention, not a second type.
+
+### Rationale
+
+Collapsing the two satisfies the original requirement — multiple profiles per context
+(`work.foobarco`, `work.acme`) — without a second entity. It also matches what the original code
+*actually did* once it flattened its configuration, meaning the implementation had already
+discovered this answer without anyone writing it down.
+
+### Consequence
+
+The words "key group" and "profile group" leave the project's vocabulary permanently.
+
+The original form of this consequence also retired "host group." **[D9](#d9) reverses that
+specific part**: host groups exist, but as a container concept on a different axis, not as
+persona taxonomy. Profiles remain the sole *organizing* concept.
+
+---
+
+<a id="d2"></a>
+## D2 — A key may belong to more than one profile
+
+**Date:** 2026-08-26 · **Status:** Accepted
+
+### Context
+
+Whether key↔profile membership is one-to-many or many-to-many. One-to-many is tidier and
+produces simpler output.
+
+### Decision
+
+**Many-to-many.** A key belongs to zero or more profiles.
+
+### Rationale
+
+A key genuinely shared between `personal` and `work.foobarco` is a real situation, not a modelling
+error. Forcing a single choice would make the tool assert something false about the machine,
+which violates the premise that hasp tells the truth about what is there.
+
+### Consequence
+
+"Which profile is this key in" is a list, not a value. [J8](#d11) (offboard) must handle the
+case of a key scoped to a departing profile *and* to something being kept — which is precisely
+the case where getting it wrong is most expensive.
+
+---
+
+<a id="d3"></a>
+## D3 — The nouns are key, host, and profile; "config" is not a noun
+
+**Date:** 2026-08-26 · **Status:** Accepted — refined by [D10](#d10)
+
+### Context
+
+"Config" meant two unrelated things: hasp's own settings, and the SSH configuration file. The
+original implementation had both, under one word, and its verb grid carried a `config` noun
+whose meaning was never pinned down — every one of its subcommands was an unimplemented stub,
+which is itself evidence that nobody knew what it was for.
+
+### Decision
+
+**Drop `config` as a noun.** SSH configuration is the rendered consequence of hosts and
+profiles; it is managed by managing hosts. hasp's own settings are *settings*, are not part of
+the verb grid, and are edited directly.
+
+### Rationale
+
+An entity nobody can define is an entity that will be implemented inconsistently. Splitting the
+overloaded word removes the ambiguity, and the remaining nouns each have an obvious referent.
+
+### Consequence
+
+Every scenario the old `config` noun was going to cover belongs to `host` or to `settings`.
+[D10](#d10) refines this by establishing that the three nouns are the *first-class* set, and
+that further nouns exist beneath them.
+
+---
+
+<a id="d4"></a>
+## D4 — hasp forgets records; it never destroys key material
+
+**Date:** 2026-08-26 · **Status:** Accepted — mechanism amended by [D12](#d12)
+
+### Context
+
+The abandoned implementation carried a full create/read/update/**delete** shape in its
+scaffolding, but the command surface had no delete verb. The question of whether hasp destroys
+things was never resolved — it was simply left in two states at once.
+
+### Decision
+
+**`forget` removes a record and never touches disk.** Adopted in the strong form:
+**hasp has no operation that can destroy an irreplaceable secret.** This is canon.
+
+### Rationale
+
+`rm` already exists and is better understood. Reconciliation will notice the absence and update
+the records on its own. A tool that has never destroyed anyone's private key has a perfect
+safety record it can simply keep, and that record is worth more than the convenience of a
+delete verb.
+
+### Consequence
+
+Dropping a record is cheap and fully reversible — reconciliation restores it if the material is
+still there. Removing key material is the user's own act, performed with their own tools. This
+is a permanent, load-bearing safety property, and it constrains every future operation: any
+proposal that would give hasp the power to destroy key material contradicts ratified canon.
+
+### Amended by D12
+
+[D12](#d12) removed persisted state, which retires the `forget` **verb** — there are no records
+to drop from. The **canon is unchanged and if anything is strengthened**: with nothing
+persisted, forgetting is simply what happens when the material is gone and hasp next looks. The
+safety property no longer depends on hasp declining to do something; it holds because hasp has
+no mechanism through which it could.
+
+---
+
+<a id="d5"></a>
+## D5 — An alias is a name hasp materializes as a link
+
+**Date:** 2026-08-26 · **Status:** Accepted
+
+### Context
+
+Aliases exist because something outside your control insists on a name you didn't choose — a
+tool that hardcodes `id_rsa`, a script you can't edit. The original implementation discovered
+them from symlinks and stored them with globally unique names, but never stated what an alias
+*is*.
+
+### Decision
+
+An alias is an **additional name** for a key. hasp discovers aliases when adopting a machine
+and materializes them in the world as links. Names and aliases share one flat namespace.
+
+### Rationale
+
+Uniqueness is inherited from the filesystem rather than invented by hasp: within a directory,
+two things cannot share a name, and hasp should not pretend to a richer model than the thing
+every other tool actually reads.
+
+### Consequence
+
+hasp's alias model can never be more expressive than a directory. This is correct, not
+limiting — the directory is the interface every other tool consumes.
+
+---
+
+<a id="d6"></a>
+## D6 — The write model
+
+**Date:** 2026-08-26 · **Status:** Accepted (2026-08-26) · **Collapsed by:** [D12](#d12)
+
+### Context
+
+Every write being previewable and reversible is desirable, but applying that ceremony
+uniformly would make cheap, safe operations tedious.
+
+### Proposal (not yet ratified)
+
+**Two tiers.** Changes to hasp's own records are immediate — they are reversible by
+re-reconciling, since the machine is the source of truth. Changes to key files or configuration
+go through preview → confirm → back up → write.
+
+### Open questions
+
+- Is the tier a property of the *operation* or of what it touches at runtime?
+- Does preview need to be the default for the risky tier, or an available mode?
+- Where do operations that touch both tiers at once land?
+
+### Consequence if accepted
+
+"What would this do" must be answerable *before* a change is applied, which shapes how change
+is represented from the very beginning. This cannot be added later without rework.
+
+### Reshaped by D12
+
+[D12](#d12) removes persisted state entirely, which **collapses the two tiers into one**. If
+hasp keeps no records, there is no such thing as a "record-only change" — every write touches
+the world, and every write therefore gets the full preview → confirm → back up → write cycle.
+
+The first two open questions above are answered by that collapse; the third dissolves, since no
+operation can span tiers that no longer exist. What survives is narrower and should be settled
+on its own terms: **is preview the default for every write, or an available mode?**
+
+### Decision
+
+**Every write.** Preview is the default, not a mode the user has to remember to ask for.
+
+*Rationale:* the alternative puts the burden of caution on the person with the least context at
+the moment they act. A default that is safe only when you remember to opt into it is not a safe
+default. At this scale (P8) the extra step costs a keystroke and buys the guarantee P5 was
+written to make.
+
+*Consequence:* there is exactly one write model, applied uniformly — **preview → confirm →
+back up → write** — with no operation-by-operation judgement about which changes are risky
+enough to warrant it. Non-interactive use must therefore have an explicit way to consent in
+advance; its spelling is an interface concern and remains deferred.
+
+---
+
+<a id="d7"></a>
+## D7 — hasp owns only the regions of a file it marks as its own
+
+**Date:** 2026-08-26 · **Status:** Accepted (2026-08-26)
+**Amends:** P2 · **Reshapes:** [D13](#d13)
+
+### Context
+
+The single hardest and most consequential question in the design, and the one that determines
+whether "hand edits are sacred" is a real guarantee or an aspiration. Configuration files are
+co-owned by hasp and the human.
+
+### Proposal (not yet ratified)
+
+**hasp owns marked regions; everything else is human territory, preserved exactly.** hasp does
+not take custody of a file it did not fully author. Content it does not understand is not an
+error and is never rewritten — it is simply not hasp's.
+
+### Bearing of D9 on this question
+
+[D9](#d9) materially changes the shape of this problem and should be resolved *before* D7 is
+ratified. If host groups are separate files, then hasp files it created wholesale
+(`~/.ssh/<group>.sshconfig`) may be fully hasp-owned, and marked-region co-ownership may be
+needed only for the default `~/.ssh/config` — the one file the human has already written in.
+That would narrow the hard problem considerably. Whether it narrows it *enough* to change the
+answer is exactly what needs deciding.
+
+### Open questions
+
+- Does the default group file get marked-region treatment, or is it read-mostly with hasp
+  writing only an include?
+- What happens when a human edits inside a hasp-marked region?
+- Are hasp-authored group files still preserved byte-for-byte outside their known constructs?
+
+### Consequence if accepted
+
+hasp must be able to work with a file it only partially comprehends, forever. This forecloses
+any approach requiring a complete parse of a config file in order to write to it at all, and
+is the primary constraint on the deferred parsing investigation.
+
+### Decision
+
+**Marked regions, accepted** — with elaborations that make the mechanism stronger than the
+original proposal, and that answer all three open questions above.
+
+**1. Inside its own markers, hasp is authoritative.** hasp-owned regions are *rigidly managed*:
+hasp may normalize, reorder, and reformat them freely, because it wrote every byte.
+
+**2. Manual edits inside a hasp region are intentionally lost.** This is the trade that buys
+rigid management, and it is deliberate rather than regrettable. **It amends P2** — hand edits
+are sacred *outside* hasp's markers; inside them they are forfeit. The marker is both the
+boundary and the warning, and P2's guarantee is narrowed to match rather than quietly violated.
+
+**3. hasp-owned regions may carry structured metadata as comments.** Anything hasp needs to
+record that the format cannot express natively is written into its own region in comment form.
+The metadata structure must be expressive enough to capture whatever the human intended, so
+that a construct hasp does not model natively can still be carried rather than dropped.
+
+**4. The default file is supported; explicit host groups are the nudge.** `~/.ssh/config` gets
+marked-region treatment like any other file. But the smoothest experience is explicit host
+group files ([D9](#d9)), and hasp should steer users there — the fully-owned file is the easy
+case, and the co-owned one is where the sharp edges live.
+
+### Why elaboration 3 matters
+
+It **substantially dissolves the exhaustive-parsing problem**, which was the project's hardest
+identified technical risk. hasp no longer needs a complete native model of the configuration
+format in order to be safe with it: what it understands it manages natively, and what it does
+not it carries as metadata. The parsing investigation shrinks from "model the whole format" to
+"model what we manage, carry the rest."
+
+### Is comment-metadata a violation of D12?
+
+**No, and the distinction is worth stating explicitly**, because this is precisely the kind of
+mechanism that could reintroduce persisted state through a side door.
+
+[D12](#d12) prohibits *derived* state — a copy of facts the machine can already answer, which
+drifts because the original changes without telling you. Comment-carried metadata is
+**declared**: it is input, authored deliberately, mirroring nothing. It lives in the world
+rather than beside it, is legible without hasp (P6), and is version-controllable with the file
+that carries it.
+
+The line to hold: **metadata may record what the machine cannot tell you. It may never cache
+what the machine can.** A fingerprint written into a comment would be a D12 violation. A profile
+assignment would not.
+
+### Consequence
+
+- **P2 is narrowed** to "sacred outside hasp's markers." The design document states the
+  amendment where P2 is defined.
+- hasp gains a general mechanism for recording declared intent inside files it owns, which
+  **reshapes [D13](#d13)** — profile membership now has a candidate home that costs no new file.
+- Rigid management means a hasp region is fully regenerable, so a corrupted or hand-mangled
+  region is repairable by rewriting it rather than by parsing what someone did to it.
+- The metadata format becomes load-bearing and needs its own design: it must round-trip unknown
+  constructs, survive reformatting, and stay readable to a human with an editor.
+
+---
+
+<a id="d8"></a>
+## D8 — The Git/GPG identity direction stays, as direction
+
+**Date:** 2026-08-26 · **Status:** Accepted
+
+### Context
+
+The original README listed GPG key awareness and Git identity management under "Future Ideas."
+The question was whether to keep them in the vision at all, given that the project's history is
+a case study in what happens when a second front opens before the first is finished.
+
+### Decision
+
+**Keep it in the vision; keep it out of the near-term work.**
+
+### Rationale
+
+It stays because it is *why* profiles are shaped as they are — a persona that carries a signing
+key and a commit identity is the reason "profile" is the organizing concept rather than "key
+group." Dropping it would reduce hasp to a key-inventory tool. It waits because SSH alone is
+not yet done.
+
+### Consequence
+
+The domain model must not make [J9](#d11) impossible. No near-term milestone may include it.
+Reaching for it early is the specific failure mode this project has already experienced once.
+
+---
+
+<a id="d9"></a>
+## D9 — Host groups exist, and a host group is an SSH config file
+
+**Date:** 2026-08-26 · **Status:** Accepted · **Amends:** [D1](#d1)
+
+### Context
+
+[D1](#d1)'s original consequence retired "host group" along with "key group" and "profile
+group," on the reasoning that profiles are the one grouping concept. On review this was wrong —
+not because profiles are the wrong organizing concept, but because "host group" was being read
+as *taxonomy* when its natural meaning here is *container*.
+
+### Decision
+
+A **host group is a physical container for host entries: an SSH config file.**
+
+- The default host group is `~/.ssh/config`.
+- A custom host group named `foo` is `~/.ssh/foo.sshconfig` — the file is named literally after
+  the group.
+- The default group is the sole exception to that naming rule.
+
+### Rationale
+
+SSH configuration is already multi-file in practice; the format supports composition natively.
+Modelling that reality directly gives hasp a materialization strategy that is legible from
+outside the tool: you can see the grouping by listing a directory, and any other tool — or a
+human with an editor — reads exactly the same structure hasp does. It requires no invented
+metadata, and it keeps hasp's records a projection of the world rather than a claim about it.
+
+It also isolates blast radius. A group hasp authored is a file hasp authored, which is a much
+easier thing to reason about than a region inside a file someone else wrote.
+
+### Relationship to profiles
+
+Host groups and profiles are **different axes and must not be conflated**:
+
+- A **profile** is *who you are being* — persona, organizing taxonomy, spans keys and hosts and
+  eventually Git/GPG identity.
+- A **host group** is *where a host entry physically lives* — a file on disk.
+
+They will often correlate, and a sensible default may be to materialize a profile's hosts into
+a group file of the same name. They remain distinct concepts, and nothing requires them to
+align.
+
+### Consequence
+
+- [D1](#d1)'s consequence is amended: "host group" returns to the vocabulary with this specific
+  meaning. "Key group" and "profile group" stay retired.
+- hasp must model *where a host lives* in addition to *what it is* and *who it belongs to*.
+- Materializing a group means creating and owning a file; hasp's write model must account for
+  files it fully authored as a distinct case from files it co-owns. This bears directly on
+  [D7](#d7), which should be settled with this in hand.
+- The default group is a file hasp did not create and probably should not claim, which is the
+  hardest case and the one D7 must answer.
+
+---
+
+<a id="d10"></a>
+## D10 — Nouns have two classes: first-class and second-class
+
+**Date:** 2026-08-26 · **Status:** Accepted · **Refines:** [D3](#d3)
+
+### Context
+
+[D3](#d3) settled that the nouns are key, host, and profile. But the domain plainly contains
+more nouns than three — alias, binding, host group — and it was unclear whether each needed a
+place in the verb grid, which would multiply the command surface for concepts that are not
+independently meaningful.
+
+### Decision
+
+Nouns come in two classes.
+
+- **First-class nouns** — **key**, **host**, **profile**. These are the entities that exist in
+  their own right. The verb + noun grammar applies to these and only these.
+- **Second-class nouns** — alias, binding, host group, and others yet to be identified. These
+  belong *to* a first-class noun and are addressed as modifiers of an operation on their owner,
+  not as operations in their own right.
+
+Illustratively: `hasp edit key "foo-key" --add-alias="bar-key"`, rather than a top-level
+`alias` noun with its own verbs.
+
+### Rationale
+
+A second-class noun has no independent existence — an alias without a key is meaningless, a
+binding without a host and a key is nothing. Promoting such concepts to the verb grid would
+grow the command surface combinatorially while offering operations that are either nonsensical
+or duplicative.
+
+Keeping the first-class set at three preserves the property that made the original verb×noun
+grid the best idea in the abandoned implementation: learning one noun teaches you the others,
+and adding a noun is mechanical rather than inventive.
+
+### Consequence
+
+- The verb grid does not grow as the domain gets richer. (It was 3 × 8 when written; [D12](#d12)
+  retired two verbs and [D14](#d14) added two, so it is 3 × 8 again. The *count* moves with the
+  verb set; the point of this decision is that it does not move with the number of concepts.)
+- Every new concept must be classified on arrival. "Is this first-class?" becomes a standing
+  design question, and the bar is independent existence.
+- Second-class nouns surface as named arguments. Their exact spelling is an interface concern
+  and remains deferred; the *classification* is design and is settled here.
+
+---
+
+<a id="d11"></a>
+## D11 — Offboarding and unified identity are ratified journeys
+
+**Date:** 2026-08-26 · **Status:** Accepted
+
+### Context
+
+Two journeys were proposed as extensions beyond the original vision rather than restatements
+of it, and were flagged as such for explicit acceptance or rejection.
+
+### Decision
+
+Both are accepted as part of the vision.
+
+- **J8 — Offboard.** *I'm leaving a context. Show me everything scoped to that profile — every
+  key, every host that depends on it — so I know what to revoke and what will break.*
+- **J9 — Unify identity.** *A profile carries not just SSH keys but the Git identity and
+  signing key that go with the persona.* Post-v1, per [D8](#d8).
+
+### Rationale
+
+J8 is the practical payoff of profiles being first-class, and it is the strongest justification
+for modelling bindings as a relation rather than a directive: the valuable question runs
+*backwards* along the binding — which hosts use this key — and that is exactly what you need on
+your last day somewhere.
+
+J9 is the original "Future Ideas" section promoted from a list of features to the reason the
+domain model has the shape it does.
+
+### Consequence
+
+- J8 makes the binding relation load-bearing rather than incidental, and it must work correctly
+  for keys shared across profiles ([D2](#d2)).
+- J9 is bound by [D8](#d8): it shapes the model, but no near-term milestone may include it.
+
+---
+
+<a id="d12"></a>
+## D12 — hasp has no persisted state; it is a pure function of the machine
+
+**Date:** 2026-08-26 · **Status:** Accepted · **Reshapes:** [D6](#d6) · **Opens:** [D13](#d13)
+
+### Context
+
+The original implementation kept a TOML state file. It was introduced for a modest reason — a
+debug and development aid, for visibility into what the tool was seeing — and then quietly
+became the state model. In September 2020 it began migrating to SQLite with an ORM, and that
+migration is exactly where the project died: `sync` half-written, `# TODO: Left off here` in
+the middle of the reconciliation logic, and two competing stores wired into different commands
+for the next six years.
+
+The question this entry settles is whether hasp needs persisted state at all.
+
+### Decision
+
+**It does not.** hasp derives everything it reports from the machine at the moment it is asked.
+There is no index, no database, no state file. hasp is a pure function of the filesystem.
+
+**Corollary — no cache either.** Not merely "no cache for now": a cache requires a *measured*
+justification — an actual timing, on an actual `~/.ssh`, showing a delay a human notices. If
+one is ever admitted it must be disposable, auto-invalidating, never consulted for correctness,
+and deletable mid-run with no effect other than latency.
+
+### Rationale
+
+**`sync` dissolves.** The verb exists only to reconcile an index against reality. With no index
+there is nothing to reconcile. The single most-worked and least-finished part of the abandoned
+codebase — the part with the abandonment marker literally inside it — is not fixed by this
+decision, it is *deleted* by it. That is the strongest available evidence the direction is right.
+
+**The sin was persisting derivable facts, not persistence as such.** Derived state drifts,
+because it is a copy of something that changes without telling you. Declared state does not,
+because it is not mirroring anything. The old state file stored fingerprints, algorithms, bit
+lengths, formats, and aliases — every one of them a question the machine answers in
+milliseconds. That is what rotted.
+
+**An audit found almost nothing that must be declared.** Fingerprint, algorithm, size, comment,
+format: from the key artifact. Aliases: from symlinks. Hosts, host settings, bindings: from
+config files. Host groups: from files in the key directory ([D9](#d9)). The only residue is
+profile membership, which is [D13](#d13).
+
+**A cache does not pay at this scale.** Tens of keys, a few milliseconds each (P8).
+For a process that starts and exits, a cache only helps if it is on disk — which means
+invalidation, staleness checks, and a second thing that can be wrong. It would reintroduce the
+exact failure being eliminated in order to save time a human cannot perceive.
+
+**And a cache is how this happened the first time.** The TOML file started as "just a
+visibility aid." A cache admitted "just in case" is the same nose under the same tent, which is
+why the bar above is deliberately set at measurement rather than judgement.
+
+**Statelessness is more honest.** Where hasp cannot derive a fact it must say so. A stateful
+hasp would confidently report a fingerprint it can no longer verify.
+
+**Three properties come free.** There is no corruption mode, because there is no index to leave
+inconsistent. Testing becomes tractable — hasp is a function of a directory, so a fixture tree
+is the entire setup, which directly addresses why the original has zero tests. And abandonment
+costs nothing, since nothing is trapped in a format nobody remembers.
+
+### The derivation gap
+
+One case was tested rather than assumed, and it is real:
+
+| Case | Fingerprint derivable? |
+| --- | --- |
+| Public half present | Yes |
+| OpenSSH format, encrypted, no public half | **Yes** — the public half is stored unencrypted inside the private file; only the comment is lost |
+| Legacy PEM, encrypted, no public half | **No** — `ssh-keygen` reports `is not a key file` |
+
+The last row matters here specifically: seven of the thirteen keys in the author's own recovered
+inventory are PEM format.
+
+**Resolution: report the fact as unknown.** hasp does not prompt for a passphrase (P3), and it
+does not cache a value it cannot re-verify. "Unknown" is the correct answer and a stateful
+design would answer it worse.
+
+### Consequence
+
+- **`sync` and `forget` are retired from the verb set**, which drops from eight verbs to six.
+  `forget` meant "drop this from my records"; there are no records. [D10](#d10)'s grid is
+  now 3 × 6.
+- **P1 strengthens** from "the index is rebuildable" to "there is no index." **P6** — records
+  legible without hasp — is satisfied maximally and vacuously, and is restated rather than kept
+  as written.
+- **[D6](#d6)'s two tiers collapse into one.** See that entry.
+- **Storage leaves the deferred list.** There is nothing to defer.
+- **Every read is a scan.** Correctness now depends on derivation being complete and cheap,
+  which makes the derivation gap above a permanent design fact rather than an edge case.
+- **[D13](#d13) is opened** by the one thing that could not be derived.
+
+---
+
+<a id="d13"></a>
+## D13 — How profile membership is expressed in the world
+
+**Date:** 2026-08-26 · **Status:** Accepted (2026-08-27) · **Opened by:** [D12](#d12)
+**Adds:** P9 · **Depends on:** [D14](#d14)
+
+### Context
+
+[D12](#d12) removed persisted state on the finding that nearly everything hasp reports is
+derivable from the machine. Profile membership is the exception: nothing on disk says that
+`id_rsa_foobarco` is a *work* key. It must therefore either be carried by the world in some
+structural form, or be the one thing hasp declares.
+
+### Options
+
+**(i) The filesystem carries the taxonomy.** A profile is a directory:
+`~/.ssh/work.foobarco/id_rsa`. Tools that hardcode `~/.ssh/id_rsa` are satisfied by a mechanism
+already ratified — aliases ([D5](#d5)) are symlinks, so the top-level name remains and points
+into the profile directory.
+
+This completes a pleasing symmetry with [D9](#d9): **directory = profile, file = host group,
+symlink = alias, key file = key, config stanza = host, and nothing else exists.** The
+filesystem *is* the database. Everything is visible to `ls`, greppable, and version-controllable
+without hasp.
+
+*Cost:* hasp becomes opinionated about `~/.ssh` layout, and adopting it means **moving key
+files** — the most invasive act hasp would ever perform. It sits awkwardly against J1, whose
+promise is that adoption changes nothing.
+
+**(ii) Infer membership from bindings.** A key referenced by `work.sshconfig` is a work key.
+Zero file moves. *Cost:* profiles cannot exist independently of hosts, and a key bound to
+nothing has no profile — which is precisely the key you most need to reason about when
+offboarding (J8).
+
+**(iii) A hand-authored manifest.** Declared, not derived, so it does not drift — it is input
+rather than cache, and does not reintroduce what D12 removed. *Cost:* it is a file to keep, and
+it is the shape of the thing this project has twice failed to maintain.
+
+**(iv) Metadata in a hasp-owned region.** *Added by [D7](#d7), after this entry was written.*
+Ratifying marked regions gave hasp a general mechanism for recording declared intent inside
+files it already owns. Profile membership could live there — declared rather than derived, so
+D12-compatible; carried in a file that already exists, so no new artifact to maintain; and
+legible with an editor (P6). *Cost:* it ties key taxonomy to config files, which are about
+hosts, so a key belonging to no host still needs a home. This is (iii) without the separate
+file, and it is the option D7 made possible.
+
+### Open questions
+
+- Can adoption stay read-only and layout-agnostic under option (i), with reorganizing as a
+  separate opt-in act?
+- Does option (i) break anything that reads `~/.ssh` directly and does not follow symlinks?
+- Under (i) or (ii), where does a profile's non-SSH identity live when [J9](#d11) arrives —
+  Git identity has no natural home in a key directory.
+
+### Decision
+
+**Option (i): the filesystem carries the taxonomy.** A profile is a directory under the key
+directory, and a key's profile membership is the directory it lives in.
+
+**Directories nest; `.hasp` decides.** Profile name segments map to path segments, so
+`work.foobarco` is `~/.ssh/work/foobarco/`. A directory is a profile **only if it carries a `.hasp`
+marker**, which means `work` can be a profile in its own right, or merely a container that
+groups others, and the marker settles which. The marker file was originally required to stay
+**empty**, to keep it from becoming a manifest — option (iii) through the back door.
+**[D15](#d15) restates that rule** at the right altitude: what matters is that hasp never
+*reads* the file, not that the file has no bytes.
+
+### The general rule this establishes — promoted to P9
+
+The reasoning generalizes well beyond profile membership, so it is promoted to a principle
+rather than left as a local answer:
+
+> **P9 — Taxonomy rides on existing structure.** Whenever possible, organizing facts are carried
+> by natural structures that already exist — filesystem layout, or the configuration data of the
+> tool being managed. Where that is impossible, fall back to private metadata alongside the
+> thing. Only as a last resort, a hasp settings file. No case has yet required the last resort.
+
+P9 will govern the Git and GPG expansion ([J9](#d11)) as much as it governs SSH: the natural
+structures there are `gitconfig` conditional includes and repository layout, not a hasp-owned
+registry. Recording it as a principle means that question is pre-answered.
+
+### Rationale
+
+Option (i) completes the symmetry begun by [D9](#d9): **directory = profile, file = host group,
+symlink = alias, key file = key, config stanza = host, and nothing else exists.** The filesystem
+*is* the database. Everything is visible to `ls`, greppable, and version-controllable without
+hasp — P6 satisfied not by choosing a legible format but by having no format at all.
+
+Option (ii) was rejected because a key bound to no host would have no profile, and that is
+precisely the key that matters most when offboarding ([J8](#d11)). Options (iii) and (iv)
+were rejected as unnecessary once [D14](#d14) made (i)'s cost affordable.
+
+### How (i)'s cost was paid
+
+(i)'s stated cost was that hasp becomes opinionated about `~/.ssh` layout, and that adoption
+would mean moving key files — awkward against J1's promise that adoption changes nothing.
+
+**[D14](#d14) pays that cost** by distinguishing managed from unmanaged resources. Unmanaged
+resources are reported read-only and are never moved, so the survey journey keeps its promise
+exactly. Only a resource the user explicitly adopts is reorganized. Without D14 this decision
+would not have been affordable.
+
+### Consequence
+
+- **Profile membership is derived from location.** It is not declared anywhere, which makes the
+  model fully derivable — [D12](#d12)'s "no persisted state" is now literally true, with no
+  asterisk.
+- Moving a key between profiles is `mv`. The world remains the interface.
+- **SSH's default identity probing breaks when a key moves.** `ssh` auto-tries
+  `~/.ssh/id_ed25519`, `~/.ssh/id_rsa` and friends; a key that moves into a profile directory
+  stops being found by anything that relied on that. Adoption must therefore leave a top-level
+  alias symlink behind ([D5](#d5)) or write an explicit `IdentityFile`. This is a requirement of
+  adoption, not a nicety.
+- A key in no profile directory sits at the top level and belongs to no profile, which is a
+  legitimate state and exactly what `check` should report.
+
+---
+
+<a id="d14"></a>
+## D14 — Managed vs. unmanaged resources; `adopt` and `release`
+
+**Date:** 2026-08-27 · **Status:** Accepted · **Amends:** [D10](#d10), J1 · **Enables:** [D13](#d13)
+
+### Context
+
+[D13](#d13) put profile membership in the filesystem, which requires moving key files — the
+most invasive act hasp would ever perform, and in direct tension with J1's promise that
+surveying a machine changes nothing. Something had to make that affordable.
+
+### Decision
+
+**Every resource is either managed or unmanaged, and the difference is consent.**
+
+| | Unmanaged | Managed |
+| --- | --- | --- |
+| How hasp treats it | Read-only reporting | Full write capability, plus features that depend on complete metadata |
+| How it is recognized | Absence of a marker | A marker (below) |
+| Whose territory | The user's | hasp's, by explicit opt-in |
+
+**Markers, per noun:**
+
+- **Profile** — a directory carrying a `.hasp` marker file ([D13](#d13), [D15](#d15)).
+- **Host** — a stanza inside hasp's markers ([D7](#d7)).
+- **Key** — **its location.** A key inside a managed profile directory is managed. There is no
+  intrinsic per-key marker; see below.
+
+**Two new verbs**, uniform across all three nouns:
+
+- **`adopt`** — reorganize an unmanaged resource into a managed one.
+- **`release`** — the inverse: return a managed resource to unmanaged, undoing the
+  reorganization and removing the marker.
+
+### Why keys are marked by location and not by comment
+
+The original proposal was that a managed key carries a hasp marker in its **comment**. That was
+tested and rejected on evidence:
+
+| Case | Result |
+| --- | --- |
+| Comment change alters the fingerprint? | **No** — identity is preserved. The one good result. |
+| Encrypted key, non-interactive | **Fails.** `ssh-keygen -c` must decrypt the private key: `Cannot load private key: incorrect passphrase`, exit 255. Marking an encrypted key would require a passphrase, which **P3 forbids** — so the keys a careful user is most likely to hold could never become managed. |
+| Legacy PEM key | **Silently converts the private key to OpenSSH format.** Verified: header changes from `BEGIN RSA PRIVATE KEY` to `BEGIN OPENSSH PRIVATE KEY` and the file digest changes. PEM has no comment field, so the comment lands only in the `.pub`. This changes `format` — a fact hasp *reports* — and can break tooling that requires PEM. Seven of the thirteen keys in the author's own recovered inventory are PEM. |
+
+Beneath both failures is a more general objection: marking a key means **rewriting a private key
+file**, which is the closest hasp would ever come to [D4](#d4)'s line. Not destruction, but the
+one operation where a bad moment costs an irreplaceable secret.
+
+**Location is sufficient anyway.** Under [D13](#d13) location *is* the taxonomy, so an intrinsic
+marker is redundant with [P1](#d12) — if a key moves, it moved, and the world is the truth. It
+also removes a class of contradictions that an intrinsic marker would have created: a marked key
+sitting outside a managed directory, or an unmarked key sitting inside one. With location as the
+only signal, those states cannot arise.
+
+**Standing rule: hasp never writes to a private key file.** The sole exception is generating a
+new key, where hasp authors the file outright. If an intrinsic marker is ever wanted, the safe
+form is a marker in the `.pub` only, on keys hasp generated — never retrofitted, never touching
+the secret.
+
+### Why `release` exists
+
+`adopt` moves files and writes markers. Without an inverse it is a **one-way door**, and a
+one-way door turns "try hasp on my real `~/.ssh`" from an experiment into a commitment. That
+contradicts the spirit of [D4](#d4) and [P6](#d12) — nothing should be trapped inside hasp.
+Mechanically the inverse is cheap: move back, remove the marker.
+
+### Consequence
+
+- **[D10](#d10)'s grid grows from 3 × 6 to 3 × 8.** `adopt` and `release` are first-class verbs
+  applying uniformly to key, host, and profile. This is the *classification* rule working as
+  intended, not an exception to it.
+- **J1 is renamed.** It was called "Adopt" and defined as awareness *without changing anything* —
+  the exact opposite of the new verb. J1 becomes **Survey**; `adopt` takes the word.
+- **J5 (Tidy) implies adopt-first.** Repairing an unmanaged resource requires adopting it, since
+  unmanaged is read-only. Reporting untidiness does not.
+- **The milestones sharpen.** M1 is now entirely the unmanaged read-only path — hasp ships its
+  first useful milestone **without ever writing to `~/.ssh`**. `adopt` and managed writes arrive
+  in M2.
+- Managed status is an explicit, revocable grant. hasp's authority over a resource is something
+  the user hands it and can take back.
+
+---
+
+<a id="d15"></a>
+## D15 — hasp reads the marker's presence, never its contents
+
+**Date:** 2026-08-28 · **Status:** Accepted · **Amends:** [D13](#d13), [D14](#d14)
+
+### Context
+
+[D13](#d13) required the `.hasp` profile marker to stay **empty**, on the reasoning that a file
+with content becomes a manifest — option (iii) readmitted through the back door, undermining
+[D12](#d12).
+
+That rule was stated at the wrong altitude. It conflated the invariant with a crude proxy for
+it. Bytes sitting in a file are not declared state; bytes a *program reads* are. "Empty" banned
+the wrong noun, and in doing so it foreclosed something worth keeping: the ability to leave a
+note for a human, and room for configuration to grow naturally at that scope if a case ever
+genuinely arises that observation cannot cover.
+
+### Decision
+
+**The invariant is restated:**
+
+> **hasp reads the marker's *presence*, never its *contents*.**
+
+Precise, testable, and it protects [D12](#d12) exactly as well as "empty" did — while permitting
+what "empty" needlessly forbade.
+
+**1. The file's contents belong to the user.** They may write whatever they like in it. hasp
+never parses, validates, or reports on it.
+
+**2. Commentary is prefixed `#`.** One syntax, not two.
+
+**3. `adopt` creates the file with a `#` header** stating what the file is, that its *presence*
+is the signal, and that `#` lines are ignored.
+
+**4. `release` must show the file's contents in its preview**, so that removing a marker the
+user has written in is never a silent loss.
+
+### Why `#`, and only `#`
+
+**P9 decides it.** The neighbouring file in that very directory — `ssh_config` — uses `#`, as do
+shell, `gitconfig`, TOML, and YAML. `//` matches nothing in this ecosystem. The convention that
+already exists is the one to ride.
+
+Blessing two syntaxes would be a parsing decision made years early, handing a future reader an
+ambiguity for no benefit. And if data ever does land in this file, TOML is its likely shape
+given the project's history — `#` is already TOML's comment character, so that door opens
+cleanly rather than needing a migration.
+
+### Why elaboration 3 is the load-bearing one
+
+`#`-prefixing only protects a future parser if commentary is *actually* prefixed — and nothing
+enforces that, precisely because hasp never reads the file. A user who writes bare prose today
+hands a someday-parser something indistinguishable from data.
+
+A `#` header written at creation time converts the convention from folklore into something
+visible the first time anyone opens the file. Files written today are then entirely `#` lines,
+which a future reader parses as zero data. That is what makes backward compatibility real rather
+than hoped for.
+
+### Why not rename the file instead
+
+The alternative considered was renaming the marker to convey intent — `.hasp-owned` or similar.
+Rejected: a self-documenting header does the naming's job from inside the file, so the name can
+stay short. `.hasp` also ages better. When [J9](#d11) arrives the same marker plausibly scopes a
+Git repository, where "owned" is the wrong word for what it marks.
+
+### The gate for "someday"
+
+**The day hasp reads this file's contents, it reopens §5.7 of the design document.**
+
+That section is kept named-and-empty as a standing test: anything hasp must be *told*, rather
+than able to look up, requires its own decision with [P9](#d13) as the bar. Content in `.hasp`
+that hasp *reads* is precisely that. The flexibility is preserved and the tripwire already
+exists; D15 simply points the two at each other.
+
+This matters because the file has the same *shape* as the original failure — the TOML state file
+began as "just a debug aid for visibility" and became the state model. The difference now is
+that the door is explicitly a door, with a decision required to walk through it, rather than
+something that drifts open one convenient field at a time.
+
+### Consequence
+
+- **[D13](#d13)'s "stays empty" is superseded** by the presence/contents rule. The protection is
+  unchanged; the prohibition is narrower and aimed at the right thing.
+- **§5.7 stays closed today.** Commentary in the marker is human-to-human, not human-to-hasp, so
+  nothing hasp must be *told* has been reintroduced.
+- **`adopt` gains a requirement:** write the `#` header when creating the marker.
+- **`release` gains a requirement:** preview shows the marker's contents, not just its removal.
+- Forward compatibility is structural — every file hasp creates is self-describing, and every
+  file written under the convention parses as zero data to any future reader.
+
+---
+
+## Still open
+
+**Nothing.** D1 through D15 are all ratified.
+
+[D13](#d13) closed the last one by putting profile membership in the filesystem, which makes
+[D12](#d12)'s "no persisted state" literally true with no asterisk: hasp declares nothing and
+derives everything. [D14](#d14) is what made that affordable, by distinguishing resources hasp
+merely reports on from resources the user has explicitly handed it.
+
+The design is complete enough to derive technical requirements from. The next documents are
+downstream of this one, not amendments to it — see §10 of `docs/design.md` for what was
+deliberately left open, of which the load-bearing items are the **metadata format** ([D7](#d7))
+and the **configuration parsing approach**.
