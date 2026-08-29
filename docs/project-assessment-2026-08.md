@@ -1,8 +1,51 @@
+---
+Status: HISTORICAL
+DateCreated: 2026-08-26
+DateLastReviewed: 2026-08-29
+Supersedes: nothing — this is the record that opened the project
+SupersededBy: >
+  §5's open questions are settled in "[`docs/decision-log.md`](decision-log.md)";
+  §6's roadmap is superseded by "[`docs/design.md`](design.md)" §9 and
+  "[`docs/roadmap.md`](roadmap.md)"
+Related:
+  - "[`docs/README.md`](README.md)"
+  - "[`docs/design.md`](design.md)"
+  - "[`docs/decision-log.md`](decision-log.md)"
+  - "[`docs/tech-decision-log.md`](tech-decision-log.md)"
+---
+
 # hasp — State of the Project
 
 **Date:** 2026-08-26
 **Branch:** `master` @ `d67288f`
 **Assessed by:** code read + live execution of every implemented command
+
+---
+
+> ## ⚠ This document is historical, and describes a codebase that is no longer live
+>
+> **It assesses the Python implementation of hasp**, which was not carried forward. hasp was
+> re-implemented in Go, in this repository, per
+> [`T27`](tech-decision-log.md#t27) — which cites this document as its own evidence and records
+> why the repair roadmap in §6 below was not taken. In short: `D12` removed persisted state
+> entirely, which dissolved Phase 1's *"decide the store"* and Phase 2's *"finish `sync key`"* —
+> the two phases §6 identifies as the bulk of the work and the MVP.
+>
+> **Nothing below is a live plan.** §6's Phase 0–5 roadmap describes repairs to files that do not
+> exist in this repository. It is preserved because the *findings* it records are the evidence
+> the whole design rests on — the split-brain TOML/SQLite state, the `# TODO: Left off here`
+> marker, the zero-test `ContextBorg` singleton, the `libmagic` and `ssh-keygen` dependencies.
+> Every one of those is cited by a decision that exists because of it.
+>
+> **§5's five open design questions are all settled**, and this is where they landed:
+>
+> | §5 question | Settled by |
+> | --- | --- |
+> | 1. TOML or SQLite? | [`D12`](decision-log.md#d12) — **neither.** hasp persists nothing and derives everything, so there is no store to choose |
+> | 2. Verb×resource matrix or `factory/`? | The matrix survives — [`D10`](decision-log.md#d10) classifies the nouns, [`T3`](tech-decision-log.md#t3) registers commands from a table. `factory/` is not carried forward |
+> | 3. Is the Borg pattern earning its keep? | **No.** [`tdd.md` §12](tdd.md) makes the key directory an explicitly injected value, never a global — named there as the discipline that structurally rules out this document's own "why it had zero tests" finding |
+> | 4. What is an "alias", exactly? | [`D5`](decision-log.md#d5) — an additional *name* for a key, materialized as a link, sharing one flat namespace with names |
+> | 5. Groups vs. the README's profiles | [`D1`](decision-log.md#d1) — one concept, hierarchically named. "Key group" and "profile group" are retired; [`D9`](decision-log.md#d9) reinstates "host group" with a container meaning |
 
 ---
 

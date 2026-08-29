@@ -1,3 +1,14 @@
+---
+Status: APPROVED
+DateCreated: 2026-08-26
+DateLastReviewed: 2026-08-29
+Related:
+  - "[`docs/design.md`](design.md)"
+  - "[`docs/tdd.md`](tdd.md)"
+  - "[`docs/tech-decision-log.md`](tech-decision-log.md)"
+  - "[`docs/roadmap.md`](roadmap.md)"
+---
+
 # hasp — Decision Log
 
 **Purpose.** The permanent record of design questions that have been *settled*, and why.
@@ -36,9 +47,12 @@ alternatives were rejected, and what each decision commits the project to.
 | [D10](#d10) | Nouns have two classes: first-class and second-class | Accepted — grid resized by [D12](#d12), [D14](#d14) |
 | [D11](#d11) | Offboarding and unified identity are ratified journeys | Accepted |
 | [D12](#d12) | hasp has no persisted state; it is a pure function of the machine | Accepted — completed by [D13](#d13) |
-| [D13](#d13) | Profile membership lives in the filesystem; taxonomy prefers natural structures | Accepted — adds P9; amended by [D15](#d15) |
-| [D14](#d14) | Managed vs. unmanaged resources; `adopt` and `release` | Accepted — amends [D10](#d10), J1; amended by [D15](#d15) |
-| [D15](#d15) | hasp reads the marker's presence, never its contents | Accepted — amends [D13](#d13), [D14](#d14) |
+| [D13](#d13) | Profile membership lives in the filesystem; taxonomy prefers natural structures | Accepted — adds P9; amended by [D15](#d15), [D16](#d16) |
+| [D14](#d14) | Managed vs. unmanaged resources; `adopt` and `release` | Accepted — amends [D10](#d10), J1; amended by [D15](#d15), [D17](#d17) |
+| [D15](#d15) | hasp reads the marker's presence, never its contents | Accepted — amends [D13](#d13), [D14](#d14); extended by [D18](#d18) |
+| [D16](#d16) | A settings file exists; P9's last rung is reached | Accepted — amends [D13](#d13)'s P9 |
+| [D17](#d17) | `new key` may ask for a passphrase at generation time | Accepted — narrows §3.2, P3 |
+| [D18](#d18) | `release` never deletes content, for hosts as for profiles | Accepted — extends [D15](#d15) |
 
 ---
 
@@ -627,7 +641,7 @@ design would answer it worse.
 ## D13 — How profile membership is expressed in the world
 
 **Date:** 2026-08-26 · **Status:** Accepted (2026-08-27) · **Opened by:** [D12](#d12)
-**Adds:** P9 · **Depends on:** [D14](#d14)
+**Adds:** P9 · **Depends on:** [D14](#d14) · **P9 amended by:** [D16](#d16)
 
 ### Context
 
@@ -745,6 +759,7 @@ would not have been affordable.
 ## D14 — Managed vs. unmanaged resources; `adopt` and `release`
 
 **Date:** 2026-08-27 · **Status:** Accepted · **Amends:** [D10](#d10), J1 · **Enables:** [D13](#d13)
+**Carve-out narrowed by:** [D17](#d17)
 
 ### Context
 
@@ -828,7 +843,7 @@ Mechanically the inverse is cheap: move back, remove the marker.
 <a id="d15"></a>
 ## D15 — hasp reads the marker's presence, never its contents
 
-**Date:** 2026-08-28 · **Status:** Accepted · **Amends:** [D13](#d13), [D14](#d14)
+**Date:** 2026-08-28 · **Status:** Accepted · **Amends:** [D13](#d13), [D14](#d14) · **Extended by:** [D18](#d18)
 
 ### Context
 
@@ -918,16 +933,286 @@ something that drifts open one convenient field at a time.
 
 ---
 
+<a id="d16"></a>
+## D16 — A settings file exists; P9's last rung is reached
+
+**Date:** 2026-08-29 · **Status:** Accepted · **Amends:** [D13](#d13)'s P9
+**Opened by:** [`docs/tdd.md`](tdd.md) §8, [`T7`](tech-decision-log.md#t7)
+
+### Context
+
+[D13](#d13) promoted a ladder to a principle, and gave it a rung nobody expected to climb:
+*"Only as a last resort, a hasp settings file. No case has yet required the last resort."*
+
+The technical design found the first case that does. `new key` has to be runnable with no human
+present — in a script, in CI — which means the question *"does the generated key carry a
+passphrase?"* must be answerable without a prompt. That answer is a **preference**. It is not a
+fact about a key, a host, or a profile, so P9's first two rungs have nowhere to put it: no
+filesystem layout expresses it, and no `ssh_config` directive carries it. A flag answers it for
+one invocation. Nothing answers it for *"always, on this machine."*
+
+This entry exists because the alternative is worse. The predecessor's TOML file arrived as an
+implementation detail — [D12](#d12) records it as *"a debug and development aid, for visibility
+into what the tool was seeing"* that *"quietly became the state model."* A settings file that
+arrives the same way, named only in a downstream technical document, is the same story with the
+same ending. If the last rung is going to be climbed, it gets climbed here, on the record.
+
+### Options
+
+**(i) Flags only.** Every invocation states its intent; nothing is remembered. *Cost:* a scripted
+caller repeats itself forever, and there is no way to express a standing preference for this
+machine. Defensible — it is what hasp does for everything else.
+
+**(ii) An environment variable only.** `HASP_NEW_KEY_PASSPHRASE_MODE`, set in a shell profile.
+*Cost:* ambient state that `ls` cannot show you and no editor can find, which is the opposite of
+[P6](#d12). It is also per-shell rather than per-machine, so hasp's behavior would depend on how
+the process happened to be started — a worse property than the one it is fixing.
+
+**(iii) A settings file.** The last rung. *Cost:* a file with hasp's name on it, which is the
+shape of the thing this project has already failed to maintain twice.
+
+### Decision
+
+**Option (iii) — the rung is climbed, once, and gated.**
+
+- **Format and location.** TOML, `#` comments, at `os.UserConfigDir()/hasp/settings.toml`.
+  Deliberately **outside `~/.ssh`**: it is not key material and not arrangement, so it must never
+  be swept into the profile scanner or into the backup rotation.
+- **hasp reads settings and never writes them.** There is no `hasp config set` and no
+  settings-mutation verb of any kind. [D3](#d3) already said so — *"hasp's own settings are
+  settings, are not part of the verb grid, and are edited directly"* — and this entry walks
+  through a door D3 named rather than cutting a new one.
+- **Optional throughout.** A missing file is not an error and never triggers a first-run
+  initialization step. Every key has a built-in default, so `docs/design.md` §6.3's *"works on
+  first run, on a machine it has never seen, with nothing configured"* holds exactly as written.
+
+**The admission rule — the actual content of this decision:**
+
+> Settings may hold **only** user preferences that (a) cannot be derived from the machine, and
+> (b) exist to enable non-interactive execution. They may **never** hold facts about the machine.
+> They may **never** hold taxonomy. Anything failing this test stays a flag.
+
+Both prohibitions name a specific past failure. *Facts about the machine* is what the abandoned
+TOML state file held, and [D12](#d12) exists to keep them out. *Taxonomy* is [D13](#d13)'s
+rejected option (iii) — the hand-authored manifest — which would otherwise walk back in through a
+door D13 never closed, because D13 was arguing about profile membership and not about this file.
+
+### Rationale
+
+The rung is climbed because the case genuinely clears the bar P9 sets: show that existing
+structure cannot carry the fact. It cannot. A passphrase-mode preference is a fact about *the
+user*, and P9's first two rungs carry only facts about *the machine*.
+
+The file is safe because of the admission rule, not because of anyone's good intentions. The
+original sin, in [D12](#d12)'s own words, was **"persisting derivable facts, not persistence as
+such."** A file that structurally cannot hold a derivable fact cannot repeat that sin: anything
+derivable fails the rule on sight and is refused a place in it.
+
+And the rule is not left to review discipline. [`docs/tdd.md`](tdd.md) §12 requires a test
+asserting the *exact field set* of the type settings decode into, so any change adding a key
+changes a visible expected list. The guard that matters most is the one that does not get to rely
+on a reviewer noticing.
+
+### Consequence
+
+- **P9's text changes.** *"No case has yet required one"* is false the moment this is accepted,
+  and `docs/design.md` §4 states the amended form. The ladder is unchanged; only the claim about
+  its last rung is.
+- **§5.7 stays closed, and the reason is worth stating.** The intent category guards facts hasp
+  would have to be *told* because the machine cannot report them — organizing facts about the
+  world. A preference about hasp's own behavior is not one of those: nothing about the machine is
+  being declared, so nothing derivable has been displaced. `docs/design.md` states that
+  distinction explicitly rather than leaving the suspicion, because this file has the same
+  *shape* as the thing §5.7 stands guard against.
+- **The v1 keyset is `[new_key]` and nothing else**, so the file does not matter until **M2**.
+  M1's *"hasp never writes to `~/.ssh` at all"* is untouched — and hasp never writes this file at
+  any milestone.
+- Every future settings key must justify itself against the admission rule in its own right.
+  That discipline is the whole reason the rule is written here rather than left in the technical
+  document that discovered the need for it.
+- **A second case reaching this rung needs its own entry.** One case climbing the ladder is not a
+  licence for the next one.
+
+---
+
+<a id="d17"></a>
+## D17 — `new key` may ask for a passphrase, at generation time only
+
+**Date:** 2026-08-29 · **Status:** Accepted · **Narrows:** §3.2, P3
+**Opened by:** [`docs/tdd.md`](tdd.md) §9, [`T6`](tech-decision-log.md#t6)
+
+### Context
+
+`docs/design.md` §3.2 lists nine hard boundaries under the strongest sentence in that document:
+*"These are hard boundaries. Each one, if crossed, turns hasp into a different and worse
+project."* One of the nine is *"**Not a passphrase manager.** hasp never asks for, stores, or
+transmits a passphrase."*
+
+`new key` generates a keypair. A generated key either carries a passphrase or it does not, and
+hasp is the process authoring the file, so something must supply the answer. The honest starting
+point — stated in [T6](tech-decision-log.md#t6), which corrected an earlier draft of itself for
+getting exactly this wrong — is that **nothing in the ratified design licenses hasp asking.**
+
+[D14](#d14)'s carve-out is the sentence that looks like it might: *"hasp never writes to a private
+key file. The sole exception is generating a new key, where hasp authors the file outright."* It
+licenses hasp **authoring** the file. It says nothing about **asking** for a passphrase while
+doing so. Those are different acts, and reading the second out of the first is precisely the kind
+of citation error this log exists to catch.
+
+So: an amendment, not a reinterpretation.
+
+### Options
+
+**(i) Never ask; flags only.** `--no-passphrase` and `--passphrase-stdin`, no prompt ever. §3.2
+survives untouched, since accepting piped bytes is not hasp *asking*. *Cost:* the interactive
+path — overwhelmingly the common one — becomes typing a secret into a pipe with no masking, no
+confirmation, and no signal that the terminal is waiting. The strictest option produces the worst
+interactive experience, and the predictable response is that people stop setting passphrases.
+
+**(ii) Ask, with the boundary narrowed.** A real prompt, no local echo, at generation time only.
+
+**(iii) Ask, and treat the existing carve-out as already permitting it.** Rejected on sight: that
+is the citation error above, and adopting it would make this document claim to say something it
+does not.
+
+### Decision
+
+**Option (ii).** §3.2's passphrase boundary is **narrowed**, by exactly this case and no other.
+
+hasp may accept a passphrase **only** at generation time, and the narrowing carries four
+constraints that are its entire scope:
+
+1. **Generation only.** Never to decrypt, unlock, or re-encrypt an existing key.
+2. **Never persisted.** Not in settings, not in metadata, not in a log, not in a backup.
+3. **Never transmitted.** §3.2's *"transmits"* is not narrowed at all.
+4. **Zeroed after use.** The buffer does not outlive the write.
+
+### Rationale
+
+The boundary was written to keep hasp out of *custody* of secrets — to stop it becoming a vault,
+an agent, or a thing you must trust with the keys to everything. A passphrase that exists for one
+function call and is then zeroed puts hasp in custody of nothing. It puts hasp exactly where
+`ssh-keygen` already stands, for the same few milliseconds, doing the one job hasp is already
+ratified to do.
+
+Refusing to narrow would not have protected anything. It would have pushed users toward keys with
+no passphrase at all — a worse security outcome produced by the stricter rule, which is the
+failure mode where a principle held literally defeats the purpose it was written for.
+
+**The enforcement is structural, not documentary.** No function in hasp's domain or application
+layer accepts a passphrase alongside an *existing* key value. That absence is the mechanism: a
+diff adding one is a visible violation on sight — [P6](#d12)'s legibility applied to a safety
+property rather than to data.
+
+### Consequence
+
+- **§3.2 and P3 both change**, and `docs/design.md` states the narrowed form in both places. The
+  bullet remains a hard boundary with one named exception; it does not become a preference.
+- **Every existing citation of P3-as-passphrase-prohibition is unaffected, and this is the
+  precision that matters.** `docs/design.md` §5.1's derivation gap still refuses to prompt in
+  order to fingerprint an *existing* key — that is a read of something already on disk, and D17
+  does not reach it. [D14](#d14)'s rejection of comment-marking still stands on exactly the
+  ground it was decided on: marking an encrypted key would require decrypting it. **D17 narrows
+  the boundary for a file hasp is authoring, and loosens nothing about keys that already exist.**
+- Non-interactive callers use `--no-passphrase` or `--passphrase-stdin`, and a machine-wide
+  default is expressible in settings ([D16](#d16)). With no mode resolvable and no TTY, `new key`
+  **fails closed** rather than silently generating an unprotected key.
+- **hasp is still not a passphrase manager.** It cannot store one, retrieve one, or use one to
+  open anything, and it has no operation that takes a passphrase together with an existing key.
+  The one thing it can now do is hold a secret it never keeps, for a file it is writing itself.
+
+---
+
+<a id="d18"></a>
+## D18 — `release` never deletes content, for hosts as for profiles
+
+**Date:** 2026-08-29 · **Status:** Accepted · **Extends:** [D15](#d15)
+**Opened by:** [`docs/tdd.md`](tdd.md) §9
+
+### Context
+
+[D15](#d15) gave `release` a requirement: *"`release` must show the file's contents in its
+preview, so that removing a marker the user has written in is never a silent loss."* It states
+that for **profiles**, because the `.hasp` marker is what D15 was about.
+
+`release host` has no such rule, and needs one more than profiles do. A profile marker holds a
+note the user may have written. A host stanza holds *the user's working SSH configuration* — the
+hostname, the port, the proxy command, the thing that makes a connection succeed. `adopt host`
+wraps an existing hand-written stanza in hasp's markers ([D7](#d7), [D14](#d14)); if
+`release host` simply removed what sits inside them, adoption would be a trap — hand hasp a
+working stanza, get an empty region back.
+
+The technical design proposed the obvious answer and then flagged that it had no authority to
+make it: this document says the rule for profiles and not for hosts. That is a gap in the
+ratified design, so it gets an entry rather than an extrapolation.
+
+### Decision
+
+**`release host` moves the stanza out of hasp's marked region and re-inserts it as plain text
+immediately after that region. Content is never deleted, only unmanaged.**
+
+Stated once, generally, so it covers the three nouns and any noun added later:
+
+> **`release` is content-preserving.** It withdraws hasp's authority over a resource. It never
+> destroys what the resource contains.
+
+### Rationale
+
+This is [D14](#d14)'s own argument for why `release` exists, followed to its end: *"`adopt` moves
+files and writes markers. Without an inverse it is a **one-way door**, and a one-way door turns
+"try hasp on my real `~/.ssh`" from an experiment into a commitment."* An inverse that hands back
+an empty region instead of the stanza is not an inverse — it is a one-way door with an extra step.
+
+It is also [D4](#d4)'s spirit at a different altitude. D4's letter is about key material, and a
+host stanza is not irreplaceable the way a private key is. But *hasp has no operation that
+destroys what the user cannot get back* is the reason D4 reads as it does, and a hand-written
+`ProxyCommand` that took an afternoon to get right sits close enough to that line to be treated
+the same way. Backups (P4) would technically recover it — but requiring someone to go digging
+through a backup directory to undo an operation named `release` is not a safety property, it is
+an apology.
+
+### Consequence
+
+- **`release` is now symmetric across all three nouns**, and the symmetry is worth naming,
+  because it is what makes adoption reversible in practice rather than in principle:
+
+  | Noun | `adopt` does | `release` does |
+  | --- | --- | --- |
+  | **key** | Moves the file into a managed profile directory, leaving a top-level alias | Moves the file back out |
+  | **host** | Wraps the stanza in hasp's markers | Re-inserts the stanza as plain text outside them |
+  | **profile** | Writes a `.hasp` marker with a `#` header | Removes the marker, showing its contents first |
+
+- **The re-inserted stanza is unmanaged the instant it lands**, so [P2](#d7) protects it again:
+  outside hasp's markers it is human territory, preserved byte for byte from that point on.
+- **Rigid regeneration ([D7](#d7)) is untouched.** Content inside a marked region is still hasp's
+  to rewrite freely. `release` is the act of moving content *out* of the region, not an exception
+  to what happens while it is in there.
+- A future first-class noun inherits the general rule above, and must say how it satisfies it.
+
+---
+
 ## Still open
 
-**Nothing.** D1 through D15 are all ratified.
+**Nothing.** D1 through D18 are all ratified.
 
-[D13](#d13) closed the last one by putting profile membership in the filesystem, which makes
-[D12](#d12)'s "no persisted state" literally true with no asterisk: hasp declares nothing and
-derives everything. [D14](#d14) is what made that affordable, by distinguishing resources hasp
-merely reports on from resources the user has explicitly handed it.
+[D13](#d13) closed the last of the original fifteen by putting profile membership in the
+filesystem, which makes [D12](#d12)'s "no persisted state" literally true with no asterisk: hasp
+declares nothing and derives everything. [D14](#d14) is what made that affordable, by
+distinguishing resources hasp merely reports on from resources the user has explicitly handed it.
 
-The design is complete enough to derive technical requirements from. The next documents are
-downstream of this one, not amendments to it — see §10 of `docs/design.md` for what was
-deliberately left open, of which the load-bearing items are the **metadata format** ([D7](#d7))
-and the **configuration parsing approach**.
+**D16 through D18 arrived from the other direction — upstream, out of the technical design — and
+that is the process working as intended.** Deriving [`docs/tdd.md`](tdd.md) from this document
+surfaced two places where an honest implementation needed something the design did not license
+([D16](#d16)'s settings file, [D17](#d17)'s passphrase prompt) and one place where the design
+stated a rule for one noun that plainly belonged to all three ([D18](#d18)). None of the three
+was resolved by reinterpreting a sentence already here. Each is an amendment, which is the only
+way this document is allowed to change.
+
+**Deliberately undecided is not the same as open**, and both remaining items are named where they
+live: cross-machine synchronization (`docs/design.md` §3.3) and multi-directory key locations
+(§10). Neither is a question waiting on an answer; both are doors held shut on purpose.
+
+The technical questions this document deferred are settled downstream in
+[`docs/tech-decision-log.md`](tech-decision-log.md) under `T1`–`T30` — including the two
+`docs/design.md` §10 called load-bearing: the **metadata format** ([D7](#d7)'s comment channel,
+`T10`) and the **configuration parsing approach** (`T2`).

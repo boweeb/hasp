@@ -2,11 +2,18 @@
 Status: APPROVED
 DateCreated: 2026-08-26
 DateApproved: 2026-08-28
-DateLastReviewed: 2026-08-28
-Supersedes: the "Primary Goals" / "Future Ideas" sections of [`README.rst`](README.rst)
+DateLastReviewed: 2026-08-29
+Supersedes: >
+  the "Primary Goals" / "Future Ideas" sections of the predecessor project's `README.rst`,
+  which is not carried into this repository — see
+  "[`docs/project-assessment-2026-08.md`](project-assessment-2026-08.md)"
 Related:
-  - "[`docs/decision-log.md`](docs/decision-log.md)"
-  - "[`docs/project-assessment-2026-08.md`](docs/project-assessment-2026-08.md)"
+  - "[`docs/README.md`](README.md)"
+  - "[`docs/decision-log.md`](decision-log.md)"
+  - "[`docs/tdd.md`](tdd.md)"
+  - "[`docs/tech-decision-log.md`](tech-decision-log.md)"
+  - "[`docs/roadmap.md`](roadmap.md)"
+  - "[`docs/project-assessment-2026-08.md`](project-assessment-2026-08.md)"
 ---
 
 # hasp — Design & Vision
@@ -90,7 +97,10 @@ These are hard boundaries. Each one, if crossed, turns hasp into a different and
   material lives where it already lives; hasp records facts *about* it.
 - **Not an agent.** hasp does not hold, cache, forward, or broker credentials at connection
   time. `ssh-agent` exists and is not the problem.
-- **Not a passphrase manager.** hasp never asks for, stores, or transmits a passphrase.
+- **Not a passphrase manager.** hasp never asks for, stores, or transmits a passphrase — with a
+  single exception, at the one moment hasp authors a key file itself. `new key` may prompt for the
+  passphrase it is about to write, hold it for that operation, and zero it. Never persisted, never
+  reused, never accepted alongside a key that already exists. (D17.)
 - **Not a keyring replacement.** For GPG specifically — stated in the original vision and
   reaffirmed here — hasp is an *overlay* that is aware of keys, never an authority over them.
 - **Not configuration management.** hasp manages this machine. It is not Ansible, it does not
@@ -155,6 +165,12 @@ Restatement of §3.2 as an operating rule: hasp reads metadata *about* key mater
 aliases, membership, references). Private key bytes pass through hasp's hands only when it is
 generating a key or moving a file, never into hasp's own records.
 
+**The passphrase rule, stated exactly** (D17): hasp never asks for a passphrase to open something
+that already exists. It may ask for one only while *authoring* a new key — the same moment §5.1
+already permits hasp to write a private key file at all — and holds it for that single operation.
+Everywhere P3 is cited against touching an existing key (§5.1's derivation gap, D14's rejection
+of comment-marking), it forbids exactly what it always did.
+
 ### P4 — Every write is reversible
 
 Before hasp modifies anything it did not create, the prior state is preserved. Rolling backups,
@@ -202,11 +218,19 @@ concurrency, or scale is almost certainly solving a problem hasp does not have.
 Organizing facts — which profile a key belongs to, which group a host lives in — are carried by
 natural structures that **already exist**: the filesystem's layout, or the configuration data of
 the tool being managed. Where that is impossible, fall back to private metadata alongside the
-thing itself (§5.8). Only as a last resort, a hasp settings file — and no case has yet required
-one. (D13.)
+thing itself (§5.8). Only as a last resort, a hasp settings file. (D13.)
 
 This is why profiles are directories and host groups are files: neither needed inventing, both
 are visible to `ls`, and both are meaningful to someone who has never heard of hasp.
+
+**One case has now reached the last rung** (D16): `new key` needs a machine-wide default for
+whether a generated key carries a passphrase, so that it can run with no human present. That is a
+preference about hasp's own behavior, not an organizing fact — and the first two rungs carry only
+facts about the machine, which is why neither could hold it. The rung is not thereby open. It is
+gated by an admission rule, ratified as part of D16 and restated in §5.10: **settings may hold
+only preferences that cannot be derived and that exist to enable non-interactive execution —
+never a fact about the machine, never taxonomy.** A second case reaching this rung needs its own
+decision; one climb is not a licence for the next.
 
 *Consequence:* the ladder is ordered, and the order is the point. A proposal that reaches for a
 hasp-owned registry must first show that the existing structure genuinely cannot carry the fact.
@@ -378,6 +402,15 @@ this section — deliberately, by decision, rather than one convenient field at 
 has the same shape as the original state file, which began as "just a debug aid for visibility";
 the difference is that this door is explicitly a door. (D15.)
 
+**The settings file is not a reopening** (D16, §5.10). It carries a preference about hasp's own
+behavior — whether `new key` prompts when nobody is present to answer — and this section is about
+*organizing facts hasp would have to be told about the world*. Nothing on the machine is being
+declared, so nothing derivable has been displaced and what hasp reports is unchanged. The
+distinction is exact, and it is what keeps the standing test meaningful: **a preference is about
+the user; intent is about the machine.** A settings file that ever held the second would reopen
+this section — which is why D16's admission rule forbids it in writing, rather than trusting the
+boundary to stay self-evident.
+
 *Two things that look like intent are not.* "This key replaced that one" is history — genuinely
 underivable, and out of scope. "I deliberately keep this unused key" is a suppression: marked
 regions (§5.8) would make one expressible, but `check` is deliberately advisory (§6.2) and no
@@ -449,10 +482,21 @@ hasp's authority over any resource is something the user grants and can withdraw
 - **A state file, database, or index.** hasp persists nothing and derives everything (P1, D12).
   The original state file began as a debug aid, became the state model, then became the
   migration the project died inside. There is no successor to it.
-- **Anything declared.** Not merely no *derived* store — after D13 there is no *declared* one
-  either. Profile membership, the last candidate, is carried by directory layout (P9). The
-  `.hasp` marker is a marker, not a manifest: hasp reads that it exists and never what it says
-  (§5.3, D15).
+
+  *The settings file (D16) is not one, and the line is worth drawing precisely.* It is not the
+  location or the format that separates them — the abandoned state file was TOML too. It is what
+  the file is permitted to contain: **settings hold preferences; the state file held facts.**
+  hasp reads settings and never writes them, and nothing in them can drift out of step with the
+  machine because there is no machine fact in them to drift. The admission rule is the
+  enforcement, not the intention: settings may hold only preferences that cannot be derived and
+  that exist to enable non-interactive execution — never a fact about the machine, never
+  taxonomy. Anything failing that test stays a flag.
+- **Anything declared *about the machine*.** Not merely no *derived* store — after D13 there is
+  no *declared* one either. Profile membership, the last candidate, is carried by directory
+  layout (P9). The `.hasp` marker is a marker, not a manifest: hasp reads that it exists and
+  never what it says (§5.3, D15). Settings are not a counterexample, for the reason the previous
+  bullet gives: a preference is not a fact about the machine, and nothing hasp reports about
+  `~/.ssh` comes from a file the user wrote.
 
 ---
 
@@ -528,8 +572,12 @@ Notes on the four that are new or changed relative to the original:
   `adopt` writes it with a `#` header documenting the file (§5.3, D15).
 - **release** is the inverse, and exists so that `adopt` is not a one-way door. Trying hasp on a
   real `~/.ssh` should be an experiment, not a commitment; nothing is trapped inside hasp (P6).
-  Because a marker file may hold the user's own notes, `release` shows its **contents** in the
-  preview, so removing it is never a silent loss (D15).
+  **`release` is content-preserving across every noun** (D18): a released key's file moves back
+  out of its profile directory; a released host's stanza is re-inserted as plain text just outside
+  hasp's markers rather than removed along with them; and a released profile's marker is deleted
+  only after the preview has shown its **contents**, so a note the user wrote is never a silent
+  loss (D15). `release` withdraws hasp's authority over a resource. It never destroys what the
+  resource contains.
 
 **hasp still has no operation that destroys key material.** That is canon (D4) and is unchanged
 by the loss of `forget`: with nothing persisted, "forgetting" is simply what happens when the
@@ -595,7 +643,7 @@ features to the reason the domain model is shaped as it is.*
 
 ## 8. Decisions
 
-The questions this document raised have been reviewed and **all fifteen are ratified**.
+The questions this document raised have been reviewed and **all eighteen are ratified**.
 Settled decisions live in **`docs/decision-log.md`** — the reasoning, the alternatives rejected,
 and what each one commits the project to. That file is the permanent record and the place to
 look when asking "why is it like this?"; this document is the current truth.
@@ -610,14 +658,24 @@ offboarding and unified identity are in scope · **D12** hasp has no persisted s
 pure function of the machine · **D13** profile membership lives in the filesystem, and taxonomy
 prefers structures that already exist (P9) · **D14** resources are managed or unmanaged, and
 `adopt` / `release` move between the two · **D15** hasp reads a marker's presence, never its
-contents.
+contents · **D16** a settings file exists, gated by an admission rule (P9's last rung) · **D17**
+`new key` may ask for a passphrase, at generation time only · **D18** `release` never deletes
+content, for hosts as for profiles.
 
 Their substance is folded into §3–§7 above. **No question remains open.**
 
-D13 was the last to close, and closing it made D12 literally true: hasp declares nothing and
-derives everything. What remains is downstream work — the deferred items in §10 — not amendments
-to this document. The two load-bearing ones are the **metadata format** (D7) and the
-**configuration parsing approach**.
+D13 was the last of the original fifteen to close, and closing it made D12 literally true: hasp
+declares nothing and derives everything.
+
+**D16, D17 and D18 arrived afterwards, and from the opposite direction.** Deriving
+`docs/tdd.md` from this document found two places where an honest implementation needed something
+this document did not license — a settings file (§4 P9) and a passphrase prompt (§3.2) — and one
+place where a rule stated for a single noun plainly belonged to all three (§6.2). Each was
+amended here rather than reinterpreted downstream, which is the only way this document is
+permitted to change. That the technical work sent three questions back upstream is the process
+functioning, not a defect in the design it was derived from.
+
+What remains is downstream work — §10 — not amendments to this document.
 
 ---
 
@@ -649,27 +707,36 @@ quo at **M2**. M1 is therefore the only milestone whose scope should be defended
 
 ## 10. Explicitly deferred
 
-Downstream of ratification, to be settled in their own documents:
+### Closed downstream
 
-- **Implementation stack** — language, runtime, distribution, dependencies. Nothing in this
-  document assumes any of them.
-- **Configuration parsing** — the approach that satisfies D7, and the composition mechanism
-  that makes host groups (§5.5) real. **D7 has substantially shrunk this**: hasp needs no
-  complete native model of the format, because marked regions carry what it does not model
-  (§5.8). The investigation is now "model what we manage, carry the rest," and still deserves
-  to be done deliberately, including whether to adopt existing work rather than build.
-- **The metadata format** — the structure carried in hasp-owned regions (§5.8). It must
-  round-trip unknown constructs, survive rigid rewriting, and stay readable to a human with an
-  editor. Load-bearing, and newly created by D7.
-- **Interface** — the concrete command surface, output formats, interaction details. The
-  *classification* of nouns is settled (D10); the spelling of second-class arguments is not.
-- **Multi-directory / non-default locations** — assume one key directory for now; the model
-  should not foreclose more.
+Every item below was deferred by this document and has since been settled in
+[`docs/tdd.md`](tdd.md), with its reasoning in [`docs/tech-decision-log.md`](tech-decision-log.md).
+They are listed here, rather than deleted, because "where did this get decided?" is a question
+this document should be able to answer about its own deferrals.
 
-**No longer deferred:** *storage*. D12 settled it — there is nothing to store, so there is
-nothing to defer. What remains is a derivation question, not a persistence one: how cheaply and
+| Deferred item | Settled by |
+| --- | --- |
+| **Implementation stack** — language, runtime, distribution, dependencies | `T27` (Go, and a rewrite rather than a repair), `T9` (distribution) |
+| **Configuration parsing** — the approach satisfying D7, and the composition mechanism behind host groups (§5.5) | `T2` (a lossless CST hasp owns), `T11` (composition by `Include` order) |
+| **The metadata format** — the structure carried in hasp-owned regions (§5.8) | `T10` (sentinel-prefixed TOML), `T25` |
+| **Interface** — the concrete command surface and output formats | `T3`, `T14`, `T29`; `tdd.md` §9–§10 |
+
+D7 substantially shrank the parsing problem before it was ever solved: because marked regions
+carry what hasp does not model (§5.8), the investigation was never "model the whole format" but
+"model what we manage, carry the rest." `T2` records that the survey of existing libraries was
+done first, and that none offered the round-trip fidelity P2 requires.
+
+**Storage was never deferred at all after D12** — there is nothing to store, so there was nothing
+to defer. What remained was a derivation question, not a persistence one: how cheaply and
 completely hasp can read the machine (§5.1, §6.3).
-- **Cross-machine synchronization** — §3.3.
+
+### Still deferred
+
+- **Multi-directory / non-default key locations** — assume one key directory for now; the model
+  should not foreclose more, and `tdd.md` §15 confirms nothing in the derivation pipeline
+  hardcodes a single directory.
+- **Cross-machine synchronization** — §3.3. Deliberately undecided rather than merely unscheduled:
+  it is the single fastest route to violating §3.2.
 
 ---
 
@@ -689,6 +756,7 @@ completely hasp can read the machine (§5.1, §6.3).
 | **Marked region** | A delimited span in a config file that hasp owns outright and manages rigidly. |
 | **Marker** | A file or delimiter whose *presence* signals management. hasp never reads a marker file's contents. |
 | **Metadata** | Declared facts hasp records as comments inside a marked region — never derived facts. |
+| **Settings** | User preferences hasp *reads and never writes*, in a file outside the key directory. Gated by D16's admission rule: preferences only, never facts about the machine, never taxonomy. Not a state file (§5.10) and not a noun (D3). |
 | **Intent** | What the human knows that the machine cannot report. The only thing hasp truly owns. |
 | **Derive** | Read a fact from the machine at the moment it is asked for. hasp's only way of knowing anything. |
 | **Adopt** | Reorganize an unmanaged resource into a managed one. Moves files; always explicit. |

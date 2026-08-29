@@ -1,10 +1,14 @@
 ---
-Status: DRAFT
+Status: APPROVED
 DateCreated: 2026-08-28
+DateApproved: 2026-08-29
+DateLastReviewed: 2026-08-29
 Related:
+  - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
   - "[`docs/decision-log.md`](decision-log.md)"
   - "[`docs/tech-decision-log.md`](tech-decision-log.md)"
+  - "[`docs/roadmap.md`](roadmap.md)"
   - "[`docs/project-assessment-2026-08.md`](project-assessment-2026-08.md)"
 ---
 
@@ -13,19 +17,22 @@ Related:
 > **Scope of this document.** `docs/design.md` is upstream and says nothing about language,
 > storage, parsing, or libraries, by design — those are downstream decisions, derived from it,
 > not smuggled into it. This is that downstream document. It answers, concretely, how a Go
-> program satisfies every principle (P1–P9) and decision (D1–D15) `design.md` states, and it
+> program satisfies every principle (P1–P9) and decision (D1–D18) `design.md` states, and it
 > closes the items `design.md` §10 named as deferred and load-bearing.
 >
 > This document does not amend `docs/design.md` or `docs/decision-log.md`. Where a technical
-> requirement reaches new design territory — as the settings file in §8 does — the gap is closed
-> here and a recommendation to ratify it upstream is stated explicitly, not smuggled in as an
-> implementation detail. Every technical decision below cites the principle, decision, or journey
-> it serves; the reasoning behind each one, including alternatives rejected, lives in
-> `docs/tech-decision-log.md` under a `Tn` ID.
+> requirement reaches new design territory, the gap is named here and sent upstream to be
+> ratified, never smuggled in as an implementation detail. Three were, and all three have since
+> been ratified: the settings file (§8) as [D16](decision-log.md#d16), `new key`'s passphrase
+> prompt (§9) as [D17](decision-log.md#d17), and `release host`'s content-preserving behavior
+> (§9) as [D18](decision-log.md#d18). Every technical decision below cites the principle,
+> decision, or journey it serves; the reasoning behind each one, including alternatives rejected,
+> lives in `docs/tech-decision-log.md` under a `Tn` ID.
 >
 > No project-management content appears here — no estimates, no ordering as schedule. `M1`–`M4`
 > (`design.md` §9) are referenced only as scope anchors: "this applies from M2 onward" states a
-> boundary of applicability, not a plan.
+> boundary of applicability, not a plan. Sequencing, exit criteria, and the work breakdown live
+> in [`docs/roadmap.md`](roadmap.md), which is downstream of this document and cites it.
 
 ---
 
@@ -37,7 +44,7 @@ and to say plainly which ones it does not close.
 
 | `design.md` §10 item | Closed here | Where |
 | --- | --- | --- |
-| Implementation stack | Yes | §2 |
+| Implementation stack | Yes | §2 ([T27](tech-decision-log.md#t27)) |
 | Configuration parsing | Yes | §6 |
 | The metadata format | Yes | §7 |
 | Interface — command surface, output formats | Yes | §9, §10 |
@@ -49,12 +56,13 @@ Two items get their own dedicated treatment because they are the subtlest techni
 in this document, not footnotes to a section that closes something else:
 
 - **The settings file (§8)** reaches the last rung of P9's taxonomy ladder — the first case that
-  has. It is handled as a design decision in its own right, with a hard admission rule and a
-  recommendation to ratify it upstream as `D16`.
-- **`new key`'s passphrase handling (§9, §11)** is held to the same standard: no existing
-  sentence in `design.md` licenses hasp asking for a passphrase, §3.2 states the opposite as a
-  hard boundary, and this document says so plainly rather than construct a reading that isn't
-  there — with its own recommendation to ratify upstream as `D17`.
+  has. It is handled as a design decision in its own right, with a hard admission rule, and was
+  **ratified upstream as [D16](decision-log.md#d16)**.
+- **`new key`'s passphrase handling (§9, §11)** is held to the same standard: no sentence in
+  `design.md` licensed hasp asking for a passphrase, §3.2 stated the opposite as a hard boundary,
+  and this document said so plainly rather than construct a reading that wasn't there. The
+  boundary was **narrowed upstream by [D17](decision-log.md#d17)**, which is what made the
+  mechanics below legitimate rather than merely convenient.
 
 **The `Plan` type (§4)** is the architectural keystone this document is organized around: D6's
 "preview is the default for every write" is only structural, rather than a flag bolted onto each
@@ -68,6 +76,10 @@ derivation pipeline, config parsing, safety model — assumes `Plan` exists.
 **Go 1.26.6, `linux/amd64`**, installed via `mise` (`go = "latest"`). Dev host is x86 Arch Linux;
 targets are Linux and macOS, per `design.md` §3.1's "one laptop" scope (P8) extended to the two
 platforms the author actually uses.
+
+The choice of Go — and the prior choice to write a fresh implementation rather than repair the
+predecessor's Python codebase — is [T27](tech-decision-log.md#t27), which closes `design.md`
+§10's *implementation stack* item. Every dependency decision below sits downstream of it.
 
 **stdlib-first.** P8 — *"the scale is one laptop... any design justified by performance,
 concurrency, or scale is almost certainly solving a problem hasp does not have"* — applies
@@ -102,7 +114,7 @@ directly.
 
 | Not used | Why |
 | --- | --- |
-| Any Go `ssh_config` library | [T2](tech-decision-log.md#t2) / `F2` — none offers a round-trip fidelity contract P2 requires |
+| Any Go `ssh_config` library | [T2](tech-decision-log.md#t2) — none offers a round-trip fidelity contract P2 requires |
 | `libmagic` / any cgo | [T1](tech-decision-log.md#t1) — the full key-format matrix is readable in pure Go |
 | A database or ORM | D12 — hasp persists nothing |
 | `spf13/viper` | [T6](tech-decision-log.md#t6) — the flag → env → settings → default chain is small enough (roughly 50 lines) to own directly, and owning it keeps the precedence rule auditable in one place rather than behind a general-purpose configuration library's own merge semantics |
@@ -462,7 +474,14 @@ meaningless for hasp, which is never the process making the connection and has n
 "working directory" to inherit. hasp instead resolves a bare relative path **relative to the key
 directory** (`--key-dir`, default `~/.ssh`), because that is what essentially every real-world
 relative `IdentityFile` value in a hand-written config actually means in practice. This is a
-judgment call, not a transcription of OpenSSH's own rule — see §15.
+judgment call, not a transcription of OpenSSH's own rule.
+
+**And hasp says so, rather than resolving silently** ([T28](tech-decision-log.md#t28)). Every
+bare relative `IdentityFile` also raises a `check` finding — `relative-identityfile`
+([T29](tech-decision-log.md#t29), `severity: warning`) — naming the raw value, the path hasp
+resolved it to, and the fact that `ssh` will resolve it against its own working directory
+instead. The binding is still reported, so P7's one-screen answer keeps no hole in it; the
+caveat is reported alongside, so P1 is not asked to vouch for something hasp cannot verify.
 
 **Symlinks and dangling targets.** The resolved path is passed through `filepath.EvalSymlinks`.
 A target that does not exist is not a hard failure — it is reported as an unresolved binding and
@@ -626,7 +645,7 @@ it manages. Everything else is carried as an opaque `Line`, never dropped, never
 
 ### The natively-managed directive set
 
-Salvaged from the predecessor's `README.rst` (F4), plus `Include`, which hasp itself writes
+Salvaged from the predecessor project's `README.rst`, plus `Include`, which hasp itself writes
 inside its own regions (§6, below) and must therefore understand semantically there:
 
 `AddKeysToAgent` · `Ciphers` · `ControlMaster` · `ControlPath` · `ControlPersist` ·
@@ -765,11 +784,12 @@ available, at zero present cost, whenever a real field needs one.
 
 ## 8. Settings — the last rung of P9's ladder
 
-P9's ladder ends: *"Only as a last resort, a hasp settings file — and no case has yet required
-one."* `new key`'s non-interactive default-passphrase-mode requirement (§9, §11) is **the first
-case that does.** This section treats that fact deliberately, per the project's own discipline
-that a gap in the ratified design is amended, not reinterpreted — full argument and every
-alternative considered: [T7](tech-decision-log.md#t7).
+P9's ladder ends with a rung nobody expected to climb: *"Only as a last resort, a hasp settings
+file."* `new key`'s non-interactive default-passphrase-mode requirement (§9, §11) is **the first
+case that has required it.** That was treated as a gap in the ratified design rather than an
+implementation detail, and it was **ratified upstream as [D16](decision-log.md#d16)** — which is
+where the admission rule below now lives as canon. Full technical argument and every alternative
+considered: [T7](tech-decision-log.md#t7).
 
 **hasp reads settings and never writes them.** D3 already anticipated this — *"hasp's own
 settings are settings, are not part of the verb grid, and are edited directly"* — so there is no
@@ -800,10 +820,16 @@ exactly as P6 already promises for everything hasp knows.
   that makes hasp fully useful with zero configuration, preserving §6.3's *"works on first run,
   nothing configured"* exactly as written.
 
-**Recommend an upstream `D16`** in `docs/decision-log.md`, flagged here rather than written
-there — that call belongs to the ratifying author. It should record that P9's last rung was
-reached, name the case that required it, and restate the admission rule above as a permanent
-constraint on this file's growth, not merely this document's judgment call.
+**Ratified upstream as [D16](decision-log.md#d16).** That entry records that P9's last rung was
+reached, names the case that required it, and carries the admission rule as a permanent
+constraint on this file's growth rather than as this document's judgment call. `design.md` §4's
+P9 and §5.10 now state the amended form; §5.7 states why a preferences file does not reopen the
+intent category. **A second case reaching this rung needs its own decision** — one climb is not a
+licence for the next.
+
+**Scope note.** The v1 keyset is entirely `[new_key]`, so nothing consults this file before
+**M2**. M1's *"hasp never writes to `~/.ssh` at all"* is untouched by it, and hasp never writes
+this file at any milestone.
 
 ---
 
@@ -837,9 +863,16 @@ raises on an unmanaged resource requires `adopt` first, exactly as J5 anticipate
 | **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
 | **new** | Generate a keypair (`ed25519` by default, [T1](tech-decision-log.md#t1)), optionally in a profile (`--profile`); passphrase flags below. Fails closed if the target path already exists — `new key` never overwrites ([T22](tech-decision-log.md#t22), §11) | Create a stanza (`--key=<name>`, `--group=<g>`) inside a marked region | Create the directory (`mkdir -p` semantics for intermediate segments) and, for the leaf, a `.hasp` marker with a `#` header (D15) |
 | **edit** | Rename (`--name`); `--add-alias`/`--remove-alias`; `--replace-material=<path>`; move between profiles (`--profile`) | Change directives; move between groups (`--group`); rebind (`--key`) | Rename (moves the directory, D13); nothing else — key/host membership is edited on the key/host, not here |
-| **check** | Duplicates confirmed (same fingerprint) or unconfirmed ([T12](tech-decision-log.md#t12)); missing public half; key in no profile; fingerprint `unknown` | Dangling `IdentityFile` targets; unresolvable tokens (§5); unreachable stanzas shadowed by `Include` order ([T11](tech-decision-log.md#t11)); host bound to no key — fires only when **neither** an explicit **nor** a resolvable implicit-default binding exists (§5, T16); a stanza present in more than one host group, or a stanza missing from all of them, after a `Plan` that touched more than one file only partially applied ([T13](tech-decision-log.md#t13)) | Empty profile directories; a directory that looks like a profile (holds keys) but carries no `.hasp` |
+| **check** | Duplicates confirmed (same fingerprint) or unconfirmed ([T12](tech-decision-log.md#t12)); missing public half; key in no profile; fingerprint `unknown` | Dangling `IdentityFile` targets; unresolvable tokens (§5); relative `IdentityFile` values, whose resolution diverges from `ssh`'s ([T28](tech-decision-log.md#t28)); unreachable stanzas shadowed by `Include` order ([T11](tech-decision-log.md#t11)); host bound to no key — fires only when **neither** an explicit **nor** a resolvable implicit-default binding exists (§5, T16); a stanza present in more than one host group, or a stanza missing from all of them, after a `Plan` that touched more than one file only partially applied ([T13](tech-decision-log.md#t13)) | Empty profile directories; a directory that looks like a profile (holds keys) but carries no `.hasp` |
 | **adopt** | Move an unmanaged key into a managed profile directory; leaves a top-level alias so default identity probing still finds it (D13) | Wrap an existing hand-written stanza in hasp's markers | Add a `.hasp` marker to an existing directory that already holds keys |
-| **release** | Move a managed key back out of its profile directory (inverse of `adopt`) | Remove the stanza from hasp's markers, re-inserting it as plain text immediately after the marked region — content is never deleted, only unmanaged (see §15) | Remove `.hasp` via a `Remove` change (§4), backed up first (P4); preview shows the marker's own contents first, so removing a note the user wrote is never a silent loss (D15) |
+| **release** | Move a managed key back out of its profile directory (inverse of `adopt`) | Remove the stanza from hasp's markers, re-inserting it as plain text immediately after the marked region — content is never deleted, only unmanaged ([D18](decision-log.md#d18)) | Remove `.hasp` via a `Remove` change (§4), backed up first (P4); preview shows the marker's own contents first, so removing a note the user wrote is never a silent loss (D15) |
+
+**Every `check` finding carries a stable `id` and a `severity`** ([T29](tech-decision-log.md#t29),
+schema in §10). The `id` is permanent and is what a consumer filters on; `severity` is advice and
+may be re-tuned between releases. **Severity never affects the exit code** — `check` exits `1` if
+there is any finding at all, because `design.md` §6.2 makes it advisory and non-suppressible, and
+a severity that gated the exit code would be a suppression mechanism arriving through the back
+door.
 
 **`new key`'s passphrase flags.** Mechanics — full argument in §11 and
 [T6](tech-decision-log.md#t6):
@@ -854,17 +887,22 @@ Mutually exclusive. Resolution order when none is given: **flag → env
 (`HASP_NEW_KEY_PASSPHRASE_MODE`) → settings (§8) → built-in default** ("prompt if a TTY is
 attached, else fail closed").
 
-**This is new design territory, not a licensed reading of an existing carve-out, and §15 records
-it as such.** No sentence in `design.md` authorizes `new key` to *ask* for a passphrase — §3.2's
-*"Not a passphrase manager. hasp never asks for, stores, or transmits a passphrase"* is a stated
-hard boundary, and D14's *"hasp never writes to a private key file. The single exception is
-generating a new key..."* licenses hasp **authoring** the file, not **prompting** about it; the
-two are different acts, and conflating them would be exactly the kind of citation this project's
-own culture exists to catch. The mechanics (generation-time only, never to decrypt an existing
-key, never persisted, buffer zeroed) are sound regardless of the citation and are kept — but the
-framing changes: this is the user's deliberate choice, made explicitly for non-interactive
-operation, that **narrows a stated hard boundary**, and it is pending upstream ratification
-exactly as the settings file (§8) is. Recommend an upstream `D17` alongside `D16`.
+**This was new design territory, not a licensed reading of an existing carve-out — and it was
+ratified upstream as [D17](decision-log.md#d17) rather than assumed here.** No sentence in
+`design.md` authorized `new key` to *ask* for a passphrase: §3.2's *"Not a passphrase manager.
+hasp never asks for, stores, or transmits a passphrase"* was a stated hard boundary, and
+§5.1's carve-out — *"hasp never writes to a private key file. The single exception is generating
+a new key, where hasp authors the file outright"*, which D14 states in the same terms — licenses
+hasp **authoring** the file, not **prompting** about it. The two are different acts, and
+conflating them would have been exactly the kind of citation this project's own culture exists to
+catch.
+
+D17 **narrows** §3.2's boundary by exactly this case, with four constraints that are its entire
+scope: generation only, never persisted, never transmitted, buffer zeroed. The mechanics below
+were sound regardless of the citation and are unchanged; what changed is that they now rest on a
+ratified amendment instead of on an inference. §3.2 and P3 in `design.md` carry the narrowed
+form, and D17's consequence records the precision that matters — **every existing citation of P3
+against touching an existing key still forbids exactly what it always did.**
 
 **A deliberate absence, worth naming:** there is no `--profile` flag on any `host` command that
 *assigns* a profile. A host's profile membership is computed (§5, T5), not declared — the grid
@@ -917,6 +955,28 @@ type Envelope struct {
 }
 ```
 
+### `check.report` findings ([T29](tech-decision-log.md#t29))
+
+`check`'s `data` is an array of findings, each with a **permanent** `id` and a **re-tunable**
+`severity` — the split is what lets one of the two carry a compatibility guarantee:
+
+```json
+{
+  "id": "duplicate-key-unconfirmed",
+  "severity": "info",
+  "subject": {"kind": "key", "name": "id_rsa_old"},
+  "message": "possible duplicate, cannot confirm: fingerprint is underivable",
+  "detail": {"paths": ["/home/jesse/.ssh/id_rsa_old", "/home/jesse/.ssh/legacy/id_rsa"]}
+}
+```
+
+`id` is kebab-case, never renamed, never reused for a different meaning, and retired rather than
+recycled if a finding stops being reported — the same guarantee a `Dn` or `Tn` ID carries.
+`severity` is one of `error` (something is actually broken), `warning` (it works but is probably
+not what you meant), or `info` (worth knowing, possibly deliberate). T29 lists the v1 id set. The
+human renderer prints the same `id` it emits here, so a finding seen in the terminal can be found
+in `--json` without translating between two vocabularies.
+
 A consumer piping through `jq` can branch on `.version` whenever it needs to, rather than only
 after hasp breaks the shape without warning. Both renderers — human and JSON — are fed the **same**
 internal read-model value ([T13](tech-decision-log.md#t13)'s single read aggregate): one code
@@ -944,6 +1004,7 @@ fail — the default is fail-closed unless a row here says otherwise.
 | A fingerprint is underivable | **Fail-open** — report `unknown` (D12, explicitly) |
 | A key file is unreadable mid-scan | **Fail-open** — report and continue; J1 must never abort a survey over one bad file |
 | An `IdentityFile` token or target is unresolvable (§5) | **Fail-open** — reported as a `check` finding, scan continues |
+| A file changed between `Plan()` and `Apply()` ([T30](tech-decision-log.md#t30)) | **Fail-closed** — every `Change` that read a "before" state carries a `Witness` (size, mtime, SHA-256 of the bytes read); `Applier` re-verifies all of them before applying anything, and a content mismatch aborts the whole `Plan` before the first write, with nothing backed up. A file rewritten to byte-identical content is not a race and does not trip it |
 | A `Plan` touching more than one file fails partway through | **No rollback across files** ([T13](tech-decision-log.md#t13)) — each already-applied `Change` stands, exactly as `Preview()`ed; the resulting inconsistency (a stanza in two groups, or in none) is a `check` finding, never a silently hidden gap |
 
 ### Write mechanics
@@ -1088,6 +1149,16 @@ This is [T2](tech-decision-log.md#t2)'s contract, tested directly rather than as
 - **`WriteKeyFile` never silently overwrites** ([T22](tech-decision-log.md#t22)). Pre-create a
   file at the target path, run `new key` against it, and assert both that the command fails
   closed and that the pre-existing file's bytes are byte-identical afterward.
+- **The preview/apply race is caught** ([T30](tech-decision-log.md#t30)). Build a `Plan`, mutate
+  the target file, then `Apply`. Assert three things: the write is refused, the target's bytes are
+  exactly as the mutation left them, and **no backup was written** — a backup must not fire for a
+  plan that never applies, or `~/.ssh/.hasp-backups/` fills with snapshots of writes that never
+  happened. A companion case rewrites the file to byte-identical content and asserts the apply
+  proceeds, since that is not a race.
+- **`check`'s finding-`id` set is a golden list** ([T29](tech-decision-log.md#t29)). The exact set
+  of ids `check` can emit is asserted against a committed list, the same mechanism the settings
+  admission rule uses above. A new finding kind then shows up in a diff rather than in a
+  consumer's `jq` filter silently failing to match.
 
 ---
 
@@ -1150,41 +1221,30 @@ What the model above must not foreclose:
 
 ## 15. Open questions
 
-Genuine gaps, stated as questions, not silently dropped and not resolved by guessing.
+Five of the six questions this section carried in its first draft are closed — each by a numbered
+entry, none by quiet reinterpretation. They are listed with their resolutions rather than deleted,
+because *"what happened to that?"* is a question this document should be able to answer about its
+own gaps.
 
-1. **Ratifying `D16`.** §8 recommends `docs/decision-log.md` gain a `D16` recording that P9's
-   last rung was reached and why. This document does not write it — that is the ratifying
-   author's call, per the project's own stated process for amending `design.md`.
+| Question, as first stated | Closed by |
+| --- | --- |
+| Ratifying `D16` — the settings file reaching P9's last rung (§8) | [D16](decision-log.md#d16). `design.md` §4's P9, §5.7 and §5.10 carry the amendment |
+| Ratifying `D17` — `new key`'s prompt narrowing §3.2 (§9) | [D17](decision-log.md#d17). `design.md` §3.2 and P3 carry the narrowed form |
+| Relative `IdentityFile` resolution being this document's own interpretation (§5) | [T28](tech-decision-log.md#t28) — resolve against the key directory **and** raise a `relative-identityfile` finding, so the divergence from `ssh` is reported rather than hidden |
+| `release host` extrapolating D15's rule to hosts (§9) | [D18](decision-log.md#d18) — `release` is content-preserving for every noun; a released stanza is re-inserted as plain text, never deleted |
+| A severity taxonomy for `check` findings (§10) | [T29](tech-decision-log.md#t29) — a permanent `id` plus a re-tunable `severity`, with severity deliberately not affecting the exit code |
 
-2. **Ratifying `D17`.** §9 recommends a second entry recording that `new key`'s passphrase
-   prompt **narrows** §3.2's stated hard boundary — *"Not a passphrase manager. hasp never asks
-   for, stores, or transmits a passphrase"* — rather than being licensed by it. No sentence in
-   `design.md` authorizes this; it is the user's deliberate choice, made for non-interactive
-   operation, and the project's own discipline says a narrowed boundary is amended, not quietly
-   reinterpreted. This document does not write `D17` either, for the same reason it does not
-   write `D16`.
+**One remains genuinely open, and it is open by choice rather than omission:**
 
-3. **Relative `IdentityFile` resolution (§5) is this document's own interpretation, not a
-   transcription of OpenSSH's behavior.** Real `ssh` resolves a bare relative path against its
-   own connection-time working directory — a behavior with no meaningful analogue for hasp.
-   Resolving it against the key directory instead is a judgment call made here because it matches
-   what such paths mean in practice in hand-written configs; it should be confirmed rather than
-   taken as derived from `ssh_config(5)` itself.
+1. **Multi-directory / non-default key locations**, exactly as `design.md` §10 leaves them.
+   Nothing in §3's domain types or §5's derivation pipeline hardcodes a single directory —
+   `--key-dir` is a value threaded explicitly through every layer (§12) rather than a global — so
+   multi-directory support is additive whenever a case for it actually arrives. It is not designed
+   here, and no part of this document assumes it never will be.
 
-4. **`release host`'s exact behavior (§9) extrapolates D15's rule, rather than restating one
-   `design.md` already states for hosts.** D15 requires `release`'s preview to show a marker
-   file's contents before removing it, for **profiles**. This document applies the same
-   "never silently lose content" spirit to hosts — re-inserting the stanza as plain text outside
-   the marked region rather than deleting it — but `design.md` does not say this for hosts
-   directly, and it is worth the ratifying author's explicit confirmation.
-
-5. **Multi-directory / non-default key locations remain deferred**, exactly as `design.md` §10
-   left them. Nothing in §3's domain types or §5's derivation pipeline hardcodes a single
-   directory — `--key-dir` is a value threaded explicitly throughout (§12) rather than a global —
-   so multi-directory support is additive later. It is not designed here.
-
-6. **A severity taxonomy for `check` findings** — whether *"possible duplicate, cannot confirm"*
-   ([T12](tech-decision-log.md#t12)) and a confirmed duplicate should carry a distinct `severity`
-   field in the JSON envelope (§10), or whether `kind` alone is sufficient to let a consumer
-   filter — is an interface-polish question for whoever implements `check`'s output schema, not
-   settled here.
+**One further gap was found during the same review and closed rather than added to this list**,
+recorded here for the same reason the table is: [T26](tech-decision-log.md#t26) named a
+preview/apply race — a `Plan` is computed against a snapshot, and the target file can change while
+the user is reading the preview — and nothing acted on it, while §11 presented itself as listing
+every guard in the system. [T30](tech-decision-log.md#t30) closes it with a witness re-verified
+before any write, failing closed, and §11 now carries the row.
