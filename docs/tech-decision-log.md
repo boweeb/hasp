@@ -1,0 +1,1682 @@
+---
+Status: DRAFT
+DateCreated: 2026-08-28
+Related:
+  - "[`docs/design.md`](design.md)"
+  - "[`docs/decision-log.md`](decision-log.md)"
+  - "[`docs/tdd.md`](tdd.md)"
+---
+
+# hasp — Technical Decision Log
+
+**Purpose.** The permanent record of *technical* design questions — language, storage
+mechanics, parsing strategy, dependencies, distribution — settled downstream of
+[`docs/design.md`](design.md). That document is upstream and says nothing about implementation
+by design; this file is where implementation questions get settled, the same way
+[`docs/decision-log.md`](decision-log.md) settles domain questions. [`docs/tdd.md`](tdd.md) is
+the *current* statement of the technical design; this file is *why* it says that, and what was
+rejected.
+
+**How to use this file.**
+
+- Entries are append-only. A decision is never edited to say something different — it is
+  superseded or amended by a **later** entry that names it.
+- IDs are permanent and stable. `T3` means `T3` forever. `T` is a separate namespace from `D` —
+  no `T`-ID collides with a `D`-ID, and neither log amends the other's numbering.
+- `docs/tdd.md` is the current statement of the technical design and always reflects every
+  accepted entry here. When the two disagree, this log is the history and the TDD is the truth.
+- An entry needs a **Consequence** to be complete. A decision whose cost nobody wrote down is a
+  decision nobody actually made — the rule `docs/decision-log.md` established, kept here without
+  modification.
+- Every entry cites the principle (P1–P9), decision (D1–D15), or journey (J1–J9) it serves.
+  This project settles arguments by appeal to `docs/design.md`; a decision with no citation is
+  a decision that gets re-litigated.
+
+**Status values:** `Accepted` · `Open` · `Amended by Tn` · `Superseded by Tn` · `Rejected`
+
+---
+
+## Index
+
+| ID | Decision | Status |
+| --- | --- | --- |
+| [T1](#t1) | Pure-Go SSH key derivation via `x/crypto/ssh`; no `ssh-keygen`, no `libmagic` | Accepted |
+| [T2](#t2) | A hand-rolled, lossless `ssh_config` CST, in place of any existing library | Accepted |
+| [T3](#t3) | `spf13/cobra` for the CLI, commands registered from a table | Accepted |
+| [T4](#t4) | The `Plan` type: change is represented as data before it is applied | Accepted |
+| [T5](#t5) | A host's profile membership is derived from its key bindings | Accepted |
+| [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted |
+| [T7](#t7) | A settings file, read-only, reaching P9's last rung | Accepted |
+| [T8](#t8) | Backups live in `~/.ssh/.hasp-backups/`, timestamped, never pruned by hasp | Accepted |
+| [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted |
+| [T10](#t10) | Metadata format: sentinel-prefixed TOML fragments as comments | Accepted |
+| [T11](#t11) | Host-group composition: one `Include` line per group, hasp orders them | Accepted |
+| [T12](#t12) | Key identity: fingerprint when derivable, else canonical path | Accepted |
+| [T13](#t13) | DDD adapted to Go: no Unit of Work, no message bus, split aggregate boundary | Accepted |
+| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted |
+| [T15](#t15) | Safety mechanics: atomic write, symlink-through, mode preservation, D4's move rule | Accepted — refined by [T20](#t20), [T22](#t22) |
+| [T16](#t16) | Implicit default-identity probing is a distinct, labelled binding kind | Accepted — amends [T5](#t5) |
+| [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
+| [T18](#t18) | CST marker defects are represented as data, not parse errors | Accepted — amends [T2](#t2) |
+| [T19](#t19) | Alias location is the mechanism for cross-profile key membership — D2's write path | Accepted |
+| [T20](#t20) | Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T21](#t21) | `show profile` aggregates descendants by default, `--no-recurse` escape | Accepted |
+| [T22](#t22) | `WriteKeyFile` fails closed on an existing target; a `Remove` change kind | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T23](#t23) | DSA is in scope for the read path; fixtures are PEM-only, hand-constructed | Accepted — extends [T1](#t1) |
+| [T24](#t24) | Line-terminator handling in the CST: preserved as trivia, excluded from `Args` | Accepted — amends [T2](#t2) |
+| [T25](#t25) | `MetadataLine` is its own CST node type for `#:hasp` lines | Accepted — amends [T2](#t2), [T10](#t10) |
+| [T26](#t26) | `WriteRegion` previews carry a real diff; key material is never diffed | Accepted — amends [T4](#t4) |
+
+---
+
+<a id="t1"></a>
+## T1 — Pure-Go SSH key derivation via `x/crypto/ssh`; no `ssh-keygen`, no `libmagic`
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[`design.md` §5.1](design.md#51-key) defines the derivation gap: a three-row truth table for
+whether a fingerprint is derivable, closed with the requirement that hasp report the undecidable
+case as `unknown` rather than prompt for a passphrase (P3) or persist a guess (D12). [D12](decision-log.md#d12)
+requires every fact be recomputed on demand; P8 requires it be cheap enough to do so on every
+invocation. The read path must determine fingerprint, algorithm, format, encryption state, and
+comment for the full key matrix — ed25519, RSA, ECDSA, in both OpenSSH and legacy PEM framing,
+encrypted or not, with or without a `.pub` file — from raw bytes, without ever decrypting
+anything.
+
+The predecessor project needed two external dependencies to do this: an `ssh-keygen`
+subprocess and `libmagic` (via `python-magic`) for format sniffing — both named in
+[`docs/project-assessment-2026-08.md` §4](project-assessment-2026-08.md) as toolchain weight,
+and the former as a source of `Cannot load private key: incorrect passphrase`-shaped failures
+that D14 later used as evidence against ever touching an encrypted private key file at all.
+
+### Decision
+
+The entire read path is pure Go, using `golang.org/x/crypto/ssh`. No subprocess is exec'd, no
+cgo dependency is introduced. Confirmed against the installed module (`v0.55.0`) this session:
+
+```go
+// x/crypto/ssh/keys.go
+type PassphraseMissingError struct {
+    // PublicKey will be set if the private key format includes an unencrypted
+    // public key along with the encrypted private key.
+    PublicKey PublicKey
+}
+
+func ParseRawPrivateKey(pemBytes []byte) (interface{}, error)
+```
+
+`ParseRawPrivateKey` switches on the PEM block's `Type` field — `"OPENSSH PRIVATE KEY"` versus
+`"RSA PRIVATE KEY"` / `"EC PRIVATE KEY"` / `"DSA PRIVATE KEY"` / bare `"PRIVATE KEY"` (PKCS#8) —
+which gives `format` for free, unencrypted, no decryption attempted. Whether the key is
+encrypted is likewise readable without decrypting it: `Proc-Type: 4,ENCRYPTED` /
+`DEK-Info` headers for legacy PEM, the cipher name field inside the OpenSSH wire format for the
+modern one.
+
+For the undecidable case, the function returns `*PassphraseMissingError` and the struct's own
+`PublicKey` field is the typed discriminator design.md's three-row table needs:
+
+| Case | What `ParseRawPrivateKey` does |
+| --- | --- |
+| Public half present | Never reaches this path — hasp parses the `.pub` via `ParseAuthorizedKey`, then `FingerprintSHA256` |
+| OpenSSH format, encrypted, no `.pub` | Returns `*PassphraseMissingError` with **`.PublicKey` populated** — `parseOpenSSHPrivateKey` reads it from the embedded, unencrypted `w.PubKey` field before it ever touches the ciphertext |
+| Legacy PEM, encrypted, no `.pub` | Returns `&PassphraseMissingError{}` with **`.PublicKey == nil`** — the `encryptedBlock(block)` check fires before any parsing that could populate it |
+
+Reading `err.PublicKey != nil` after a type assertion on `*ssh.PassphraseMissingError` *is* the
+derivation-gap check. No stderr scraping, no exit-code interpretation, no format guess.
+
+### Rationale
+
+This directly satisfies P3 on the read path — encryption state and format are readable without
+ever asking for, or attempting, decryption — and it satisfies P8: no process fork, no cgo build
+step, per key read. It removes both of the predecessor's external dependencies at once, which
+also feeds [T9](#t9): a statically linked, `CGO_ENABLED=0` binary is only genuinely
+`FROM scratch`-capable if nothing in its call graph shells out to a tool that may not exist in
+the container.
+
+Also available on the same package, used elsewhere in the read/write path: `ParseAuthorizedKey`
+(parses a `.pub` line), `FingerprintSHA256` (the `SHA256:`-prefixed, unpadded-base64 form
+OpenSSH ≥6.8 uses — this is the fingerprint format hasp reports, never the legacy MD5 colon-hex
+form, though `FingerprintLegacyMD5` exists if a future `find key` clue needs to match one),
+`NewPublicKey`, `MarshalAuthorizedKey`, `MarshalPrivateKey`, and
+`MarshalPrivateKeyWithPassphrase` — the last two are how `new key` ([T6](#t6)) authors a file,
+the one write path D14 permits.
+
+### Consequence
+
+- Zero runtime dependency on `PATH` containing `ssh-keygen`, and zero cgo — `CGO_ENABLED=0`
+  build in [T9](#t9) is unconditionally achievable, not merely likely.
+- The derivation-gap table stops being documentation asserted by hand and becomes a fact a test
+  suite checks directly: construct a fixture in each of the three rows, assert the concrete
+  return type and the `PublicKey` field's nilness. This is the seed of the fixture matrix in
+  [`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory).
+- No code path in `internal/adapter/keyfile` may call anything that supplies a passphrase to
+  *decrypt* an existing key — there is no `ParsePrivateKeyWithPassphrase` call for reading, and
+  a future contributor adding one to "helpfully" resolve an unknown fingerprint is adding a P3
+  violation, not a feature. This absence is the enforcement mechanism, not a comment asking
+  someone not to.
+
+---
+
+<a id="t2"></a>
+## T2 — A hand-rolled, lossless `ssh_config` CST, in place of any existing library
+
+**Date:** 2026-08-28 · **Status:** Accepted — amended by [T17](#t17), [T18](#t18),
+[T24](#t24), [T25](#t25)
+
+### Context
+
+[D7](decision-log.md#d7) requires two things of the same subsystem simultaneously: outside a
+hasp-owned marked region, the human's bytes survive **byte for byte** — comments, ordering,
+whitespace, unrecognized directives, all of it (this *is* P2, narrowed but not softened); inside
+a marked region, hasp is authoritative and may rewrite freely. That is a fidelity contract, not
+a best-effort parser feature.
+
+### Decision
+
+hasp does not depend on an existing Go `ssh_config` library. It owns a small, line-oriented
+Concrete Syntax Tree in `internal/adapter/sshconfig`, whose defining, fuzz-tested contract is:
+
+```text
+Render(Parse(b)) == b
+```
+
+for arbitrary input bytes `b`, outside marked regions. Inside a marked region the contract is
+weaker by design (D7 elaboration 1: hasp may reformat what it owns) but still idempotent:
+`Render(Parse(Render(r))) == Render(r)` for any region body `r` hasp produced.
+
+Surveyed and rejected, this session:
+
+| Library | Verdict |
+| --- | --- |
+| `kevinburke/ssh_config` (the de-facto standard; used by `go-git`) | Its own README states `Match` is **unsupported**, and promises only that it *"attempts to preserve comments."* "Attempts" is not a contract P2 can be built on. |
+| `k0sproject/rig/v2/sshconfig` | Reader with partial `Match` support; not a write-fidelity tool. |
+| `patrikkj/sshconf`, `petems/go-sshconfig`, `mikkeloscar/sshconfig`, `soulteary/ssh-config` | Readers, or patchers with no stated fidelity contract at all. |
+
+None offer round-trip fidelity as a *guarantee*. Adopting one and hoping is exactly the kind of
+promise this project's own history (the round-tripping `ssh_config` parser investigation
+`docs/project-assessment-2026-08.md` §6 names directly as unfinished, build-vs-buy business)
+says not to make casually.
+
+### Rationale
+
+D7 elaboration 3 is what keeps this small rather than a full-format modeling project: hasp
+models the **syntax** of the whole file completely (every byte parses into *some* node — a
+recognized directive, an unrecognized line, or region markers) but the **semantics** only for
+directives it manages. An unrecognized directive is carried as an opaque node and passed through
+verbatim — never an error, per P6 ("nothing hasp does not understand is dropped"). The
+"natively managed" directive set is the 21-directive list salvaged from the predecessor's
+`README.rst` (§6 below closes this as scope, matching [`tdd.md` §6](tdd.md#6-configuration-parsing--a-lossless-cst-for-a-file-hasp-does-not-fully-own)):
+`HostName`, `IdentityFile`, `User`, `Port`, `ProxyCommand`, `ControlMaster`, `ControlPath`,
+`ControlPersist`, `AddKeysToAgent`, `Ciphers`, `ForwardAgent`, `HashKnownHosts`,
+`HostKeyAlgorithms`, `IdentitiesOnly`, `KexAlgorithms`, `LogLevel`, `MACs`,
+`PasswordAuthentication`, `PubkeyAuthentication`, `StrictHostKeyChecking`,
+`UserKnownHostsFile` — plus `Include`, which hasp itself writes ([T11](#t11)) and must
+therefore understand semantically inside its own regions.
+
+P8 also argues against a general-purpose dependency here: this is a personal tool, and the
+libraries above carry surface area (fleet-scale config composition, `Match` blocks with
+arbitrary criteria) hasp does not need and would rather not inherit the maintenance burden of.
+
+### Consequence
+
+- This is now hasp's largest first-party subsystem, and its correctness gate is a fuzz test
+  (`FuzzSSHConfigRoundTrip`, [`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory)),
+  not a hand-written unit-test suite alone.
+- Teaching hasp a new directive later — widening the 21-directive native set — is additive: the
+  parser already carries it as an opaque `Directive` node today, so nothing needs to migrate on
+  existing files. This is the direct payoff of D7 elaboration 3 the design doc predicted.
+- Every future change to this package must run the fuzz corpus before merging; a regression here
+  is a P2 violation with no smaller blast radius than "silently mangled the user's config."
+
+**Four later entries harden this contract rather than change it.** The node sketch stated here
+was necessary but not sufficient: [T17](#t17) fixes `Directive` so it actually satisfies
+`Render(Parse(b)) == b` for every valid separator/quoting form `ssh_config(5)` allows, which the
+original sketch's parsed-`Args`-only shape could not; [T18](#t18) gives "a marker or region is
+malformed" — asserted elsewhere in this project but never defined here — concrete, detectable
+shapes; [T24](#t24) closes a gap the contract implied but the node sketch didn't handle, CRLF and
+other line-terminator variation; [T25](#t25) gives `#:hasp` metadata lines (§7) their own node
+rather than leaving them to be re-scanned out of an opaque `Line`.
+
+---
+
+<a id="t3"></a>
+## T3 — `spf13/cobra` for the CLI, commands registered from a table
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+The interface layer needs a command framework. [D10](decision-log.md#d10) fixes the grid at
+3 nouns × 8 verbs (24 first-class combinations) with second-class nouns surfacing as flags; the
+predecessor's one genuinely good idea, per
+`docs/project-assessment-2026-08.md` §2.1, was that this grid was **mechanically** registered —
+`cli/verb/<verb>.py` imported the same-named function from each `cli/resource/*.py` — so adding
+a noun cost nothing structurally. That property is worth preserving in Go.
+
+### Decision
+
+**`spf13/cobra`**, over `alecthomas/kong`, which was seriously considered.
+
+Commands are registered from a single Go table rather than built up ad hoc, so the grid's
+uniformity survives the language change:
+
+```go
+type CommandSpec struct {
+    Verb, Noun string
+    Build      func(deps Deps) *cobra.Command
+}
+
+var commands = []CommandSpec{
+    {Verb: "list", Noun: "key", Build: buildListKey},
+    {Verb: "show", Noun: "key", Build: buildShowKey},
+    // ... 24 entries, one per cell in tdd.md §9
+}
+```
+
+### Rationale
+
+`kong` is arguably the better technical fit for a rigid, statically-known grid — struct-tag
+declaration is terser than cobra's imperative `*cobra.Command` construction, and hasp's grid is
+about as static as a CLI's surface gets. It loses on two points that matter here: cobra
+generates shell completions and man pages as first-class subcommands
+(`cobra.Command.GenManTree`, the built-in `completion` command), both of which
+[T9](#t9)'s GoReleaser packaging consumes directly (nfpms/completions archive entries); and
+cobra is the ecosystem default, which matters for a project whose entire prior failure mode was
+unfinished infrastructure choices (`docs/project-assessment-2026-08.md` §5, "Verb×resource
+matrix or `factory/`? ... you never picked one"). This call is routine enough not to need the
+user's sign-off, and consequential enough to name so it can be overridden.
+
+### Consequence
+
+- Adding a noun means adding entries to `commands` and to `internal/app`'s use-case set; the CLI
+  tree itself never needs hand-editing beyond the table.
+- If the table ever fights cobra's construction model badly enough to erase this benefit, `kong`
+  remains the documented alternative — this entry is the record of why it was not chosen first,
+  not a claim that it never could be.
+- Generated completions and man pages are a packaging concern owned entirely by
+  [T9](#t9)/[`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought);
+  this entry only establishes that cobra makes them available.
+
+---
+
+<a id="t4"></a>
+## T4 — The `Plan` type: change is represented as data before it is applied
+
+**Date:** 2026-08-28 · **Status:** Accepted — amended by [T20](#t20), [T22](#t22), [T26](#t26)
+
+### Context
+
+[D6](decision-log.md#d6) makes preview the default for **every** write, with no
+operation-by-operation judgment call about which changes are risky enough to deserve it. P5
+states this explicitly as a modeling constraint, not an interface nicety: *"the ability to
+preview is not a convenience flag bolted on later; it constrains how change is modeled from the
+beginning."* A design where a use case performs I/O directly and merely *logs what it did*
+cannot satisfy this — preview must exist **before** anything is touched, which means the thing
+previewed must be a value, not a side effect already in flight.
+
+### Decision
+
+Every write-verb use case returns a `Plan` — an ordered list of typed `Change` values — instead
+of performing I/O. A single `Applier` is the only thing in the codebase permitted to touch the
+filesystem for a write.
+
+```go
+type Plan struct {
+    Summary string
+    Changes []Change
+}
+
+type Change interface {
+    Describe() string        // one-line preview text, rendered by both the human and JSON renderers
+    RequiresBackup() bool
+    Apply(fsys WriteFS) error
+}
+
+type MoveFile struct{ From, To, Reason string }
+type WriteRegion struct{ File string; Marker RegionID; Body []byte }
+type CreateSymlink struct{ Path, Target string }
+type CreateMarker struct{ Dir string; Header []byte }
+type WriteKeyFile struct{ Path string; Contents []byte; Mode fs.FileMode } // the D14 exception
+
+type Applier struct {
+    FS      WriteFS
+    Backups BackupStore
+}
+
+func (a *Applier) Apply(p Plan) (Result, error) {
+    for _, c := range p.Changes {
+        if c.RequiresBackup() {
+            if err := a.Backups.Snapshot(c); err != nil {
+                return Result{}, fmt.Errorf("backup failed, aborting before write: %w", err)
+            }
+        }
+        if err := c.Apply(a.FS); err != nil {
+            return Result{}, err
+        }
+    }
+    return Result{Applied: p.Changes}, nil
+}
+```
+
+A use case's method signature is `Plan(req Request) (Plan, error)` — it may perform *reads* to
+compute the plan (P5: reads are always safe), but returns before anything is written.
+
+**Three later entries refine this type sketch rather than replace it: [T20](#t20)** states the
+general ordering rule for `Changes` and adds no new type; **[T22](#t22)** adds an
+`AllowOverwrite` field to `WriteKeyFile` and a `Remove` change kind; **[T26](#t26)** replaces
+`Describe() string` with `Preview() Preview`, a structured value carrying an optional diff,
+because `Describe`'s single line could not represent what a `WriteRegion` rewrite actually
+changes.
+
+### Rationale
+
+This is the architectural keystone the plan for this document names explicitly: D6 is only
+structural, rather than a flag bolted onto each command, if change is data first and an
+executable action second. It is the Go-appropriate stand-in for the Unit-of-Work pattern Cosmic
+Python uses for a different purpose ([T13](#t13) states why UoW itself does not port).
+
+**The resulting inversion is worth stating in exactly these terms: `--dry-run` does not exist,
+because preview *is* the default.** The flag that exists is `--yes` — its absence is what
+triggers the preview-only path, not its presence.
+
+### Consequence
+
+- Every use case in `internal/app` is testable without touching a filesystem: assert on the
+  returned `Plan` value. This is the design that makes the guard test in
+  [`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory) ("hasp writes nothing
+  outside the key directory") tractable to write per-use-case, not just end-to-end — the
+  `testscript` `.txtar` cases in that same section cover the full end-to-end path.
+- New `Change` kinds are additive and carry their own `RequiresBackup()` answer — nothing about
+  the safety machinery depends on a call site remembering to ask for a backup; it is a property
+  of the change, not of the caller's diligence.
+- A `Plan` with zero `Changes` is a legitimate, renderable value ("nothing to do") — every
+  write-verb use case can report "no change needed" through the same preview path used for a
+  real change, so there is no separate no-op code path to keep in sync.
+
+---
+
+<a id="t5"></a>
+## T5 — A host's profile membership is derived from its key bindings
+
+**Date:** 2026-08-28 · **Status:** Accepted — amended by [T16](#t16)
+
+### Context
+
+[D13](decision-log.md#d13) settled how a **key's** profile membership is expressed — the
+directory it lives in — but [`design.md` §5.4](design.md#54-host) only asserts that a host has
+*"two independent affiliations... who it belongs to (a profile) and where it physically lives (a
+host group)"* without saying how the first one is computed. Left unresolved, this is exactly the
+kind of gap D13's own preamble warns about: something hasp would have to be *told*, reopening
+the closed §5.7 "Intent" category.
+
+### Decision
+
+**A host's profile set is the union of the profile sets of the keys its `IdentityFile` lines
+resolve to**, via the binding resolution mechanism in
+[`tdd.md` §5](tdd.md#5-derivation-pipeline--scan-classify-resolve-project). No metadata is
+declared for this. A host resolves to zero or more keys (D2 permits a key to belong to many
+profiles; nothing prevents a host from listing more than one `IdentityFile`), and its profile
+set is exactly the union across all of them.
+
+Because a key's own profile membership already accounts for [§5.3](design.md#53-profile)'s
+`.hasp`-marker rule (a directory is a profile only if marked), this derivation needs no separate
+marker check for hosts — it reuses the already-computed key-profile-set verbatim.
+
+**[T16](#t16) adds a second binding source.** This entry, as written, resolved only *explicit*
+`IdentityFile` lines. A stanza with none is not a stanza with zero bindings — `ssh` itself still
+tries its own default identity files — and T16 extends "the keys its bindings resolve to" to
+cover both.
+
+### Rationale
+
+This keeps [D12](decision-log.md#d12) literally true with **no new asterisk**: nothing is
+declared for hosts that the filesystem plus the config file don't already carry. It works on
+**unmanaged** hosts too, since the computation only needs key *location*, not host management
+state — a stanza hasp has never wrapped in markers still gets a computed profile, which is what
+lets M1's read-only survey (D14) report host-profile membership before `adopt` exists at all,
+strengthening J1 and J3.
+
+The rejected alternative — declaring host→profile membership as metadata inside a marked region,
+which D7's mechanism ([T10](#t10)) makes possible — was rejected on P9's own ladder: it would
+duplicate a fact fully computable from structure that already exists, and P9 requires showing
+existing structure genuinely *cannot* carry the fact before falling back to declaration. It can.
+
+### Consequence
+
+- A host with no `IdentityFile` line belongs to no profile — the same legitimate state as a
+  top-level key ([§5.1](design.md#51-key)) — and it is a `check` finding, mirroring the language
+  D13 already uses for the key case.
+- A host bound to a key shared across profiles (D2) inherits **every one of them**. This is
+  exactly what J8 (offboard) needs — *"show me everything scoped to that profile"* — walked
+  backwards from key to host along the binding relation ([§5.6](design.md#56-binding)), and is
+  the concrete reason D11 called binding-as-a-relation load-bearing.
+- If a resolved `IdentityFile` target sits in a directory *without* a `.hasp` marker, it
+  contributes nothing to the host's profile set — a plain unmarked directory carries no
+  taxonomy, by [§5.3](design.md#53-profile)'s own rule, and the host derivation must not invent
+  an exception for itself.
+
+---
+
+<a id="t6"></a>
+## T6 — `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed
+
+**Date:** 2026-08-28 · **Status:** Accepted, pending upstream ratification — recommend `D17`
+
+### Context
+
+`new key` needs a way to support a passphrase-protected key, because non-interactive execution
+(`--passphrase-stdin`, or a settings-file default, [T7](#t7)) requires the choice to be
+resolvable without a human present to answer a prompt. The honest starting point is that
+**nothing in `design.md` licenses hasp asking for a passphrase.** §3.2 states the opposite as one
+of nine hard boundaries, each one described as turning hasp into *"a different and worse
+project"* if crossed: *"Not a passphrase manager. hasp never asks for, stores, or transmits a
+passphrase."* [`design.md` §5.1](design.md#51-key) and [D14](decision-log.md#d14)'s carve-out —
+*"hasp never writes to a private key file. The single exception is generating a new key, where
+hasp authors the file outright"* — licenses hasp **authoring** a key file. It says nothing about
+**asking** for a passphrase while doing so; those are different acts, and an earlier draft of
+this entry conflated them, presenting the carve-out as if it settled the question it does not
+address. That was a citation error, corrected here rather than left standing.
+
+What follows is a deliberate, needed capability — not a reading of an existing exception. It
+**narrows a stated hard boundary**, which this project's own discipline treats the same way as
+any other gap in the ratified design: named plainly and flagged for ratification, not
+reinterpreted into something `design.md` already permits when it does not.
+
+### Decision
+
+`new key` supports **both** answers — no passphrase, or a passphrase supplied at generation
+time — and enforces a hard boundary at the type level: a passphrase is accepted **only** at
+generation, **never** to decrypt an existing key, is **never persisted anywhere** (not in
+settings, not in metadata, not logged), and its buffer is zeroed immediately after use.
+
+Three mutually exclusive flags on `new key`:
+
+| Flag | Effect |
+| --- | --- |
+| `--passphrase` | Prompt interactively via `golang.org/x/term.ReadPassword(int(os.Stdin.Fd()))` — no local echo |
+| `--no-passphrase` | Generate without one, explicitly |
+| `--passphrase-stdin` | Read the secret bytes from stdin — for non-interactive/scripted use |
+
+Mode-selection precedence (which of the three applies when none is given as a flag):
+**flag → env var (`HASP_NEW_KEY_PASSPHRASE_MODE`, one of `none`/`prompt`/`stdin`) → settings
+file (`[new_key] default_passphrase_mode`, [T7](#t7)) → built-in default.**
+
+The built-in default is **"prompt interactively if stdin is a TTY; otherwise, refuse."** This is
+deliberately not "assume no passphrase" — silently generating an unprotected key because nobody
+asked is exactly the failure P5/D6's non-interactive-consent language is written against.
+**Non-interactive execution with no explicit mode chosen anywhere in the chain is fail-closed**:
+`new key` exits with `ExitUsage` ([T14](#t14)) and a message naming the three flags, rather than
+guessing.
+
+Once a mode resolves to `stdin`, the actual secret bytes are **always** read from `os.Stdin` at
+the moment of generation — never from the env var (which only ever carries the *mode name*, not
+the secret — env vars are readable via `/proc/<pid>/environ` and process-listing tools on some
+systems, which is a real leak path a flag argument or an env-carried secret would both have),
+never from settings, never from a CLI argument (which would land in shell history and `ps`
+output).
+
+### Rationale
+
+The type-level enforcement: nowhere in `internal/domain` or `internal/app` does a function accept
+a passphrase alongside an *existing* `Key` value. The only function that accepts passphrase bytes
+is the one building a `WriteKeyFile` change inside `NewKeyUseCase.Plan`, which calls
+`ssh.MarshalPrivateKeyWithPassphrase(key, comment, passphrase)` and defers zeroing the slice. This
+absence is itself the audit mechanism (P6: legible without hasp running — a reviewer reading a
+diff that adds passphrase-accepting code anywhere else in the tree is reading a P3 violation on
+sight, not a subtle one).
+
+### Consequence
+
+- **Recommend an upstream `D17` in `docs/decision-log.md`**, flagged here rather than written
+  there, per the ratifying author's own stated process: record that §3.2's passphrase-manager
+  boundary is narrowed, by exactly this case, for exactly this reason, and that the mechanics
+  above (generation-time only, never for decryption, never persisted, buffer zeroed) are the
+  scope of the narrowing — not a general license to ask for a passphrase anywhere else.
+- `new key`'s flag surface grows by three flags, mutually exclusive, and the full precedence
+  resolver stays small — on the order of ~50 lines to walk four sources in order — which is
+  exactly why hasp does not depend on `viper` for this (stack decision,
+  [`tdd.md` §2](tdd.md#2-stack--go-stdlib-first-and-a-dependency-budget)).
+- A CI/scripted caller of `hasp new key` **must** pass `--no-passphrase` or `--passphrase-stdin`,
+  or must have configured a default in settings ([T7](#t7)) — there is no path by which a
+  script silently produces an unintentionally unprotected key, and no path by which it hangs
+  waiting on a TTY prompt that will never come.
+- `hasp new key`'s recorded facts (algorithm, format, fingerprint, encrypted-or-not) are derived
+  by re-reading the file hasp just wrote through the same [T1](#t1) code path used for every
+  other key — never asserted from the generation request — closing J4's requirement that a new
+  key's recorded facts be *identical* to what a fresh inventory of the finished artifact reports.
+
+---
+
+<a id="t7"></a>
+## T7 — A settings file, read-only, reaching P9's last rung
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+P9's taxonomy ladder ends: *"Only as a last resort, a hasp settings file — and no case has yet
+required one."* [T6](#t6)'s non-interactive default-passphrase-mode requirement is **the first
+case that does.** This is not a detail to fold quietly into T6 — the project's own discipline
+(stated identically in `design.md`'s own preamble) is that a gap in the ratified design gets
+*amended*, not reinterpreted, and this is precisely that kind of gap.
+
+[D3](decision-log.md#d3) already anticipated this: *"hasp's own settings are settings, are not
+part of the verb grid, and are edited directly."* This entry is walking through a door D3 already
+named, not cutting a new one.
+
+### Decision
+
+- A settings file exists, in **TOML**, with `#` comments — the same convention D15 already
+  argued for on the neighboring `.hasp` marker (*"the neighbouring file in that very directory —
+  `ssh_config` — uses `#`, as do shell, `gitconfig`, TOML, and YAML"* — P9 rides the convention
+  that already exists rather than inventing a second one).
+- **Location:** `os.UserConfigDir()/hasp/settings.toml` — stdlib, no XDG library. On Linux this
+  is `$XDG_CONFIG_HOME/hasp/settings.toml` or `~/.config/hasp/settings.toml`; on Darwin,
+  `~/Library/Application Support/hasp/settings.toml`. Deliberately **outside** `~/.ssh` — it is
+  not key material, not arrangement, and must never be swept into the profile scanner or the
+  `~/.ssh/.hasp-backups/` rotation ([T8](#t8)).
+- **hasp reads settings and never writes them.** There is no `hasp config set` and no
+  `hasp settings set` — "config" is not a noun (D3), and neither is a settings-mutation verb
+  added to the grid. The file is edited directly, with an editor, exactly as P6 already promises
+  for everything hasp knows.
+- **The admission rule**, stated because this file has the exact shape of the project's original
+  failure mode: **settings may hold *only* user preferences that (a) cannot be derived, and
+  (b) exist to enable non-interactive execution.** They may **never** hold facts about the
+  machine (P1/D12 — that is precisely what the abandoned TOML state file held, per
+  `docs/project-assessment-2026-08.md` §5.1's "TOML buys a human-editable... state file"), and
+  they may **never** hold taxonomy (P9 rungs 1–2 — a profile assignment written into settings
+  would be D13's rejected option (iii), readmitted through a different door than the one D13
+  actually closed). Anything that fails this test stays a flag.
+- **v1 keyset — deliberately minimal**, because nothing else has yet cleared the bar:
+
+  ```toml
+  # ~/.config/hasp/settings.toml
+  # hasp reads this file. hasp never writes to it.
+  [new_key]
+  default_passphrase_mode = "prompt"   # "none" | "prompt" | "stdin"
+  ```
+
+- **Optional, throughout.** Absence of the file is not an error. Every settings key has a
+  built-in default ([T6](#t6)'s "prompt if TTY, else refuse") that makes hasp fully useful with
+  zero configuration, preserving [`design.md` §6.3](design.md#63-cross-cutting-requirements)'s
+  *"works on first run, on a machine it has never seen, with nothing configured"* exactly as
+  written.
+
+### Rationale
+
+TOML reuses the same decoder [T10](#t10) already needs for metadata fragments — one parsing
+dependency, not two. The admission rule is what prevents this from becoming "the TOML state file,
+take two": the original sin, per D12's own rationale, was *persisting derivable facts* — this
+file structurally cannot, because anything derivable fails the rule on sight and is refused a
+place in it.
+
+### Consequence
+
+- **Recommend an upstream `D16` in `docs/decision-log.md`**, flagged here rather than written
+  there, per the ratifying author's own stated process: record that P9's last rung was reached,
+  by what case, and restate the admission rule as a permanent constraint on this file's growth —
+  not just this session's judgment call.
+- Every future PR proposing a new settings key must justify it against the admission rule in its
+  own right, not merely add a TOML field because it was convenient — that discipline is the
+  entire point of writing the rule down here rather than letting the file grow the way the
+  original state file did, one convenient field at a time.
+- `hasp` never needs to create this file. `new key` and every other command that consults it
+  treats a missing file identically to an empty one.
+- **The admission rule is enforced mechanically, not left to review discipline** — a test
+  asserts the exact field set of the Go struct settings decode into
+  ([`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory)). This is the same class
+  of guard [T1](#t1) gets from the absence of a decrypt call site and [T13](#t13) gets from
+  `go list -deps`: the rule most directly guarding against a repeat of the predecessor's TOML
+  state file does not get to rely on a reviewer noticing a new field.
+
+---
+
+<a id="t8"></a>
+## T8 — Backups live in `~/.ssh/.hasp-backups/`, timestamped, never pruned by hasp
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+P4: *"Before hasp modifies anything it did not create, the prior state is preserved... the user
+should never need to have thought ahead."* D6's preview → confirm → back up → write cycle
+requires a concrete location and mechanism, and [§5.10](design.md#510-what-is-deliberately-absent)
+is explicit that hasp is not to grow a state file or database in the process of providing it.
+
+### Decision
+
+Backups live at `~/.ssh/.hasp-backups/`, as timestamped copies —
+`.hasp-backups/config.20260828T140501Z` — inheriting the key directory's own `0700` mode,
+restorable with a plain `mv`, and excluded from the profile scanner via the same
+dotfile/marker-exclusion rule that already skips `.hasp` markers themselves (this is a reused
+exclusion, not a new one).
+
+### Rationale
+
+P4 requires the backup to be automatic on **every** qualifying write, not opt-in — a rolling
+backup directory inside the same tree the write touches satisfies that with no separate
+subsystem. It sits **inside** `~/.ssh`, deliberately, rather than beside settings
+([T7](#t7))'s `os.UserConfigDir()` location: a backup is a copy of *this directory's own
+content* and belongs next to it, restorable with the same tools — `ls`, `mv`, `cp` — a human
+already has for everything else here (P6).
+
+### Consequence
+
+This precisely completes hasp's write-surface invariant, now stated exactly:
+**hasp writes to exactly one directory tree — the key directory, including its
+`.hasp-backups/` subtree — and reads at most one optional settings file it never writes.** This
+is the literal assertion the guard test in
+[`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory) checks: no file is ever
+created, modified, or deleted outside that one tree, for any operation, in any test run.
+
+A backed-up key file is itself key material under D4's canon — hasp therefore never prunes,
+rotates, or garbage-collects `.hasp-backups/` automatically. Retention is the user's own act,
+with their own tools (`rm`), matching D4's philosophy exactly: hasp's job is to never be the
+reason a copy of a secret disappears, not to decide when enough copies exist.
+
+---
+
+<a id="t9"></a>
+## T9 — GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs`
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+GoReleaser is a stated constraint on this project, to be embraced rather than worked around.
+`design.md` §13 (via [`tdd.md`](tdd.md)) needs: `CGO_ENABLED=0` (made unconditionally achievable
+by [T1](#t1)), a container image path, and package-manager coverage that includes the Arch User
+Repository, since the dev host is Arch Linux.
+
+### Decision
+
+Verified against the installed `2.14.0` this session, with docs current at v2.18:
+
+| Section | Status | hasp uses it for |
+| --- | --- | --- |
+| `ko` | Current, recommended | The container image — no `Dockerfile`, `FROM scratch`-capable because of [T1](#t1) |
+| `dockers` / `docker_manifests` | **Deprecated** | Not used |
+| `dockers_v2` | Current (the Docker-specific route) | Not used — `ko` is preferred over hand-writing a Dockerfile for a statically linked binary |
+| `nfpms` | Current | `.deb` / `.rpm` / `.apk` packages |
+| `aur` | Current | Arch User Repository — the dev host's own package manager |
+| `brews` | **Deprecated** | Not used |
+| `homebrew_casks` | Current (`brews`'s replacement) | macOS distribution |
+| `sboms` | Current | Supply-chain attestation |
+| `signs` | Current | Artifact signing |
+
+Four OS/arch build targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` —
+matching the "macOS + Linux long-term" scope, dev host x86 Arch Linux via `mise` (`go = "latest"`,
+currently `go1.26.6`).
+
+Generated shell completions and the man tree (from [T3](#t3)'s cobra, via
+`cobra.Command.GenManTree` and the built-in `completion` subcommand) are packaged into the
+release archives, not left to `go install` users to generate themselves.
+
+### Rationale
+
+Embracing GoReleaser's idioms rather than working around them means letting its recommended path
+(`ko`) determine a hasp design constraint, not the reverse: `ko`'s default posture assumes a
+statically linked binary with no runtime dependency on anything not already in a distroless base
+image. That assumption only holds because [T1](#t1) removed the `ssh-keygen` subprocess and
+`libmagic` cgo dependency the predecessor needed — had either survived, `ko`'s scratch-based
+image would silently break at the first key read, which is exactly why T1 and T9 are one linked
+decision, not two independent ones, despite being numbered separately.
+
+### Consequence
+
+- `dockers`, `docker_manifests`, and `brews` are explicit **non-choices**: a future contributor
+  reaching for any of them is reaching for a deprecated GoReleaser v2 section, and this entry is
+  the record of why.
+- Build info (`-X`-injected via ldflags: version, commit, build date) is consumed by
+  `hasp version`; `runtime/debug.ReadBuildInfo()` (`func ReadBuildInfo() (info *BuildInfo, ok
+  bool)`) is the fallback for a `go install`-built binary that never went through GoReleaser at
+  all, so `hasp version` never reports "unknown" for a build that has *any* module information
+  available.
+- **Container caveat, stated plainly:** hasp manages the machine it runs *on* — §3.2 is explicit
+  that hasp is *"not configuration management... does not reach across a fleet."* A container
+  image is therefore for CI/scripted use, with the key directory bind-mounted in, and UID /
+  `0700`-mode mapping across that boundary is the sharp edge: a mismatched UID inside the
+  container silently produces a `~/.ssh` the host user cannot read. This is named here so it does
+  not surface as a support question later.
+
+---
+
+<a id="t10"></a>
+## T10 — Metadata format: sentinel-prefixed TOML fragments as comments
+
+**Date:** 2026-08-28 · **Status:** Accepted — amended by [T25](#t25)
+
+### Context
+
+[D7](decision-log.md#d7) elaboration 3 gives hasp a general mechanism: *"anything hasp needs to
+record that the format cannot express natively is written into its own region in comment form...
+metadata may record what the machine cannot tell you; it may never cache what the machine can."*
+This closes [`design.md` §10](design.md#10-explicitly-deferred)'s "the metadata format" item —
+load-bearing, and newly created by D7 — but the format itself was never specified.
+
+### Decision
+
+**Sentinel-prefixed TOML.** Inside a hasp-owned marked region, a metadata line has the exact
+shape:
+
+```text
+#:hasp <key> = <toml-value>
+```
+
+Example, inside a marked region hasp owns wholesale (an explicit host group,
+[D9](decision-log.md#d9)):
+
+```text
+# >>> hasp:managed >>>
+Host foobarco-prod
+    #:hasp created_by = "new host"
+    HostName prod.foobarco.internal
+    User jesse
+    IdentityFile ~/.ssh/work/foobarco/id_ed25519
+# <<< hasp:managed <<<
+```
+
+Stripping the `#:hasp` sentinel from a metadata line yields a syntactically valid single-line
+TOML fragment (`key = value`) — a metadata reader concatenates every stripped line in a region
+and feeds the result to an ordinary TOML decoder ([T7](#t7)'s dependency, reused, not
+duplicated). Non-sentinel `#` comments inside a managed region (section banners hasp itself
+writes, for instance) are ordinary trivia and are never parsed as data — **sentinel presence,
+not comment syntax, is what marks a line as metadata**, mirroring D15's presence-not-contents
+discipline for the `.hasp` marker exactly, rather than inventing a second convention beside it.
+
+### Rationale
+
+The D7 line is enforced by construction, not by review discipline: a fingerprint is derivable
+([T1](#t1)) and therefore may never appear on the right-hand side of a `#:hasp` line — writing
+one would be a D12 violation the same way it would be in the marker file D15 governs. A profile
+assignment, by contrast, would be legitimate content for this channel in principle — except that
+[T5](#t5) already derives host-profile membership from key location, which **removes the single
+largest anticipated consumer** of this mechanism before it ever needed a value.
+
+### Consequence
+
+At the milestone scope this document covers (through M3), **hasp writes no field through this
+channel.** That is deliberate, not an oversight: the mechanism exists because D7 requires it be
+available, and its keyset is empty because T5 closed the one gap it was invented to fill. Any
+future proposal to populate a field here must independently clear the same P9 bar every taxonomy
+proposal must — *"show that the existing structure genuinely cannot carry the fact"* — the same
+test [`design.md` §5.7](design.md#57-intent--the-category-that-closed) already stands ready to
+apply.
+
+Because the grammar is "TOML after stripping a fixed string prefix," no bespoke parser is needed
+beyond a string match plus the existing TOML decoder — no new dependency, and no new grammar for
+[T2](#t2)'s fuzz test to cover beyond the surrounding region structure it already fuzzes. A
+future field costs one more `#:hasp key = value` line; no schema migration and no version field
+are needed while the keyset is empty, and `#:hasp _schema = N` remains available, at zero present
+cost, if a real one is ever needed.
+
+**[T25](#t25) gives this line its own place in the CST** — a `MetadataLine` node, recognized by
+the sentinel at parse time rather than left inside an opaque `Line` for a metadata reader to
+re-scan. The keyset staying empty through M3 is unaffected; this is a representation fix, not a
+new field.
+
+---
+
+<a id="t11"></a>
+## T11 — Host-group composition: one `Include` line per group, hasp orders them
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[D9](decision-log.md#d9) makes host groups real files (`~/.ssh/<group>.sshconfig`), but
+`design.md` §10 leaves *"the composition mechanism that makes host groups (§5.5) real"* explicitly
+deferred. OpenSSH's own `ssh_config(5)` semantics are **first-obtained-value-wins** per
+parameter — the first matching value for a given keyword wins, later ones are ignored — which
+makes the *order* group files are pulled into `~/.ssh/config` a fact with real behavioral
+consequences, not a cosmetic one.
+
+### Decision
+
+hasp writes **one `Include` directive per host group it manages**, inside its own marked region
+of `~/.ssh/config` — never a single glob (`Include ~/.ssh/*.sshconfig`) — so that **the position
+of each `Include` line in the marked region is the precedence order**, controlled by hasp
+directly. This is not a defense against nondeterminism: `ssh_config(5)` states that `Include`'s
+wildcards *"will be expanded and processed in lexical order,"* which is deterministic. It is a
+defense against the wrong *deterministic* order — lexical filename order is not necessarily the
+order the user wants, and a glob would force naming discipline on group files (`0-personal`,
+`1-work`) purely to win a precedence fight that explicit ordering avoids entirely.
+
+```text
+# >>> hasp:managed >>>
+Include ~/.ssh/work.sshconfig
+Include ~/.ssh/personal.sshconfig
+# <<< hasp:managed <<<
+```
+
+### Rationale
+
+D9's own rationale — *"SSH configuration is already multi-file in practice; the format supports
+composition natively"* — is only fully honored if the composition is legible and hasp-controlled;
+a glob makes the *effective* precedence order a function of how the group files happen to be
+named, which is a fact the user would have to manage by naming discipline rather than one hasp
+states directly (P1 — hasp should report the order, not make the user reverse-engineer it from
+filenames). Because this block sits inside hasp's own marked region (D7), reordering host groups
+is an ordinary `Plan`/`Change` ([T4](#t4)) — never a hand edit outside markers, keeping P2 intact
+for the block's neighbors.
+
+### Consequence
+
+- Adding or removing a managed host group is always a `WriteRegion` change to the *same* marked
+  region (append or remove one `Include` line) — never a separate edit outside markers.
+- [T2](#t2)'s CST must treat `Include` as **semantically understood**, not opaque trivia, when it
+  appears inside a marked region — it is part of the natively-managed directive set precisely
+  because hasp needs to reason about its argument and its position, not merely preserve it.
+  Outside a marked region, a human-written `Include` line round-trips like any other unrecognized
+  construct — hasp reads it (to know what it must not shadow) but never rewrites it.
+- `check` gains a finding category from first-obtained-value-wins directly: a later `Include`d
+  group defining a `Host` pattern already fully shadowed by an earlier group or stanza is dead
+  configuration — reachable by nothing — and is exactly the kind of silent bite this entry exists
+  to name and catch rather than let a human discover the hard way.
+
+---
+
+<a id="t12"></a>
+## T12 — Key identity: fingerprint when derivable, else canonical path
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[`design.md` §5.1](design.md#51-key) states a key's *"intrinsic identity is its fingerprint...
+two files with the same fingerprint are the same key,"* but does not say what identity **means**
+in the derivation-gap case ([T1](#t1)'s third row), where no fingerprint can be computed at all.
+Code has to answer this: what makes two files "the same key" when that cannot be proven?
+
+### Decision
+
+```go
+type KeyIdentity interface{ identityKey() string }
+
+type byFingerprint Fingerprint          // Fingerprint = ssh.FingerprintSHA256 output
+func (f byFingerprint) identityKey() string { return "fp:" + string(f) }
+
+type byPath string                      // resolved (symlink-followed), absolute path
+func (p byPath) identityKey() string    { return "path:" + string(p) }
+```
+
+**Identity is the fingerprint when derivable; otherwise it is the resolved canonical path.**
+Two files with the same fingerprint are one key with two locations, exactly as design.md states.
+A key identified by path (the undecidable case) can **never** be deduplicated against another
+path-identified key, even one that a human strongly suspects is a copy of the same secret — hasp
+has no way to prove it, and P1 forbids reporting a fact hasp cannot verify.
+
+### Rationale
+
+[T1](#t1)'s derivation-gap table row 3 (legacy PEM, encrypted, no `.pub`) is the concrete case
+this answers: seven of the thirteen keys in the design doc's own motivating inventory
+([`design.md` §2](design.md#2-the-problem)) are PEM format. [D12](decision-log.md#d12) requires
+this be a pure function of what is readable **this run** — no cross-scan memory of "I previously
+decided these two paths are the same key" — so path-based identity being recomputed fresh every
+scan, and sensitive to `mv`/symlink changes exactly as expected, is not a limitation of this rule
+but a direct consequence of P1 correctly applied.
+
+### Consequence
+
+- `check` reports two same-format, same-size, undecidable files as a distinct finding category —
+  *"possible duplicate, cannot confirm"* — never silently merged and never silently treated as
+  unrelated. This sits beside, but is not the same finding as, a *confirmed* duplicate (two
+  fingerprint-identified files sharing a fingerprint).
+- Renaming an undecidable key's file changes its path-based identity by definition — this is a
+  sharp edge worth flagging explicitly against J6's promise (*"rename a key without touching its
+  material"*): rename must be implemented as a `MoveFile` change addressed by the key's stable
+  `KeyName` handle, never by re-deriving identity after the move and hoping it still matches.
+  `KeyName` is the stable handle across a rename; `KeyIdentity` is expected, correctly, to change
+  for the `byPath` case as a direct consequence of the move — not a bug to guard against.
+
+---
+
+<a id="t13"></a>
+## T13 — DDD adapted to Go: no Unit of Work, no message bus, split aggregate boundary
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+The architectural style for this project is DDD. Its most available reference material —
+Cosmic Python — is Python-flavored: its patterns (a Unit of Work wrapping a database session, a
+Repository pattern backed by that session, a message bus dispatching domain events to multiple
+handlers, ports collected in a separate `abstractions` module) assume there is state to
+transact over and more than one process or consumer in the picture. [D12](decision-log.md#d12)
+(no persisted state, hasp is a pure function of the machine) and P8 (one laptop, one process, one
+invocation) both remove exactly the conditions those patterns exist to serve.
+
+### Decision
+
+Four layers, dependency direction strictly inward:
+
+```text
+internal/domain     Key, Host, Profile, HostGroup, Binding, value objects
+                     (Fingerprint, ProfilePath, KeyName, HostPattern) — zero third-party imports
+internal/app         one use case per verb×noun cell; owns the Plan type (T4);
+                     declares ports as interfaces at the point of consumption
+internal/adapter     scan, keyfile (T1), sshconfig (T2), settings (T7), backup (T8), fswrite (T15)
+internal/cli         cobra wiring (T3), flags, human + JSON renderers (T14)
+```
+
+**Two deliberate deviations from Cosmic Python, each justified against a specific principle:**
+
+1. **No Unit of Work, no repository-with-a-session.** Nothing is persisted (D12), so there is no
+   transaction to own. `Applier` ([T4](#t4)) is not a UoW in disguise — it has no rollback across
+   multiple aggregates on partial failure, only a per-`Change` backup-then-write guarantee.
+2. **No message bus, no domain events.** P8: *"a single human operating interactively"* — there
+   is no second consumer for an event to reach. A cross-cutting effect (adopting a key must also
+   ensure a top-level alias exists, per D13) is an ordinary function call inside the use case
+   building the `Plan`, not a published event with a handler registered elsewhere.
+
+**Ports are declared at the point of consumption**, in `internal/app`, per-use-case — the Go
+idiom of "accept interfaces, return structs" — rather than collected in a separate abstractions
+module the way Cosmic Python centralizes them.
+
+**The aggregate boundary differs by direction, deliberately:**
+
+- **Reads use one read-model aggregate** — a single derived snapshot of "the machine," covering
+  keys, hosts, profiles, and bindings together, computed once per invocation. Justified by P8
+  (cheap at this scale) and *required* by P7: answering "which hosts use this key" in one screen
+  needs the join computed once, not stitched together in the CLI layer from several independent
+  repository calls.
+- **Writes are file-scoped** — one aggregate boundary per file being changed. The file is hasp's
+  actual unit of atomic replacement ([T15](#t15)) and of backup ([T8](#t8)); two files changed in
+  one `Plan` are two independent `Change` entries, each independently backed up. There is no
+  cross-file transaction, because POSIX offers no way to rename two files atomically as one
+  operation — stated plainly here rather than implied away.
+
+### Rationale
+
+Every deviation above traces to a specific principle already in force (D12, P8, P7) rather than
+to "DDD is inconvenient here" — the whole discipline of this project is that an argument gets
+settled by citation, and an architectural deviation is exactly the kind of claim that needs one.
+
+### Consequence
+
+- A use case touching two files (for example, `edit host --group` moving a stanza between host
+  groups) produces a `Plan` with two `Change` entries and **no atomicity guarantee stronger than
+  "each individual file write is atomic"** ([T15](#t15)). If the second write fails after the
+  first succeeds, the result is a `check`-detectable partial application — the stanza present in
+  both groups, or in neither — and `check` must carry a finding for exactly this shape. This is
+  documented here so a future contributor does not assume `Plan` grants all-or-nothing atomicity
+  across files when it only grants it per file.
+- A guard test enforces `internal/domain` has zero third-party imports — the domain layer is pure
+  Go standard library plus its own types, checkable mechanically (`go list -deps` on the package,
+  asserted in CI-equivalent tooling), not merely a convention someone has to remember.
+
+---
+
+<a id="t14"></a>
+## T14 — Output contract: 4 exit codes, a versioned JSON envelope, silent stdout
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[`design.md` §6.3](design.md#63-cross-cutting-requirements) requires *"every read has a
+machine-readable form"* — `design.md` does not use the word "contract," but this is what a
+requirement worded that way means in practice: `hasp list key --json | jq` must keep working
+release over release, not merely work once. `check` ([§6.2](design.md#62-the-verbs)) is
+explicitly advisory and must be usable in a pipeline, which means "found issues" and "failed to
+run" have to be distinguishable by exit code alone.
+
+### Decision
+
+Four exit codes, and only four:
+
+| Code | Meaning | Who can return it |
+| --- | --- | --- |
+| `0` | Clean — no findings, or a write completed | Any command |
+| `1` | Findings — `check` surfaced issues; not a hasp failure | `check`, exclusively |
+| `2` | Usage — bad flags, bad arguments, or an unresolvable non-interactive precondition ([T6](#t6)'s fail-closed case) | Any command |
+| `3` | Error — hasp could not complete the requested operation (I/O failure, a fail-closed guard tripped mid-write, backup failed) | Any command |
+
+Cobra itself never calls `os.Exit`; `cmd/hasp`'s `main()` maps the error returned from
+`rootCmd.Execute()` to one of the four codes via a small sentinel-error taxonomy
+(`errors.Is(err, app.ErrFindings)`, `errors.Is(err, app.ErrUsage)`, else `3`).
+
+`log/slog` writes to stderr, **off by default**, enabled only by `--verbose` — stdout carries
+data and nothing else, which is what makes the pipeline promise literal rather than aspirational.
+
+JSON output is wrapped in a versioned envelope:
+
+```go
+type Envelope struct {
+    Version  int             `json:"version"`  // envelope schema version — independent of hasp's own release version
+    Kind     string          `json:"kind"`      // "key.list", "host.show", "check.report", ...
+    Data     json.RawMessage `json:"data"`
+    Warnings []string        `json:"warnings,omitempty"`
+}
+```
+
+### Rationale
+
+P7 (*"answer the question in one screen"*) governs the human renderer; §6.3's machine-readable-form
+requirement governs the JSON one — the two are explicitly allowed to diverge in **form** but must
+never diverge in **content**, which [T13](#t13)'s single read-model aggregate guarantees by
+construction: there is exactly one code path that computes an answer, and two that display it.
+
+A versioned envelope from the first release, not retrofitted after the first breaking change, is
+what makes the machine-readable form a contract in practice rather than an accident of the
+current implementation — a consumer piping `hasp ... --json` through `jq` can branch on
+`.version` whenever it needs to, rather than only after hasp breaks it without warning.
+
+### Consequence
+
+- `check` is the **only** use case permitted to resolve to exit code `1` — no other verb ever
+  does, which keeps the meaning of "1" stable across the entire surface: a scripted
+  `if hasp check ...; then` reads unambiguously, forever.
+- `--verbose`'s diagnostic stream and `--json`'s data stream can never collide, because they are
+  different file descriptors by construction, not by convention that a future change could erode.
+
+---
+
+<a id="t15"></a>
+## T15 — Safety mechanics: atomic write, symlink-through, mode preservation, D4's move rule
+
+**Date:** 2026-08-28 · **Status:** Accepted — refined by [T20](#t20), [T22](#t22)
+
+### Context
+
+P4 (every write reversible) and [D4](decision-log.md#d4) (*"hasp has no operation that can
+destroy an irreplaceable secret... this is canon"*) both need a concrete write-time mechanism, not
+just a policy. Four distinct sharp edges live here, and each has a specific way to get it wrong.
+
+### Decision
+
+**1. Atomic write.** Write to a temporary file in the **same directory** as the target (so the
+final replace is same-filesystem and therefore eligible to be atomic on POSIX), `fsync` the temp
+file, then `os.Rename` (`func Rename(oldpath, newpath string) error` — Go documents only that
+*"if newpath already exists and is not a directory, Rename replaces it"*; the atomicity comes
+from POSIX `rename(2)` on the platforms hasp targets, not from Go, which notes rename is *"not an
+atomic operation"* on non-Unix platforms) the temp file onto the target, then `fsync` the
+containing directory. The directory `fsync` is easy to skip and looks correct until a crash —
+without it, the rename itself is not guaranteed durable on Linux.
+
+**2. A symlinked `~/.ssh/config` is resolved and written through — the symlink itself is never
+replaced.** Detected via `os.Lstat` distinguishing a symlink from a regular file, with
+`filepath.EvalSymlinks` resolving the real target; the atomic-write dance in point 1 runs against
+the **resolved** target's directory, not `~/.ssh`. Named explicitly because dotfiles repositories
+make this layout common (`~/.ssh/config -> ~/dotfiles/ssh/config`), and a tool that transparently
+removes and recreates the symlink as a plain file silently converts the user's dotfiles-managed
+config into an orphaned copy — destructive by omission, not by design, which is exactly the class
+of bug D4's spirit exists to prevent even though D4's letter is about key material specifically.
+
+**3. Mode and ownership are preserved across a write.** `os.Stat` the original file before
+writing, then apply the same mode (and ownership, where the process has permission to) to the
+temp file before the rename in point 1 — so a `0600` config file does not silently become
+umask-determined (commonly `0644`) after hasp's first touch.
+
+**4. D4's move rule for key material: copy → verify → unlink source. Never unlink first.**
+Verification is fingerprint re-derivation and comparison when the key is fingerprint-derivable
+([T1](#t1)/[T12](#t12)); a byte-for-byte comparison for the undecidable case. This is the
+mechanism behind `edit key --profile`, a plain relocation with no alias required — no failure
+path between the copy and the verified unlink leaves zero readable copies of the secret.
+
+**Refined for `adopt`, which must also leave an alias behind — see [T20](#t20).** `new key` and
+`edit key --replace-material` are covered by the same atomic-write discipline (point 1) for a
+different reason — they write to a path that may already hold a key — and are refined
+in [T22](#t22).
+
+### Rationale
+
+Each point traces to a named principle: 1 and 3 to P4 (a reversible write is only meaningful if
+the write itself cannot corrupt the file mid-flight, or silently loosen its permissions); 2 to P6
+(nothing hasp does should require the user to have anticipated hasp's own implementation detail —
+a dotfiles-managed symlink is the user's own arrangement, and hasp is a guest in it); 4 is D4
+applied literally, at the level of the exact sequence of syscalls, not merely as a policy
+statement.
+
+### Consequence
+
+- The guard test for point 4 injects a write failure partway through `adopt` (for example, a
+  read-only destination directory) and asserts the **original** file still exists afterward — a
+  test that fails loudly if a future refactor ever reorders copy/verify/unlink.
+- The guard test for point 2 constructs a symlinked `~/.ssh/config` fixture and asserts, after a
+  write, that the symlink's **target inode** is unchanged — not merely that the file's content is
+  correct. Content-correct-but-inode-replaced is exactly the silent-breakage failure mode this
+  entry exists to catch, and a content-only assertion would not catch it.
+- These four mechanics are the concrete implementation behind every `RequiresBackup() == true`
+  `Change.Apply` in [T4](#t4)'s `Applier` — this entry is where "how" lives; T4 is where "when."
+
+---
+
+<a id="t16"></a>
+## T16 — Implicit default-identity probing is a distinct, labelled binding kind
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T5](#t5)
+
+### Context
+
+[T5](#t5) derives a host's profile membership from the keys its `IdentityFile` lines resolve to.
+That rule is correct and stays — but as first written it modelled only **explicit** `IdentityFile`
+directives, and `ssh` does not require one. `ssh_config(5)` states the fallback plainly: *"The
+default is ~/.ssh/id_rsa, ~/.ssh/id_ecdsa, ~/.ssh/id_ecdsa_sk, ~/.ssh/id_ed25519,
+~/.ssh/id_ed25519_sk and ~/.ssh/id_mldsa44_ed25519."*
+
+A stanza with no `IdentityFile` is not an exotic case; it is the ordinary shape of a hand-written
+config, which is precisely the artifact [J1](design.md#7-journeys) points hasp at. The omission
+was self-contradictory as well as wrong: `adopt`'s own rationale ([D13](decision-log.md#d13))
+turns on leaving a top-level alias *because* `ssh` probes those names, so the write path already
+depended on a behaviour the read path did not model.
+
+### Decision
+
+Model **two binding kinds**, carried as `Binding.Kind` through `internal/domain` and into the JSON
+envelope: `Explicit` (an `IdentityFile` directive resolved per §5) and `ImplicitDefault` (a member
+of the default set above that exists in the key directory).
+
+Exactly one thing suppresses the implicit set: **`IdentityFile none`**. `IdentitiesOnly yes` does
+**not** — it constrains which identities an *agent* may offer beyond *"the configured
+authentication identity and certificate files (either the default files, or those explicitly
+configured...)"*, and the default files are named there as still in scope.
+
+### Rationale
+
+Merging the two kinds into one undifferentiated set would answer [J8](design.md#7-journeys)
+correctly but report it dishonestly — "you wrote this binding" and "`ssh` would fall back to this
+binding" are different facts about the machine, and P1's whole claim is that hasp reports what is
+actually there. Keeping them labelled costs one enum field and preserves the distinction for any
+consumer that needs it.
+
+Not modelling implicit bindings at all was the alternative, and it fails twice over: `check`'s
+"host bound to no key" finding would fire on nearly every stanza in an uncurated `~/.ssh` —
+turning J1's first impression into a false-positive flood — and J8 would silently omit hosts that
+genuinely depend on a departing profile, which is the one journey where an omission is expensive.
+
+### Consequence
+
+- `check`'s **"host bound to no key"** finding fires only when *neither* kind resolves to
+  anything. A stanza relying on default probing is correctly reported as bound.
+- A key at the top level of the key directory can now confer profile membership on a host without
+  any directive naming it. This is correct — it is what `ssh` actually does — but it means
+  `adopt`'s alias symlink is load-bearing for *reporting*, not only for connectivity.
+- The default list is version-sensitive: OpenSSH has both added (`id_mldsa44_ed25519`) and removed
+  (`id_dsa`) entries over time. It is recorded here as read from `ssh_config(5)` on the
+  development host and must be re-checked against the man page rather than from memory.
+
+---
+
+<a id="t17"></a>
+## T17 — `Directive` preserves its exact separator and spacing; quote-aware tokenizing
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T2](#t2)
+
+### Context
+
+[T2](#t2) commits to a lossless CST whose contract is `Render(Parse(b)) == b`. The first
+`Directive` sketch was `{ Keyword string; Args []string; Trivia []byte }` — which cannot satisfy
+that contract. `ssh_config(5)`: *"Configuration directives are separated from their values by
+whitespace or exactly one '=' character (which may be surrounded by whitespace)."* So `Port 22`,
+`Port = 22` and `Port=22` are semantically identical and byte-different, and a node holding only
+`Keyword` and `Args` has nowhere to record which was written.
+
+Because recognized keywords parse into `Directive` even inside ordinary hand-written stanzas —
+not only inside hasp's own regions — reconstruction would normalize `Port=22` to `Port 22` and
+break [P2](design.md#4-principles) on the first real config using that style. A guarantee that
+fails on a legal spelling of the most common directive form is not a guarantee.
+
+### Decision
+
+`Directive` retains the raw bytes of everything between and around its tokens: the
+keyword-to-value separator verbatim, inter-argument spacing, leading indentation, and any trailing
+comment. `Keyword` and `Args` are **derived views** for hasp's own logic; rendering emits the
+original bytes unless the directive sits inside a hasp-owned region, where [D7](decision-log.md#d7)
+licenses rigid regeneration.
+
+Tokenizing is **quote-aware**. `ssh_config(5)`: *"'#' outside of a quoted string may be used to
+add a comment to the end of a line"* — so a `#` inside a double-quoted value is a value byte, not
+a comment boundary, and `Values may optionally be enclosed in double quotes (")`.
+
+### Rationale
+
+The alternative — keep byte-exact `Line` nodes everywhere outside a marked region and parse into
+`Directive` only inside regions hasp owns — also satisfies P2, and is simpler. It was rejected
+because hasp must *read* semantics from directives it does not own: [T16](#t16)'s binding
+resolution reads `IdentityFile` out of stanzas hasp will never write. Parsing everywhere and
+rendering from retained bytes gives both properties at once; parsing only inside regions would
+force a second, parallel read-only parser for the outside case.
+
+### Consequence
+
+- `Render` is not "reconstruct from fields" but "emit retained bytes, except where regenerating."
+  A future contributor who adds a field to `Directive` and renders from it reintroduces exactly
+  the bug this entry exists to prevent — the fuzz test in §12 is what catches them.
+- Quote-awareness means the comment scanner is a small state machine, not a `strings.IndexByte`.
+  A `ProxyCommand` value containing `#` inside quotes is the fixture that proves it.
+
+---
+
+<a id="t18"></a>
+## T18 — CST marker defects are represented as data, not parse errors
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T2](#t2)
+
+### Context
+
+[T2](#t2) states that parsing never fails — every byte becomes some node, which is what makes
+`Render(Parse(b)) == b` total. §11's safety table then posits *"a marker or region is malformed"*
+as a fail-closed guard for writes. Both cannot be true as originally written: if parsing never
+errors, nothing carries the signal the guard keys off.
+
+### Decision
+
+Marker defects are **data on the parsed file**, not errors from parsing. `File.MarkerDefects
+[]MarkerDefect` is populated during the parse, enumerating the detectable conditions: an
+unmatched begin, an unmatched end, a duplicate begin for the same region id, an end preceding its
+begin, and a marker nested inside a `HostBlock`.
+
+A non-empty `MarkerDefects` makes writes **to that file** fail closed. Reads are unaffected and
+report what parsed, per §11's fail-open rule for reads and [P5](design.md#4-principles)'s
+guarantee that reads are always safe.
+
+### Rationale
+
+Representing defects as data preserves T2's totality — the contract that a file hasp does not
+understand still round-trips is what [P2](design.md#4-principles) rests on, and an error return
+would break it for exactly the damaged files most in need of being left alone.
+
+It also puts the two stances in the right places. A damaged marker means hasp cannot know where
+its own territory ends, so writing would risk destroying human bytes — fail closed. But refusing
+to *report* on the file would break [J1](design.md#7-journeys), whose promise is that surveying
+any machine works. The asymmetry is deliberate and follows the shape §11 already uses everywhere.
+
+### Consequence
+
+- `check` gains a finding for each `MarkerDefect` kind — a damaged region is exactly the sort of
+  untidiness [J5](design.md#7-journeys) exists to surface, and the user repairs it with an editor
+  ([P6](design.md#4-principles)), since hasp will not write to that file until it is sound.
+- A hand-mangled region is recoverable rather than fatal: because hasp owns the region wholesale
+  ([D7](decision-log.md#d7)), the repair is to rewrite it from scratch once the markers are
+  balanced again.
+
+---
+
+<a id="t19"></a>
+## T19 — Alias location is the mechanism for cross-profile key membership — D2's write path
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[D2](decision-log.md#d2) states a key may belong to more than one profile, and calls a key shared
+between `personal` and `work.foobarco` *"a real situation, not a modelling error."*
+[D13](decision-log.md#d13) then made a profile a **directory** and membership a fact of location.
+A file lives in exactly one directory. Nothing in the design says how a user is supposed to
+*create* the state D2 declares legitimate.
+
+`--add-alias` existed, but framed purely as a naming convenience for tools that hardcode `id_rsa`
+([D5](decision-log.md#d5), §5.2) — never as the mechanism that realizes D2.
+
+### Decision
+
+**An alias symlink placed inside a second profile's directory is what makes a key a member of
+that profile.** Membership derivation unions over **all** of a key's locations — every path at
+which its material is reachable, canonical or symlinked — not only the canonical one.
+
+`edit key --add-alias=<path>` therefore does double duty: it is both D5's naming escape hatch and
+D2's write path, depending on where the alias is placed. §5 and §9 say so explicitly rather than
+leaving the user to infer it.
+
+### Rationale
+
+This needed no new mechanism, which is the point. [P9](design.md#4-principles) says taxonomy rides
+on structures that already exist, and the symlink was already ratified as the materialization of a
+name (D5). Reading membership from *all* locations rather than one is a one-line change to the
+derivation and keeps [D12](decision-log.md#d12) literally true — nothing is declared, and the
+second membership is as visible to `ls` as the first.
+
+The alternative was a metadata field recording extra profiles, which [D7](decision-log.md#d7)
+would have permitted. It was rejected on P9's ladder: the filesystem can carry this fact, so the
+metadata channel must not.
+
+### Consequence
+
+- A key's `Locations` is a set, and its `Profiles` is the union over that set. Any code path that
+  reasons from "the" location of a key is wrong by construction.
+- `release` on one profile must not remove material still reachable from another. The safe form
+  is removing the alias in the released profile, never the canonical file —
+  [D4](decision-log.md#d4) is unaffected because no operation removes the last copy.
+- [J8](design.md#7-journeys) inherits D2's hard case exactly as [D2](decision-log.md#d2) predicted:
+  offboarding `work.foobarco` must report a key also reachable from `personal` as *kept, not
+  revoked*, and `check` must be able to tell the two apart.
+
+---
+
+<a id="t20"></a>
+## T20 — Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+
+### Context
+
+[T13](#t13) accepts that a `Plan` touching several files has no cross-file atomicity, because
+POSIX offers no way to rename two files as one operation, and routes the resulting inconsistency
+into a `check` finding. That is honest, but incomplete: `Applier` walks `Changes` in slice order
+and nothing said how the slice should be **built**.
+
+Ordering is not cosmetic here. `adopt key` naturally plans `[MoveFile, CreateSymlink]`. If the
+move succeeds and the symlink does not, the key sits in its profile directory with no top-level
+alias — and `ssh` stops finding it. That is [D13](decision-log.md#d13)'s stated consequence
+arriving as a silent failure: the user's next push fails with nothing pointing at hasp.
+
+### Decision
+
+**A `Plan`'s `Changes` are ordered so that any prefix of them leaves the machine in a working
+state.** The least recoverable change goes last.
+
+Applied to `adopt key`, this inverts the natural order to `[CreateSymlink, MoveFile]`: the symlink
+is created first, pointing at a destination that does not yet exist. A dangling symlink is inert —
+`ssh` simply does not find it, which is the pre-adopt status quo — and the subsequent move makes
+it valid.
+
+### Rationale
+
+This converts an unavoidable weakness into a bounded one. Cross-file atomicity is not available
+(T13), so the remaining lever is *which* half-applied states are reachable. Ordering by
+recoverability means every reachable partial state is either the status quo or an improvement on
+it, and the worst outcome is a stray artifact `check` can name rather than a silently broken
+authentication path.
+
+It also composes with [P4](design.md#4-principles) rather than duplicating it. Backups make a
+partial application *recoverable*; ordering makes it *non-damaging in the first place*. The second
+is worth more, because it does not require the user to notice anything went wrong.
+
+### Consequence
+
+- Ordering is a property of each use case's `Plan` construction, and it needs a test per
+  write verb: inject a failure at each index and assert the machine still works.
+  [T15](#t15)'s injected-failure guard test for `adopt` is the template.
+- A dangling symlink is now a legitimate transient state, so `check`'s dangling-alias finding must
+  distinguish "left over from a failed `adopt`" from "the target was deleted" — or at minimum
+  report it in terms that make the remedy obvious.
+- Any future `Change` kind arrives with an ordering obligation, not just an `Apply`. The rule is
+  stated in §4 so it is visible where plans are built, not only here.
+
+---
+
+<a id="t21"></a>
+## T21 — `show profile` aggregates descendants by default, `--no-recurse` escape
+
+**Date:** 2026-08-28 · **Status:** Accepted
+
+### Context
+
+[D1](decision-log.md#d1) makes profile names hierarchical paths — `work.foobarco` is a profile and
+`work` is its parent and also a profile — and explicitly retires "profile group" in favour of "a
+profile with children." `show profile` originally listed child profiles as one more field
+alongside keys and hosts, which reads as enumeration rather than aggregation.
+
+That is too weak for [J8](design.md#7-journeys), whose whole framing is *"show me everything
+scoped to that profile — every key, every host that depends on it — so I know what to revoke and
+what will break."* Offboarding `work` while `work.foobarco` and `work.acme` hold the actual keys
+would answer with an almost-empty screen, and the user would have to walk each child and union the
+results by hand — precisely what [P7](design.md#4-principles) says the tool exists to prevent.
+
+### Decision
+
+`show profile <name>` **aggregates the full subtree by default**: keys and hosts from the named
+profile and every descendant, with each row attributed to the profile it actually came from.
+`--no-recurse` restricts the view to the named profile alone.
+
+### Rationale
+
+The default follows P7 directly. The question a human asks about `work` on their last day is
+about everything under `work`, and a tool that answers a narrower question than the one asked has
+failed at comprehension even if every fact it prints is true.
+
+Attribution-per-row is what keeps this honest under [D2](decision-log.md#d2) and
+[T19](#t19): a key reachable from both `work.foobarco` and `personal` appears in the `work` subtree
+*and* is visibly also `personal`, which is the distinction that decides whether it gets revoked.
+Aggregating without attribution would produce a correct list that supports an incorrect decision.
+
+### Consequence
+
+- `--no-recurse` exists because "what is *directly* in this profile" is a real question when
+  deciding whether a parent is a profile in its own right or merely a container
+  ([D13](decision-log.md#d13)'s `.hasp` distinction).
+- The JSON envelope carries the owning profile on every aggregated row, so a machine consumer can
+  regroup without re-querying.
+- A container directory with no `.hasp` marker is not a profile and cannot be the *subject* of
+  `show profile`, but its descendants still aggregate under the nearest marked ancestor.
+
+---
+
+<a id="t22"></a>
+## T22 — `WriteKeyFile` fails closed on an existing target; a `Remove` change kind
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+
+### Context
+
+Two gaps in [T4](#t4)'s `Change` set, both found by verification against
+[D4](decision-log.md#d4).
+
+First: `WriteKeyFile` is the sole operation that authors private key bytes, and [T15](#t15)'s
+atomic-write mechanic ends in `os.Rename`, which Go documents as: *"If newpath already exists
+and is not a directory, Rename replaces it."*
+No pre-write check said the target must be empty. `hasp new key --name id_ed25519_foobarco` against
+a path that already holds a key — a re-run, a typo, a reused name — would silently replace an
+irreplaceable secret. D4 is canon: *"hasp has no operation that can destroy an irreplaceable
+secret."* An unguarded rename is one.
+
+Second: `release profile` must remove a `.hasp` marker, and no `Change` kind could delete
+anything.
+
+### Decision
+
+**`WriteKeyFile` fails closed if its target path exists.** Refused before any byte is written,
+with the existing path named in the error. There is no `--force`: an overwrite flag on the one
+operation that authors secrets is exactly the affordance D4 forbids, and the user who genuinely
+wants the path free has `rm`, which is their own act with their own tools (D4's own reasoning).
+
+**A `Remove{ Path, Reason }` change kind** is added, restricted to artifacts hasp authored — a
+`.hasp` marker, an alias symlink. It never applies to a key file. Per
+[P4](design.md#4-principles) it backs up the removed file first, and per
+[D15](decision-log.md#d15) `release`'s preview shows a marker's contents before removal, so a
+marker the user has written notes into is never a silent loss.
+
+### Rationale
+
+Failing closed costs a user who reuses a name one clear error message. Failing open costs a user
+one key, permanently, with no backup to restore from — `WriteKeyFile` is a *create*, so there is
+no prior version in the backup store to fall back on. The asymmetry is total and the choice is
+not close.
+
+`Remove` is deliberately narrow. Giving `Change` a general delete primitive would put the
+mechanism for destroying key material into the codebase and rely on call sites never reaching for
+it — the opposite of how [T1](#t1)'s no-decrypt boundary is enforced. Restricting it to
+hasp-authored artifacts keeps D4 structural rather than disciplinary.
+
+### Consequence
+
+- §11's failure-stance table carries the row explicitly, and §9's `new` grid cell states the
+  refusal, so an implementer meets it in both places.
+- `edit key --replace-material` deliberately does **not** route through `WriteKeyFile` — replacing
+  material means the target exists by definition. It uses [T15](#t15)'s copy → verify → unlink
+  move rule against the incoming file, with the outgoing material backed up first.
+- `Remove`'s restriction is a type-level obligation, not a comment: the constructor takes the
+  artifact kind, and no code path constructs one for a key file.
+
+---
+
+<a id="t23"></a>
+## T23 — DSA is in scope for the read path; fixtures are PEM-only, hand-constructed
+
+**Date:** 2026-08-28 · **Status:** Accepted — extends [T1](#t1)
+
+### Context
+
+`KeyFormat` carried a `FormatDSA` arm while §12's fixture matrix named only ed25519, RSA and
+ECDSA — an untested enum value, which is either dead code or an untested real path and should not
+ship as neither.
+
+### Decision
+
+**DSA is in scope for reading, and never for generating.** `x/crypto/ssh`'s `ParseRawPrivateKey`
+handles a `DSA PRIVATE KEY` PEM block, so hasp can report such a key's facts; `new key` will
+never produce one.
+
+DSA fixtures are **PEM-only and hand-constructed**, because current OpenSSH will not generate them
+— DSA support has been disabled and then removed from `ssh-keygen`. The fixtures are built once,
+from Go, and committed.
+
+### Rationale
+
+[design.md §2](design.md#2-the-problem) describes the actual artifact this tool exists for: a
+decade of accumulated keys, *"a mix of RSA and Ed25519, PEM and OpenSSH formats"*, seven of
+thirteen in PEM. A tool whose premise is telling the truth about an old `~/.ssh` cannot decline to
+read the oldest thing it might find. Reporting a DSA key accurately costs one enum arm and four
+fixtures.
+
+Generating one is a different question and the answer is no — hasp should not mint keys with an
+algorithm the ecosystem has removed.
+
+### Consequence
+
+- The fixture builder is Go, not a shell script calling `ssh-keygen`, for DSA specifically. This
+  is worth noting because every other fixture *can* be produced by `ssh-keygen`, and a future
+  contributor regenerating the corpus from a shell script will silently drop the DSA cases.
+- A DSA key is reportable but unmanageable in one respect: it can be adopted, aliased and moved
+  like any other key, since none of those operations touch its bytes ([D14](decision-log.md#d14)).
+
+---
+
+<a id="t24"></a>
+## T24 — Line-terminator handling in the CST: preserved as trivia, excluded from `Args`
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T2](#t2)
+
+### Context
+
+[T2](#t2)'s contract is `Render(Parse(b)) == b`, fuzzed. That proves byte fidelity and nothing
+else — and byte fidelity is not the property that breaks first.
+
+A CRLF-terminated config parsed by a tokenizer that splits on space and tab would carry the
+trailing `\r` into the last argument. `IdentityFile ~/.ssh/work/id_ed25519\r` renders back
+byte-identically — the fuzz test passes — while `filepath.EvalSymlinks` fails on the path, and
+[T16](#t16)'s binding resolution reports a dangling target for a key that is sitting right there.
+A silent semantic corruption that passes the stated correctness gate.
+
+### Decision
+
+The line terminator is **trivia on the node** — `\n`, `\r\n`, or absent at EOF — preserved for
+rendering and **excluded from `Args`**. §12 adds a **semantic** assertion alongside the byte
+identity one: parsing a CRLF fixture must yield `Args` identical to parsing its LF twin.
+
+Shape fixtures are committed for the cases that break naive tokenizers: CRLF throughout, mixed
+terminators in one file, no trailing newline at EOF, and a zero-byte file.
+
+### Rationale
+
+The general lesson is worth stating once, here, because it applies to every future CST change: a
+round-trip test proves you did not *lose* information, never that you *interpreted* it correctly.
+The two properties need two tests. Dotfiles repositories shared across machines make CRLF a
+realistic input rather than a hypothetical, and this document already acknowledges that workflow
+in [T15](#t15)'s symlinked-config case.
+
+### Consequence
+
+- A zero-byte config is a valid parse producing an empty file with no nodes — not an error, and
+  not a missing file. `hasp` must render an empty region into it correctly on first write.
+- Rendering never *normalizes* terminators, including inside hasp-owned regions: a region written
+  into a CRLF file matches the file it lives in. Rigid regeneration ([D7](decision-log.md#d7))
+  governs a region's content, not the physical line endings of the file carrying it.
+
+---
+
+<a id="t25"></a>
+## T25 — `MetadataLine` is its own CST node type for `#:hasp` lines
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T2](#t2), [T10](#t10)
+
+### Context
+
+[T10](#t10) defines the metadata channel as `#:hasp <key> = <toml-value>` comment lines inside a
+hasp-owned region. The CST had no node for them, which implied reading them by re-scanning raw
+`Line` bytes for a string prefix. That is workable for reading and wrong for writing: rigid
+regeneration ([D7](decision-log.md#d7)) rebuilds a region from structure, and a metadata line that
+exists only as an unrecognized `Line` has no place to be *put back* — no way to say which
+`HostBlock` it belongs under, or that it must precede the directives it annotates.
+
+### Decision
+
+`MetadataLine{ Key string; Value string; Trivia []byte }` is a node type, recognized by the
+`#:hasp` sentinel (including its trailing space), valid **only inside a hasp-owned region**. Outside one it is an ordinary
+comment `Line` and is never interpreted — the sentinel confers no meaning on territory hasp does
+not own.
+
+### Rationale
+
+Giving it a node type now, while [T10](#t10)'s keyset is still empty, costs one small type and
+removes the need to retrofit the CST at the moment a real field first lands — which is exactly
+when the pressure to cut a corner will be highest.
+
+The inside-a-region-only restriction is [P2](design.md#4-principles) applied literally: a `#:hasp`
+line a human typed into their own config is their comment, and hasp reading it as data would be
+hasp claiming territory by string match. The marker defines ownership
+([D7](decision-log.md#d7)); the sentinel only labels a line within it.
+
+### Consequence
+
+- [T10](#t10)'s "the keyset is empty through M3" is unchanged. This entry gives the mechanism a
+  place to live; it does not put anything in it, and the P9 bar for adding a field stands.
+- Round-tripping is unaffected: a `MetadataLine` renders from its retained bytes like every other
+  node ([T17](#t17)), so the fuzz contract holds whether or not the sentinel is present.
+
+---
+
+<a id="t26"></a>
+## T26 — `WriteRegion` previews carry a real diff; key material is never diffed
+
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4)
+
+### Context
+
+[T4](#t4) gave `Change` a `Describe() string` returning *"one-line preview text."* That cannot
+serve [D6](decision-log.md#d6) for the change kind that most needs it. `WriteRegion` regenerates
+a whole region body — reordered `Include` lines, host stanzas, comments — and a one-line summary
+("rewrite host group `personal.sshconfig`") tells the user nothing about whether a stanza moved or
+vanished.
+
+[P5](design.md#4-principles) requires an operation to *"describe exactly what it would change"*,
+and calls previewability a constraint on how change is modelled rather than a flag. A `Change`
+that carries only the new `Body`, with no access to the current bytes, structurally cannot
+produce that description.
+
+### Decision
+
+`Change` returns a `Preview{ Summary string; Diff []DiffLine }`. `WriteRegion` computes a real
+line diff of the region's current bytes against its regenerated body. Kinds with nothing to
+compare — `MoveFile`, `CreateSymlink`, `Remove` — return `Diff == nil` and render as a summary
+line only.
+
+**`WriteKeyFile` returns `Diff == nil` unconditionally**, even though it has bytes and they are
+new. Private key material is never rendered, to any renderer, in any mode.
+
+### Rationale
+
+D6 buys its safety from the user *reading* the preview. A preview that summarizes rather than
+shows moves the burden of noticing a mistake back onto the person with the least information at
+the moment they confirm — the same reasoning D6 itself used to reject opt-in previewing.
+
+The `WriteKeyFile` exception is not a gap in that argument but an application of a stronger rule.
+[P3](design.md#4-principles) keeps hasp out of custody of secrets; printing a freshly generated
+private key to a terminal, a pipe, or a JSON consumer would put it into scrollback, logs, and
+shell history in one step. The user does not need to see the bytes to judge the operation — the
+summary names the path, algorithm and passphrase mode, which is the whole decision.
+
+### Consequence
+
+- `Diff` is a structured value, not preformatted text, so the human renderer can colorize it and
+  the JSON renderer can marshal it — the same `Preview` serves both, and §10's envelope omits
+  `diff` entirely rather than emitting an empty array when there is nothing to show.
+- Computing the diff means `Plan()` reads the target file's current bytes. Reads are always safe
+  ([P5](design.md#4-principles)), so this costs nothing in guarantees — but it does mean a `Plan`
+  is computed against a snapshot, and a file changed between preview and confirm is a race the
+  `Applier` must detect rather than assume away.
+- A guard test asserts no renderer path can reach `WriteKeyFile`'s contents: the field is not
+  exported into `Preview` at all, so the boundary is enforced by absence, as in [T1](#t1).
