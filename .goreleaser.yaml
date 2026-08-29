@@ -1,0 +1,35 @@
+version: 2
+
+# M0 scope only (docs/roadmap.md §2, T9): builds + archives, proving CGO_ENABLED=0 holds from
+# the first commit. Not releasing anything yet.
+#
+# Deferred sections, deliberately not configured here — each needs credentials/infra that don't
+# exist yet (T9):
+#   ko                 — container image (needs a registry to push to)
+#   nfpms              — .deb/.rpm/.apk packaging
+#   aur                — Arch User Repository publishing (needs an AUR SSH key)
+#   homebrew_casks     — macOS distribution (needs a tap repo)
+#   sboms              — supply-chain attestation
+#   signs              — artifact signing (needs a signing key)
+
+builds:
+  - id: hasp
+    main: ./cmd/hasp
+    binary: hasp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/boweeb/hasp/internal/cli.version={{.Version}}
+      - -X github.com/boweeb/hasp/internal/cli.commit={{.Commit}}
+      - -X github.com/boweeb/hasp/internal/cli.date={{.Date}}
+
+archives:
+  - id: hasp
+    formats: [tar.gz]

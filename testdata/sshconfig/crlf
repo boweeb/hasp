@@ -1,0 +1,9 @@
+Host work
+    HostName work.example.com
+    User jesse
+    IdentityFile ~/.ssh/work/id_ed25519
+
+Host personal
+    HostName personal.example.com
+    User jesse
+    IdentityFile ~/.ssh/personal/id_ed25519
