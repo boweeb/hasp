@@ -13,7 +13,7 @@ func Parse(b []byte) *File {
 	for _, ln := range splitLines(b) {
 		nodes = append(nodes, classifyLine(ln))
 	}
-	return &File{Nodes: nodes}
+	return &File{Nodes: groupHostBlocks(nodes)}
 }
 
 // physicalLine is one line's content and its terminator, before classification.

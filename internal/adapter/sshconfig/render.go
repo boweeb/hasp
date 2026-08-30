@@ -20,6 +20,8 @@ func renderNode(n Node) []byte {
 		return v.render()
 	case *Directive:
 		return v.render()
+	case *HostBlock:
+		return v.render()
 	default:
 		return nil
 	}
