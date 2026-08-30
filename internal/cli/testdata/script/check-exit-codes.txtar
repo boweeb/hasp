@@ -1,0 +1,39 @@
+mkdir $WORK/home/.ssh
+cp key.pem $WORK/home/.ssh/id_ed25519
+cp key.pem.pub $WORK/home/.ssh/id_ed25519.pub
+mkdir $WORK/home/.ssh/work
+cp marker $WORK/home/.ssh/work/.hasp
+mv $WORK/home/.ssh/id_ed25519 $WORK/home/.ssh/work/id_ed25519
+mv $WORK/home/.ssh/id_ed25519.pub $WORK/home/.ssh/work/id_ed25519.pub
+
+# A key inside a managed profile, with its .pub half present: clean, no findings, exit 0.
+exec hasp check --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+exec hasp check key --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+exec hasp check host --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+exec hasp check profile --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+# An empty, marked profile is the same-shaped machine minus the key: exit 1, empty-profile-dir.
+rm $WORK/home/.ssh/work/id_ed25519
+rm $WORK/home/.ssh/work/id_ed25519.pub
+! exec hasp check --key-dir $WORK/home/.ssh
+stdout 'empty-profile-dir'
+
+-- key.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+-- key.pem.pub --
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDf5klcFk4FdaXeCE1mG/FxJVRWcGw/GaQROHPOHsxjB
+-- marker --
+# profile marker

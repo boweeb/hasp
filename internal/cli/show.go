@@ -10,5 +10,6 @@ func newShowCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newShowKeyCmd())
 	cmd.AddCommand(newShowHostCmd())
+	cmd.AddCommand(newShowProfileCmd())
 	return cmd
 }

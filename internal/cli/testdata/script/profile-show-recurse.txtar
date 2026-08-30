@@ -1,0 +1,72 @@
+mkdir $WORK/home/.ssh/work/foobarco
+mkdir $WORK/home/.ssh/work/acme
+cp foobarco-key $WORK/home/.ssh/work/foobarco/id_ed25519
+cp acme-key $WORK/home/.ssh/work/acme/id_rsa
+cp marker $WORK/home/.ssh/work/foobarco/.hasp
+cp marker $WORK/home/.ssh/work/acme/.hasp
+
+exec hasp show profile work.foobarco --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+! stdout 'id_rsa'
+
+# work/ itself carries no .hasp marker — it is a container, not a profile (T21) — so it cannot
+# be the subject of show profile even though its children can be reached by recursion from
+# elsewhere.
+! exec hasp show profile work --key-dir $WORK/home/.ssh
+stderr 'not found'
+
+exec hasp list profile --key-dir $WORK/home/.ssh
+stdout 'work\s+false'
+stdout 'work\.foobarco\s+true'
+stdout 'work\.acme\s+true'
+
+-- foobarco-key --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+-- acme-key --
+-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+-- marker --
+# profile marker

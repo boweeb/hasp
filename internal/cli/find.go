@@ -10,5 +10,6 @@ func newFindCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newFindKeyCmd())
 	cmd.AddCommand(newFindHostCmd())
+	cmd.AddCommand(newFindProfileCmd())
 	return cmd
 }

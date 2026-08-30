@@ -11,5 +11,6 @@ func newListCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newListKeyCmd())
 	cmd.AddCommand(newListHostCmd())
+	cmd.AddCommand(newListProfileCmd())
 	return cmd
 }
