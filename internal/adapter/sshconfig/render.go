@@ -22,6 +22,10 @@ func renderNode(n Node) []byte {
 		return v.render()
 	case *HostBlock:
 		return v.render()
+	case *MarkedRegion:
+		return v.render()
+	case *MetadataLine:
+		return v.render()
 	default:
 		return nil
 	}

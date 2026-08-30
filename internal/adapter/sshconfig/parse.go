@@ -2,18 +2,56 @@ package sshconfig
 
 // File is a parsed ssh_config-shaped document.
 type File struct {
-	Nodes []Node // ordered: Line | Directive | HostBlock | MarkedRegion
+	Nodes         []Node         // ordered: Line | Directive | HostBlock | MarkedRegion
+	MarkerDefects []MarkerDefect // populated at parse time; parsing itself never errors —
+	// a malformed marker is data, not a failure (T18, §11)
 }
 
 // Parse reads b into a File. Parsing never fails — every byte lands in some node, a recognized
-// Directive, an opaque Line, or (from Stage 5/6 onward) a HostBlock or MarkedRegion — which is
-// what makes Render(Parse(b)) == b total rather than conditional (T2).
+// Directive, an opaque Line, a HostBlock, or a MarkedRegion — which is what makes
+// Render(Parse(b)) == b total rather than conditional, outside a marked region (T2).
 func Parse(b []byte) *File {
-	var nodes []Node
-	for _, ln := range splitLines(b) {
-		nodes = append(nodes, classifyLine(ln))
+	lines := splitLines(b)
+	beginIdx, endIdx, defects := scanMarkers(lines)
+
+	if beginIdx == -1 || endIdx == -1 {
+		return &File{Nodes: parseNodes(lines, false), MarkerDefects: defects}
 	}
-	return &File{Nodes: groupHostBlocks(nodes)}
+
+	var nodes []Node
+	nodes = append(nodes, parseNodes(lines[:beginIdx], false)...)
+	nodes = append(nodes, &MarkedRegion{
+		Begin: renderPhysicalLine(lines[beginIdx]),
+		End:   renderPhysicalLine(lines[endIdx]),
+		Body:  parseNodes(lines[beginIdx+1:endIdx], true),
+	})
+	nodes = append(nodes, parseNodes(lines[endIdx+1:], false)...)
+
+	return &File{Nodes: nodes, MarkerDefects: defects}
+}
+
+// parseNodes classifies a run of physical lines into Nodes and groups HostBlocks. insideRegion
+// enables #:hasp metadata-line recognition (§7, T25) — MetadataLine syntax is only meaningful
+// inside a MarkedRegion body; outside one, a "#:hasp ..." line is an ordinary comment.
+func parseNodes(lines []physicalLine, insideRegion bool) []Node {
+	var nodes []Node
+	for _, pl := range lines {
+		if insideRegion {
+			if ml, ok := tryMetadataLine(pl); ok {
+				nodes = append(nodes, ml)
+				continue
+			}
+		}
+		nodes = append(nodes, classifyLine(pl))
+	}
+	return groupHostBlocks(nodes)
+}
+
+func renderPhysicalLine(pl physicalLine) []byte {
+	out := make([]byte, 0, len(pl.Content)+len(pl.Terminator))
+	out = append(out, pl.Content...)
+	out = append(out, pl.Terminator...)
+	return out
 }
 
 // physicalLine is one line's content and its terminator, before classification.
@@ -55,43 +93,45 @@ func indexByte(b []byte, c byte) int {
 
 func isSpace(c byte) bool { return c == ' ' || c == '\t' }
 
-// classifyLine turns one physical line into a Line (blank, comment, or unrecognized keyword) or
-// a Directive (a recognized-keyword line, managedKeywords). Host/Match lines are also classified
-// as Line here — HostBlock grouping (groupHostBlocks) re-inspects them afterward, so this pass
-// stays a single, simple per-line operation with no lookahead.
-func classifyLine(pl physicalLine) Node {
-	content := pl.Content
-
-	indentEnd := 0
+// lineKeyword extracts a line's leading keyword token, if it has one: indentEnd is the offset
+// where non-whitespace content begins, keyword is the first token (case preserved), afterKeyword
+// is everything following it (separator, value, trailing comment — untouched). ok is false for a
+// blank line, a comment-only line, or a line with no recognizable leading token (e.g. one
+// starting with '=').
+func lineKeyword(content []byte) (keyword string, afterKeyword []byte, indentEnd int, ok bool) {
 	for indentEnd < len(content) && isSpace(content[indentEnd]) {
 		indentEnd++
 	}
 	rest := content[indentEnd:]
-
 	if len(rest) == 0 || rest[0] == '#' {
-		return &Line{Raw: content, Terminator: pl.Terminator}
+		return "", nil, indentEnd, false
 	}
-
 	kwEnd := 0
 	for kwEnd < len(rest) && !isSpace(rest[kwEnd]) && rest[kwEnd] != '=' {
 		kwEnd++
 	}
 	if kwEnd == 0 {
-		// Line starts with '=' or similar with no leading keyword token — not a directive shape
-		// hasp models; carry it opaquely.
-		return &Line{Raw: content, Terminator: pl.Terminator}
+		return "", nil, indentEnd, false
 	}
-	keyword := string(rest[:kwEnd])
-	afterKeyword := rest[kwEnd:]
+	return string(rest[:kwEnd]), rest[kwEnd:], indentEnd, true
+}
 
+// classifyLine turns one physical line into a Line (blank, comment, or unrecognized keyword) or
+// a Directive (a recognized-keyword line: managedKeywords, or Host/Match — HostBlock grouping,
+// groupHostBlocks, re-inspects the latter afterward). A single per-line operation, no lookahead.
+func classifyLine(pl physicalLine) Node {
+	keyword, afterKeyword, indentEnd, ok := lineKeyword(pl.Content)
+	if !ok {
+		return &Line{Raw: pl.Content, Terminator: pl.Terminator}
+	}
 	if !isManagedKeyword(keyword) && !isHostOrMatchKeyword(keyword) {
-		return &Line{Raw: content, Terminator: pl.Terminator}
+		return &Line{Raw: pl.Content, Terminator: pl.Terminator}
 	}
 
 	valueWithSep, trivia := splitTrailingComment(afterKeyword)
 
 	return &Directive{
-		LeadingTrivia: content[:indentEnd],
+		LeadingTrivia: pl.Content[:indentEnd],
 		Keyword:       keyword,
 		RawValue:      valueWithSep,
 		Trivia:        trivia,
