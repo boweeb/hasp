@@ -13,8 +13,10 @@ import (
 // is built on — computed once per invocation, covering keys/hosts/profiles/bindings together
 // (T13's single read aggregate, required by P7's one-screen answer and licensed by P8's scale).
 type Machine struct {
-	Keys     []domain.Key
-	Profiles []domain.Profile
+	Keys               []domain.Key
+	Profiles           []domain.Profile
+	Hosts              []domain.Host
+	BindingDiagnostics []BindingDiagnostic
 }
 
 // DeriveOptions carries every input the derivation pipeline needs. The key directory is always
@@ -22,6 +24,9 @@ type Machine struct {
 // --key-dir's default exactly once, in the cli layer.
 type DeriveOptions struct {
 	KeyDir string
+	// ConfigRoot is the host-group root to start Include resolution from — typically
+	// KeyDir/config (~/.ssh/config). Defaults to that when empty.
+	ConfigRoot string
 }
 
 // Derive runs the scan -> classify -> resolve -> project pipeline (tdd.md §5) once, producing
@@ -37,7 +42,24 @@ func Derive(opts DeriveOptions) (Machine, error) {
 	}
 	keys = attachKeyProfiles(keys, profiles)
 
-	return Machine{Keys: keys, Profiles: profiles}, nil
+	configRoot := opts.ConfigRoot
+	if configRoot == "" {
+		configRoot = filepath.Join(opts.KeyDir, "config")
+	}
+	configFiles, err := scan.LoadConfigTree(configRoot)
+	if err != nil {
+		return Machine{}, err
+	}
+
+	hosts, diagnostics := ResolveHosts(configFiles, opts.KeyDir, keys)
+	hosts = attachHostProfiles(hosts, keys)
+
+	return Machine{
+		Keys:               keys,
+		Profiles:           profiles,
+		Hosts:              hosts,
+		BindingDiagnostics: diagnostics,
+	}, nil
 }
 
 // physicalFile groups every candidate path that resolves to the same on-disk file — a real file
