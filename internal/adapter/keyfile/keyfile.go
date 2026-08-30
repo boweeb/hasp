@@ -25,6 +25,10 @@ type Info struct {
 	HasPublicHalf bool               // a .pub sibling file exists next to the private key
 	Fingerprint   domain.Fingerprint // "" means undecidable (§5.1); populated below
 	Comment       string             // from the .pub sibling; "" if absent
+	SizeBytes     int64              // the private key file's own byte length — always derivable
+	// without decrypting anything, and the "same-size" half of T12's "same-format, same-size"
+	// unconfirmed-duplicate heuristic for undecidable keys, whose Bits stays 0 (Algorithm is
+	// unavailable too in that case, so bit-size can't stand in for it).
 }
 
 // Inspect reads the private key file at path and derives everything about it that does not
@@ -47,7 +51,7 @@ func Inspect(path string) (Info, error) {
 		return Info{}, fmt.Errorf("%s: not a PEM-encoded private key", path)
 	}
 
-	info := Info{Format: formatForBlockType(block.Type)}
+	info := Info{Format: formatForBlockType(block.Type), SizeBytes: int64(len(raw))}
 
 	pubPath := path + ".pub"
 	pubBytes, pubErr := os.ReadFile(pubPath)

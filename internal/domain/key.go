@@ -62,4 +62,8 @@ type Key struct {
 	Encrypted     bool          `json:"encrypted"`
 	HasPublicHalf bool          `json:"hasPublicHalf"`
 	Profiles      []ProfilePath `json:"profiles"` // derived, never declared (D13); may be empty
+	// SizeBytes is the private key file's own byte length. Not in tdd.md §3's literal sketch;
+	// added because check's duplicate-key-unconfirmed finding (T12) needs a "same-size" signal
+	// for undecidable keys, whose Bits is unavailable for exactly the same reason Fingerprint is.
+	SizeBytes int64 `json:"sizeBytes"`
 }

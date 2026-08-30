@@ -191,5 +191,6 @@ func projectKey(identity domain.KeyIdentity, files []inspectedFile) domain.Key {
 		Format:        primary.info.Format,
 		Encrypted:     primary.info.Encrypted,
 		HasPublicHalf: primary.info.HasPublicHalf,
+		SizeBytes:     primary.info.SizeBytes,
 	}
 }
