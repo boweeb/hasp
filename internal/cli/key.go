@@ -123,12 +123,17 @@ func renderFindingsTable(cmd *cobra.Command, findings []app.Finding) error {
 	return w.Flush()
 }
 
+// renderKeyTable's column order puts the fixed-width facts (name, algorithm, format, encrypted,
+// profiles, comment) before the one long, variable-width column (fingerprint) — a long trailing
+// column disrupts scanning far less than one in the middle, and the fingerprint itself is
+// truncated here (full value: `show key`, or --json) so a personal-scale inventory (P8) stays a
+// one-screen answer (P7) even at a dozen-plus keys.
 func renderKeyTable(cmd *cobra.Command, keys []domain.Key) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "NAME\tALGORITHM\tFINGERPRINT\tFORMAT\tENCRYPTED\tPROFILES\tCOMMENT")
+	fmt.Fprintln(w, "NAME\tALGORITHM\tFORMAT\tENCRYPTED\tPROFILES\tCOMMENT\tFINGERPRINT")
 	for _, k := range keys {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%v\t%s\t%s\n",
-			k.Name, orDash(k.Algorithm), fingerprintCell(k), k.Format, k.Encrypted, profilesCell(k.Profiles), orDash(k.Comment))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
+			k.Name, orDash(k.Algorithm), k.Format, k.Encrypted, profilesCell(k.Profiles), orDash(k.Comment), truncatedFingerprintCell(k))
 	}
 	return w.Flush()
 }
@@ -177,11 +182,15 @@ func identityMapKeyForRender(id domain.KeyIdentity) string {
 	return id.Kind().String() + ":" + id.Value()
 }
 
-func fingerprintCell(k domain.Key) string {
-	if k.Identity.Kind() == domain.IdentityFingerprint {
-		return k.Identity.Value()
+// truncatedFingerprintCell shows enough of a SHA256 fingerprint to eyeball at a glance in a
+// table, without the full ~52-character value dominating every row. At this project's scale
+// (P8 — tens of keys, never thousands) a short prefix is not a meaningful collision risk; a
+// consumer who needs the exact value has `show key <name>` or --json.
+func truncatedFingerprintCell(k domain.Key) string {
+	if k.Identity.Kind() != domain.IdentityFingerprint {
+		return "unknown"
 	}
-	return "unknown"
+	return truncatedIdentityValue(k.Identity)
 }
 
 func profilesCell(paths []domain.ProfilePath) string {

@@ -106,12 +106,15 @@ func findingsForSubjectKinds(findings []app.Finding, kinds ...string) []app.Find
 	return out
 }
 
+// renderHostTable, like renderKeyTable, puts the fixed-width columns first and the one
+// variable-width column (bindings) last, and keeps that column short (P7) — a host bound to
+// several implicit-default keys at once must not turn one row into a wall of fingerprints.
 func renderHostTable(cmd *cobra.Command, hosts []domain.Host) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "PATTERN\tGROUP\tBINDINGS\tPROFILES\tMANAGED")
+	fmt.Fprintln(w, "PATTERN\tGROUP\tPROFILES\tMANAGED\tBINDINGS")
 	for _, h := range hosts {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%v\n",
-			hostPatternName(h.Patterns), hostGroupName(h.HostGroup), bindingsCell(h.Bindings), profilesCell(h.Profiles), h.Managed)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\n",
+			hostPatternName(h.Patterns), hostGroupName(h.HostGroup), profilesCell(h.Profiles), h.Managed, bindingsCell(h.Bindings))
 	}
 	return w.Flush()
 }
@@ -132,16 +135,24 @@ func renderHostDetail(cmd *cobra.Command, h domain.Host) error {
 	return w.Flush()
 }
 
+// bindingsCell summarizes a host's bindings for the list/find table: at most 2 shown by name
+// with a truncated identity, collapsing to a count beyond that (T16's implicit-default probing
+// alone can add up to 6 bindings to a single stanza) — full detail is `show host`'s job, not
+// list's (P7: the default is the useful answer, not a data dump).
 func bindingsCell(bindings []domain.Binding) string {
 	if len(bindings) == 0 {
 		return "(none)"
+	}
+	const maxShown = 2
+	if len(bindings) > maxShown {
+		return fmt.Sprintf("%d bindings (see show host)", len(bindings))
 	}
 	s := ""
 	for i, b := range bindings {
 		if i > 0 {
 			s += ", "
 		}
-		s += b.Key.Value() + " (" + b.Kind.String() + ")"
+		s += truncatedIdentityValue(b.Key) + " (" + b.Kind.String() + ")"
 	}
 	return s
 }
