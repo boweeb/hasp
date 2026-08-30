@@ -10,5 +10,6 @@ func newListCmd() *cobra.Command {
 		Short: "List every resource of one kind",
 	}
 	cmd.AddCommand(newListKeyCmd())
+	cmd.AddCommand(newListHostCmd())
 	return cmd
 }

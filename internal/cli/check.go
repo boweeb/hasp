@@ -11,5 +11,6 @@ func newCheckCmd() *cobra.Command {
 		Short: "Report untidiness across managed and unmanaged resources alike",
 	}
 	cmd.AddCommand(newCheckKeyCmd())
+	cmd.AddCommand(newCheckHostCmd())
 	return cmd
 }

@@ -34,6 +34,9 @@ func TestWriteNothingGuard_Smoke(t *testing.T) {
 		{"show", "key", "id_ed25519", "--key-dir", keyDir},
 		{"find", "key", "id_ed25519", "--key-dir", keyDir},
 		{"check", "key", "--key-dir", keyDir},
+		{"list", "host", "--key-dir", keyDir},
+		{"find", "host", "id_ed25519", "--key-dir", keyDir},
+		{"check", "host", "--key-dir", keyDir},
 	} {
 		root := cli.NewRootCmd()
 		root.SetArgs(args)

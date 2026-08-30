@@ -9,5 +9,6 @@ func newFindCmd() *cobra.Command {
 		Short: "Identify a resource from a partial clue",
 	}
 	cmd.AddCommand(newFindKeyCmd())
+	cmd.AddCommand(newFindHostCmd())
 	return cmd
 }

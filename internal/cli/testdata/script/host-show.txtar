@@ -1,0 +1,20 @@
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh
+cp key.pem $WORK/home/.ssh/id_ed25519
+cp config $WORK/home/.ssh/config
+
+exec hasp show host work --key-dir $WORK/home/.ssh
+stdout 'Pattern:\s+work'
+stdout 'SHA256:\S+\s+\(explicit\)'
+
+-- key.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+-- config --
+Host work
+    IdentityFile ~/.ssh/id_ed25519

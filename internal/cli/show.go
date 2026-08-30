@@ -9,5 +9,6 @@ func newShowCmd() *cobra.Command {
 		Short: "Show full detail for one resource",
 	}
 	cmd.AddCommand(newShowKeyCmd())
+	cmd.AddCommand(newShowHostCmd())
 	return cmd
 }

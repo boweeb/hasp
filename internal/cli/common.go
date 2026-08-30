@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,6 +13,14 @@ import (
 // ("Host a b c") — the closest thing a Host stanza has to a single display name.
 func hostPatternName(patterns []string) string {
 	return strings.Join(patterns, " ")
+}
+
+// hostGroupName derives a host group's short display name from its file path, mirroring
+// app.hostGroupName (unexported there, so this small rendering-only helper is duplicated here
+// rather than exported across the layer boundary for one line of logic): "work.sshconfig" ->
+// "work" (D9).
+func hostGroupName(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), ".sshconfig")
 }
 
 // buildMachine reads the global flags off cmd, validates --key-dir is resolvable, and runs the
