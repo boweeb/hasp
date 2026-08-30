@@ -1,0 +1,48 @@
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh/work
+cp key.pem $WORK/home/.ssh/work/id_ed25519
+cp marker $WORK/home/.ssh/work/.hasp
+cp config $WORK/home/.ssh/config
+
+# Every one of the 12 list/show/find/check x key/host/profile commands carries version 1 in its
+# --json envelope (roadmap.md §3 exit criterion 7).
+exec hasp list key --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp show key id_ed25519 --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp find key t4rn6go9 --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+! exec hasp check key --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+
+exec hasp list host --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp show host work --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp find host work --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp check host --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+
+exec hasp list profile --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp show profile work --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp find profile work --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+exec hasp check profile --key-dir $WORK/home/.ssh --json
+stdout '"version": 1'
+
+-- key.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+-- marker --
+# profile marker
+-- config --
+Host work
+    IdentityFile ~/.ssh/work/id_ed25519

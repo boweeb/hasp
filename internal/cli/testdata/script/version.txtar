@@ -1,0 +1,7 @@
+exec hasp version
+stdout 'hasp '
+
+-- notes --
+Minimal harness-proving case: version is the only command that predates the noun grid, and needs
+no HOME/key-dir fixture at all. list/show/find/check cases arrive alongside their commands
+(Stages 18-20).

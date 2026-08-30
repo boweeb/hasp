@@ -4,8 +4,8 @@ hasp manages **identity**, not secrets: an accurate, queryable picture of the SS
 and personas on one laptop, and safe ways to rearrange them.
 
 This project is documentation-first — see [`docs/`](docs/) for the full design, starting with
-[`docs/README.md`](docs/README.md). The Go implementation begins at
-[`docs/roadmap.md`](docs/roadmap.md) §2 (M0 — Bootstrap); this is that code.
+[`docs/README.md`](docs/README.md). The Go implementation follows
+[`docs/roadmap.md`](docs/roadmap.md); this is that code.
 
 ## Building
 
@@ -23,4 +23,7 @@ go test ./...
 
 ## Status
 
-Bootstrap only (M0). No user-facing commands exist yet beyond `hasp version`.
+M1 — Inventory. hasp reads an existing `~/.ssh` and reports on it: `list`/`show`/`find`/`check`
+across `key`, `host`, and `profile`. Entirely read-only — hasp never writes to `~/.ssh` at this
+milestone (see [`docs/decision-log.md`](docs/decision-log.md#d14)). Writes (`new`, `edit`,
+`adopt`, `release`) arrive in M2.

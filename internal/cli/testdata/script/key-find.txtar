@@ -1,0 +1,20 @@
+mkdir $WORK/home/.ssh
+cp key.pem $WORK/home/.ssh/id_ed25519
+
+# The real fingerprint is SHA256:t4rn6Go9uzGHCyff1lwYWtX+swf+EQhuqmE2dHSqkFE (from key-list.txtar).
+# Mangle its case and inject punctuation — J2's requirement.
+exec hasp find key sha256:T4RN-6Go9-uzGH --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+
+exec hasp find key nonexistentfragment --key-dir $WORK/home/.ssh
+stdout '^NAME'
+! stdout 'id_ed25519'
+
+-- key.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----

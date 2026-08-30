@@ -1,0 +1,15 @@
+mkdir $WORK/home/.ssh
+cp config $WORK/home/.ssh/config
+
+! exec hasp check host --key-dir $WORK/home/.ssh
+stdout 'dangling-identityfile'
+
+-- config --
+Host work
+    IdentityFile /definitely/does/not/exist
+
+Host db
+    HostName db.example.com
+
+Host db
+    HostName also-db.example.com

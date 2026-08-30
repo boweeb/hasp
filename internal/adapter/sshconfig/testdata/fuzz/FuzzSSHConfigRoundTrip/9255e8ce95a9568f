@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("# >>> hasp:managed >>>\nInClude \nInClude \n# <<< hasp:managed <<<\nHost \nHostNAme \n# >>> hasp:managed >>>\nInClude")

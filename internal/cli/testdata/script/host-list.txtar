@@ -1,0 +1,20 @@
+mkdir $WORK/home/.ssh
+cp work.sshconfig $WORK/home/.ssh/work.sshconfig
+cp config $WORK/home/.ssh/config
+
+exec hasp list host --key-dir $WORK/home/.ssh
+stdout 'work-prod'
+stdout 'personal'
+
+exec hasp list host --key-dir $WORK/home/.ssh --group work
+stdout 'work-prod'
+! stdout 'personal'
+
+-- work.sshconfig --
+Host work-prod
+    HostName prod.example.com
+-- config --
+Include work.sshconfig
+
+Host personal
+    HostName home.example.com
