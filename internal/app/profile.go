@@ -6,10 +6,60 @@ import (
 	"github.com/boweeb/hasp/internal/domain"
 )
 
+// ProfileSummary is list profile's row shape: the profile plus how many keys and hosts belong to
+// it directly — tdd.md §9's command grid: "Every directory carrying .hasp, with key/host
+// counts." Direct membership only, not aggregated across descendants; recursive aggregation with
+// per-row attribution is show profile's job (T21), and doing it here too would make every list
+// row as expensive to compute as a full show.
+type ProfileSummary struct {
+	Profile   domain.Profile `json:"profile"`
+	KeyCount  int            `json:"keyCount"`
+	HostCount int            `json:"hostCount"`
+}
+
 // ListProfiles returns every profile candidate, managed or not (check's empty-profile-dir and
-// unmarked-profile-dir findings both depend on unmanaged candidates staying visible here too).
-func ListProfiles(m Machine) []domain.Profile {
-	return m.Profiles
+// unmarked-profile-dir findings both depend on unmanaged candidates staying visible here too),
+// each with its direct key/host counts.
+func ListProfiles(m Machine) []ProfileSummary {
+	summaries := make([]ProfileSummary, 0, len(m.Profiles))
+	for _, p := range m.Profiles {
+		summaries = append(summaries, ProfileSummary{
+			Profile:   p,
+			KeyCount:  countDirectMembers(keyProfilePaths(m.Keys), p.Path),
+			HostCount: countDirectMembers(hostProfilePaths(m.Hosts), p.Path),
+		})
+	}
+	return summaries
+}
+
+func keyProfilePaths(keys []domain.Key) [][]domain.ProfilePath {
+	paths := make([][]domain.ProfilePath, len(keys))
+	for i, k := range keys {
+		paths[i] = k.Profiles
+	}
+	return paths
+}
+
+func hostProfilePaths(hosts []domain.Host) [][]domain.ProfilePath {
+	paths := make([][]domain.ProfilePath, len(hosts))
+	for i, h := range hosts {
+		paths[i] = h.Profiles
+	}
+	return paths
+}
+
+// countDirectMembers counts how many of memberProfiles' entries include target exactly.
+func countDirectMembers(memberProfiles [][]domain.ProfilePath, target domain.ProfilePath) int {
+	count := 0
+	for _, profiles := range memberProfiles {
+		for _, p := range profiles {
+			if p.Equal(target) {
+				count++
+				break
+			}
+		}
+	}
+	return count
 }
 
 // KeyRow and HostRow attribute an aggregated row to the profile it actually came from — required

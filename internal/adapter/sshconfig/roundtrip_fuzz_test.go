@@ -82,13 +82,13 @@ func fuzzSeedCorpus(f *testing.F) [][]byte {
 		[]byte("Host work\n    HostName work.example.com\n    User jesse\n    IdentityFile ~/.ssh/w\n"),
 		[]byte(wellFormedRegion),
 		[]byte("# >>> hasp:managed >>>\n#:hasp created_by = \"new host\"\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n"),
-		[]byte("# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n"),                                                       // unmatched begin
-		[]byte("# <<< hasp:managed <<<\n"),                                                                                     // end before begin
-		[]byte("# >>> hasp:managed >>>\n# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n"),      // duplicate begin
-		[]byte("# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n# <<< hasp:managed <<<\n"),      // unmatched end
+		[]byte("# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n"), // unmatched begin
+		[]byte("# <<< hasp:managed <<<\n"), // end before begin
+		[]byte("# >>> hasp:managed >>>\n# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n"),              // duplicate begin
+		[]byte("# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n# <<< hasp:managed <<<\n"),              // unmatched end
 		[]byte("Host work\n    HostName example.com\n# >>> hasp:managed >>>\nInclude ~/.ssh/work.sshconfig\n# <<< hasp:managed <<<\n"), // nested in host block
 		[]byte("Port 22\r\nHostName example.com\r\n"),
-		[]byte(`ProxyCommand nc -x proxy 1080 %h %p "arg # not a comment"` + "\n"),
+		[]byte(`ProxyCommand nc -x proxy 1080 %h %p "arg # not a comment"`+"\n"),
 	)
 
 	return seeds

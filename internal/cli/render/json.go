@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 )
 
 // EnvelopeVersion is the JSON envelope's own schema version (T14) — independent of hasp's
@@ -24,7 +25,7 @@ type Envelope struct {
 
 // JSON marshals data into data's Envelope and writes it to w, pretty-printed.
 func JSON(w io.Writer, kind string, data any, warnings []string) error {
-	raw, err := json.Marshal(data)
+	raw, err := marshalData(data)
 	if err != nil {
 		return fmt.Errorf("marshal %s data: %w", kind, err)
 	}
@@ -32,4 +33,18 @@ func JSON(w io.Writer, kind string, data any, warnings []string) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(env)
+}
+
+// marshalData normalizes a nil slice to JSON "[]" rather than encoding/json's default "null".
+// Every list/find-shaped use case in internal/app returns a bare Go nil slice for "no results"
+// (idiomatic Go, and correct — there's nothing wrong with the app layer doing this), but T14
+// states the --json pipeline contract in exactly these terms: "hasp list key --json | jq has to
+// keep working release over release." `jq '.data[]'` errors on a JSON null; a consumer should
+// never have to special-case "no results" apart from "zero results," so this is the one place
+// that distinction gets erased before it reaches the wire.
+func marshalData(data any) ([]byte, error) {
+	if v := reflect.ValueOf(data); v.Kind() == reflect.Slice && v.IsNil() {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(data)
 }

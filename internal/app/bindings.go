@@ -148,11 +148,16 @@ func resolveBindingsForHost(hb *sshconfig.HostBlock, keyDir string, keysByPath m
 			continue // zero explicit bindings from this line, by design
 		}
 
-		expanded, tokenDiags := expandTokens(raw, hb)
+		// Resolution order matches tdd.md §5 exactly: tilde expansion, then token expansion,
+		// then relative-path resolution, then symlink resolution (T28). Tilde-expanding first
+		// means a leading "~" is already gone by the time wasRelative is checked below, so that
+		// check needs no separate "starts with ~" carve-out.
+		tildeExpanded := expandTilde(raw)
+		expanded, tokenDiags := expandTokens(tildeExpanded, hb)
 		diagnostics = append(diagnostics, withHostContext(tokenDiags, hb)...)
 
-		wasRelative := !strings.HasPrefix(expanded, "~") && !filepath.IsAbs(expanded)
-		resolved := expandTilde(expanded)
+		wasRelative := !filepath.IsAbs(expanded)
+		resolved := expanded
 		if !filepath.IsAbs(resolved) {
 			resolved = filepath.Join(keyDir, resolved)
 		}

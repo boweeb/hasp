@@ -1,6 +1,9 @@
 package sshconfig
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const wellFormedRegion = "" +
 	"# a human comment before the region\n" +
@@ -132,6 +135,35 @@ func TestScanMarkers_UnmatchedEnd(t *testing.T) {
 	))
 	if len(f.MarkerDefects) != 1 || f.MarkerDefects[0].Kind != DefectUnmatchedEnd {
 		t.Fatalf("MarkerDefects = %v, want exactly one DefectUnmatchedEnd", f.MarkerDefects)
+	}
+}
+
+// TestScanMarkers_DuplicateBeginAfterClose covers the *other* trigger for DefectDuplicateBegin:
+// a second begin marker appearing after an earlier region already closed cleanly (not, as
+// TestScanMarkers_DuplicateBegin covers, before the first one closes). Both are the same defect
+// kind, but the Detail message must describe the actual state, not just the stateOpen case.
+func TestScanMarkers_DuplicateBeginAfterClose(t *testing.T) {
+	f := Parse([]byte(
+		"# >>> hasp:managed >>>\n" +
+			"Include ~/.ssh/work.sshconfig\n" +
+			"# <<< hasp:managed <<<\n" +
+			"# >>> hasp:managed >>>\n",
+	))
+	if len(f.MarkerDefects) != 1 || f.MarkerDefects[0].Kind != DefectDuplicateBegin {
+		t.Fatalf("MarkerDefects = %v, want exactly one DefectDuplicateBegin", f.MarkerDefects)
+	}
+	if !strings.Contains(f.MarkerDefects[0].Detail, "already closed") {
+		t.Errorf("Detail = %q, want it to describe the already-closed case, not the still-open one", f.MarkerDefects[0].Detail)
+	}
+	// The first, cleanly-closed region must still be carved.
+	var region *MarkedRegion
+	for _, n := range f.Nodes {
+		if r, ok := n.(*MarkedRegion); ok {
+			region = r
+		}
+	}
+	if region == nil {
+		t.Fatal("expected the first region to still be carved despite the later duplicate begin")
 	}
 }
 

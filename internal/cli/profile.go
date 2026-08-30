@@ -23,7 +23,7 @@ func newListProfileCmd() *cobra.Command {
 			if flags.JSON {
 				return render.JSON(cmd.OutOrStdout(), "profile.list", profiles, nil)
 			}
-			return renderProfileTable(cmd, profiles)
+			return renderProfileSummaryTable(cmd, profiles)
 		},
 	}
 }
@@ -92,6 +92,20 @@ func newCheckProfileCmd() *cobra.Command {
 	}
 }
 
+// renderProfileSummaryTable is list profile's table — includes the key/host counts tdd.md §9
+// documents ("Every directory carrying .hasp, with key/host counts") and the command's own
+// --help text already promised.
+func renderProfileSummaryTable(cmd *cobra.Command, summaries []app.ProfileSummary) error {
+	w := render.NewTabWriter(cmd.OutOrStdout())
+	fmt.Fprintln(w, "PROFILE\tMANAGED\tKEYS\tHOSTS\tDIR")
+	for _, s := range summaries {
+		fmt.Fprintf(w, "%s\t%v\t%d\t%d\t%s\n", s.Profile.Path, s.Profile.Managed, s.KeyCount, s.HostCount, s.Profile.Dir)
+	}
+	return w.Flush()
+}
+
+// renderProfileTable is find profile's table — no counts, matching tdd.md §9's grid ("Match by
+// name fragment," nothing about counts for find).
 func renderProfileTable(cmd *cobra.Command, profiles []domain.Profile) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
 	fmt.Fprintln(w, "PROFILE\tMANAGED\tDIR")

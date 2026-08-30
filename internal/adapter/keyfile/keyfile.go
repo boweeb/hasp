@@ -19,8 +19,8 @@ import (
 // (T1, P3).
 type Info struct {
 	Format        domain.KeyFormat
-	Algorithm     string             // ssh wire algorithm name, e.g. "ssh-ed25519"; "" if undecidable
-	Bits          int                // 0 when not applicable or undecidable
+	Algorithm     string // ssh wire algorithm name, e.g. "ssh-ed25519"; "" if undecidable
+	Bits          int    // 0 when not applicable or undecidable
 	Encrypted     bool
 	HasPublicHalf bool               // a .pub sibling file exists next to the private key
 	Fingerprint   domain.Fingerprint // "" means undecidable (§5.1); populated below

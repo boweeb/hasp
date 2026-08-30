@@ -48,7 +48,7 @@ type Directive struct {
 	// by Parse. Synthesized fresh only when hasp authors the line itself,
 	// inside a region it owns (D7 elaboration 1) — out of scope for M1,
 	// which never writes.
-	Trivia     []byte // a trailing inline comment, if any, including its leading whitespace;
+	Trivia []byte // a trailing inline comment, if any, including its leading whitespace;
 	// a '#' inside a double-quoted RawValue span is never treated as this (T17)
 	Terminator []byte // "\n", "\r\n", or nil
 }

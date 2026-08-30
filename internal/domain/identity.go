@@ -54,10 +54,10 @@ func NewPathIdentity(resolvedAbsPath string) KeyIdentity { return byPath(resolve
 
 type byFingerprint Fingerprint
 
-func (f byFingerprint) identityKey() string  { return "fp:" + string(f) }
-func (f byFingerprint) Kind() IdentityKind   { return IdentityFingerprint }
-func (f byFingerprint) Value() string        { return string(f) }
-func (f byFingerprint) String() string       { return string(f) }
+func (f byFingerprint) identityKey() string { return "fp:" + string(f) }
+func (f byFingerprint) Kind() IdentityKind  { return IdentityFingerprint }
+func (f byFingerprint) Value() string       { return string(f) }
+func (f byFingerprint) String() string      { return string(f) }
 func (f byFingerprint) MarshalJSON() ([]byte, error) {
 	return json.Marshal(identityView{Kind: IdentityFingerprint.String(), Value: string(f)})
 }

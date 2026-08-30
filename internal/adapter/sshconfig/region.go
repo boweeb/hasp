@@ -104,7 +104,7 @@ func tryMetadataLine(pl physicalLine) (*MetadataLine, bool) {
 type MarkerDefectKind int
 
 const (
-	DefectUnmatchedBegin   MarkerDefectKind = iota // a begin marker with no matching end
+	DefectUnmatchedBegin    MarkerDefectKind = iota // a begin marker with no matching end
 	DefectUnmatchedEnd                              // an end marker with no matching begin
 	DefectDuplicateBegin                            // a second begin marker before the first is closed
 	DefectEndBeforeBegin                            // an end marker with no begin preceding it
@@ -169,11 +169,14 @@ func scanMarkers(lines []physicalLine) (beginIdx, endIdx int, defects []MarkerDe
 				defects = append(defects, MarkerDefect{Kind: DefectNestedInHostBlock, Line: i + 1, Detail: "begin marker found inside a Host/Match block"})
 				continue
 			}
-			if state == stateNone {
+			switch state {
+			case stateNone:
 				state = stateOpen
 				beginIdx = i
-			} else {
+			case stateOpen:
 				defects = append(defects, MarkerDefect{Kind: DefectDuplicateBegin, Line: i + 1, Detail: "a second begin marker appeared before the first was closed"})
+			case stateClosed:
+				defects = append(defects, MarkerDefect{Kind: DefectDuplicateBegin, Line: i + 1, Detail: "a second begin marker appeared after an earlier region already closed"})
 			}
 		case markedRegionEndSentinel:
 			if inHostBlock {

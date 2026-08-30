@@ -56,8 +56,8 @@ type Key struct {
 	Locations     []KeyLocation `json:"locations"`
 	Name          KeyName       `json:"name"`
 	Algorithm     string        `json:"algorithm"` // "ssh-ed25519", "ssh-rsa", ...; "" if undecidable
-	Bits          int           `json:"bits"`       // 0 when not applicable or undecidable
-	Comment       string        `json:"comment"`    // "" if unreadable
+	Bits          int           `json:"bits"`      // 0 when not applicable or undecidable
+	Comment       string        `json:"comment"`   // "" if unreadable
 	Format        KeyFormat     `json:"format"`
 	Encrypted     bool          `json:"encrypted"`
 	HasPublicHalf bool          `json:"hasPublicHalf"`
