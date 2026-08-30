@@ -13,7 +13,8 @@ import (
 // is built on — computed once per invocation, covering keys/hosts/profiles/bindings together
 // (T13's single read aggregate, required by P7's one-screen answer and licensed by P8's scale).
 type Machine struct {
-	Keys []domain.Key
+	Keys     []domain.Key
+	Profiles []domain.Profile
 }
 
 // DeriveOptions carries every input the derivation pipeline needs. The key directory is always
@@ -30,7 +31,13 @@ func Derive(opts DeriveOptions) (Machine, error) {
 	if err != nil {
 		return Machine{}, err
 	}
-	return Machine{Keys: keys}, nil
+	profiles, err := deriveProfiles(opts.KeyDir)
+	if err != nil {
+		return Machine{}, err
+	}
+	keys = attachKeyProfiles(keys, profiles)
+
+	return Machine{Keys: keys, Profiles: profiles}, nil
 }
 
 // physicalFile groups every candidate path that resolves to the same on-disk file — a real file

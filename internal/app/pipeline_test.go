@@ -18,6 +18,16 @@ func testdataKeysDir(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata", "keys")
 }
 
+func writeFile(t *testing.T, path string, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func copyFixture(t *testing.T, fixtureName, destPath string) {
 	t.Helper()
 	src := filepath.Join(testdataKeysDir(t), fixtureName)
