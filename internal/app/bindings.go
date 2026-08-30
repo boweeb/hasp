@@ -27,8 +27,8 @@ type BindingDiagnosticKind int
 
 const (
 	DiagUnresolvableToken    BindingDiagnosticKind = iota // a %X token hasp does not resolve (only %d %h %r %u are, T28's table)
-	DiagRelativeIdentityFile                               // a bare relative path, resolved against the key directory rather than ssh's cwd (T28)
-	DiagDanglingTarget                                     // the resolved path does not exist, or is not a key hasp recognizes
+	DiagRelativeIdentityFile                              // a bare relative path, resolved against the key directory rather than ssh's cwd (T28)
+	DiagDanglingTarget                                    // the resolved path does not exist, or is not a key hasp recognizes
 )
 
 // BindingDiagnostic names one binding-resolution problem on one Host stanza, carrying enough

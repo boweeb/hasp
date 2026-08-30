@@ -1,0 +1,20 @@
+mkdir $WORK/home/.ssh
+cp key.pem $WORK/home/.ssh/id_ed25519
+
+exec hasp list key --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+stdout 'ssh-ed25519'
+stdout 'openssh'
+
+exec hasp list key --key-dir $WORK/home/.ssh --json
+stdout '"kind": "key.list"'
+stdout '"version": 1'
+
+-- key.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----

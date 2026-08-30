@@ -19,8 +19,8 @@ func ListKeys(m Machine) []domain.Key {
 // it — a reverse lookup domain.Key alone can't answer, since a Key has no back-reference to the
 // hosts that reference it.
 type KeyDetail struct {
-	Key   domain.Key
-	Hosts []domain.Host
+	Key   domain.Key    `json:"key"`
+	Hosts []domain.Host `json:"hosts"`
 }
 
 // ShowKey finds a key by its stable handle (KeyName) and reports every host bound to it.

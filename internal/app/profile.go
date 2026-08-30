@@ -17,21 +17,21 @@ func ListProfiles(m Machine) []domain.Profile {
 // *and* is visibly also personal, which is the distinction T21 says decides whether it gets
 // revoked on offboarding (J8).
 type KeyRow struct {
-	Key         domain.Key
-	FromProfile domain.ProfilePath
+	Key         domain.Key         `json:"key"`
+	FromProfile domain.ProfilePath `json:"fromProfile"`
 }
 
 type HostRow struct {
-	Host        domain.Host
-	FromProfile domain.ProfilePath
+	Host        domain.Host        `json:"host"`
+	FromProfile domain.ProfilePath `json:"fromProfile"`
 }
 
 // ProfileDetail is show profile's answer: the profile itself, plus every key and host attributed
 // to it (and, by default, to its descendants — T21).
 type ProfileDetail struct {
-	Profile domain.Profile
-	Keys    []KeyRow
-	Hosts   []HostRow
+	Profile domain.Profile `json:"profile"`
+	Keys    []KeyRow       `json:"keys"`
+	Hosts   []HostRow      `json:"hosts"`
 }
 
 // ShowProfile aggregates the full subtree by default (T21): keys and hosts from path and every
