@@ -6,6 +6,7 @@ import (
 
 	"github.com/boweeb/hasp/internal/adapter/keyfile"
 	"github.com/boweeb/hasp/internal/adapter/scan"
+	"github.com/boweeb/hasp/internal/adapter/sshconfig"
 	"github.com/boweeb/hasp/internal/domain"
 )
 
@@ -17,6 +18,26 @@ type Machine struct {
 	Profiles           []domain.Profile
 	Hosts              []domain.Host
 	BindingDiagnostics []BindingDiagnostic
+	MarkerDefects      []MarkerDefectInfo
+}
+
+// MarkerDefectInfo attaches a sshconfig.MarkerDefect to the host-group file it came from, so
+// check's marker-defect finding (Stage 15) can report it without re-parsing anything.
+type MarkerDefectInfo struct {
+	HostGroup string
+	Kind      sshconfig.MarkerDefectKind
+	Line      int
+	Detail    string
+}
+
+func collectMarkerDefects(configFiles []scan.ConfigFile) []MarkerDefectInfo {
+	var out []MarkerDefectInfo
+	for _, cf := range configFiles {
+		for _, d := range cf.Body.MarkerDefects {
+			out = append(out, MarkerDefectInfo{HostGroup: cf.Path, Kind: d.Kind, Line: d.Line, Detail: d.Detail})
+		}
+	}
+	return out
 }
 
 // DeriveOptions carries every input the derivation pipeline needs. The key directory is always
@@ -59,6 +80,7 @@ func Derive(opts DeriveOptions) (Machine, error) {
 		Profiles:           profiles,
 		Hosts:              hosts,
 		BindingDiagnostics: diagnostics,
+		MarkerDefects:      collectMarkerDefects(configFiles),
 	}, nil
 }
 
