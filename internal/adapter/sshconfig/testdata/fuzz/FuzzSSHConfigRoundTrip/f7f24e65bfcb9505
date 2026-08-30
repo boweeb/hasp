@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Host \nA0\nA0\nA0\nHost \nA00\nA0\nA0\nA0\nA0")

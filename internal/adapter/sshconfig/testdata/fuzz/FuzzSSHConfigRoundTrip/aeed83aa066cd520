@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("# >>> hasp:managed >>>\n# <<< hasp:managed <<<\n0\n0\n\xbd\n\x80\n\x93\n\x85\n\x96\n0\n\xbd\n\x80\n\x93\n\x85\n\x96\n0\n\xfb")
