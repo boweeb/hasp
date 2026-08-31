@@ -1,0 +1,79 @@
+# The full adopt -> release cycle for a profile (tdd.md §9, D13, D14, D15, D18), exercised end to
+# end exactly as a real invocation would: preview is always rendered, --yes skips the interactive
+# confirm, and release's preview shows the marker's own prior content before it disappears.
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh
+mkdir $WORK/home/.ssh/work
+
+# adopt profile against a directory that does not yet exist is refused; nothing is written.
+! exec hasp adopt profile missing --yes --key-dir $WORK/home/.ssh
+stderr 'does not exist'
+! exists $WORK/home/.ssh/missing
+
+# Generate a key inside work/ first, so the directory "already holds keys" per the grid cell.
+exec hasp new key id_ed25519_test --profile work --no-passphrase --yes --key-dir $WORK/home/.ssh
+exists $WORK/home/.ssh/work/id_ed25519_test
+
+# No --yes and no TTY fails adopt's write-loop confirm gate closed, exactly as `adopt key` does
+# (tdd.md §11) — nothing is written.
+! exec hasp adopt profile work --key-dir $WORK/home/.ssh
+stderr 'stdin is not a terminal'
+! exists $WORK/home/.ssh/work/.hasp
+
+# --yes applies without a prompt; the preview line is still rendered first (tdd.md §4 step 3).
+exec hasp adopt profile work --yes --key-dir $WORK/home/.ssh
+stdout 'adopt profile work'
+stdout 'managed profile'
+stdout 'adopted profile "work"'
+exists $WORK/home/.ssh/work/.hasp
+
+# The marker itself carries D15 elaboration 3's `#`-prefixed self-description.
+grep '^# ' $WORK/home/.ssh/work/.hasp
+
+# A fresh inventory reports work as managed.
+exec hasp list profile --key-dir $WORK/home/.ssh
+stdout 'work\s+true'
+
+exec hasp show profile work --key-dir $WORK/home/.ssh
+stdout 'id_ed25519_test'
+
+# check reports no findings for the now-managed profile.
+exec hasp check profile --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+# Adopting the same profile again is refused: it is already managed.
+! exec hasp adopt profile work --yes --key-dir $WORK/home/.ssh
+stderr 'already managed'
+
+# release: the exact inverse. Preview names the removal and shows the marker's own prior content
+# (D15 elaboration 4, D18) — never a silent loss.
+exec hasp release profile work --yes --key-dir $WORK/home/.ssh
+stdout 'release profile work'
+stdout 'remove .*\.hasp'
+stdout 'This directory is a hasp-managed profile\.'
+stdout 'released profile "work"'
+
+# The marker is gone; the key file itself is untouched, byte for byte.
+! exists $WORK/home/.ssh/work/.hasp
+exists $WORK/home/.ssh/work/id_ed25519_test
+
+# The backup store now holds a snapshot of the removed marker (P4, T8) — release backs up, unlike
+# adopt (CreateMarker.RequiresBackup() is false, nothing pre-existing was overwritten there).
+exists $WORK/home/.ssh/.hasp-backups
+
+# A fresh inventory no longer reports work as managed.
+exec hasp list profile --key-dir $WORK/home/.ssh
+stdout 'work\s+false'
+
+! exec hasp show profile work --key-dir $WORK/home/.ssh
+stderr 'not found'
+
+# release on an already-unmanaged directory is refused.
+! exec hasp release profile work --yes --key-dir $WORK/home/.ssh
+stderr 'not managed'
+
+# --json renders the plan.preview envelope, and stdout stays JSON-only afterward — no trailing
+# plain-text confirmation line (tdd.md §10, T14).
+exec hasp adopt profile work --yes --key-dir $WORK/home/.ssh --json
+stdout '"kind": "plan.preview"'
+! stdout 'adopted profile'

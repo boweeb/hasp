@@ -10,14 +10,15 @@ import (
 )
 
 // newAdoptCmd is the `adopt` parent command (tdd.md §9's `adopt` grid row), mirroring how
-// list/show/find/new are structured as parent+noun elsewhere in this package. Only `adopt key` is
-// wired in this phase; `adopt host` and `adopt profile` are later M2/M3 slices.
+// list/show/find/new are structured as parent+noun elsewhere in this package. `adopt key` and
+// `adopt profile` are wired as of this phase; `adopt host` is a later M2/M3 slice.
 func newAdoptCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adopt",
 		Short: "Move an unmanaged resource into managed territory",
 	}
 	cmd.AddCommand(newAdoptKeyCmd())
+	cmd.AddCommand(newAdoptProfileCmd())
 	return cmd
 }
 
@@ -69,4 +70,43 @@ func newAdoptKeyCmd() *cobra.Command {
 		return nil
 	}
 	return cmd
+}
+
+// newAdoptProfileCmd wires `adopt profile <name>` (tdd.md §9's `adopt` grid cell: "Add a `.hasp`
+// marker to an existing directory that already holds keys", D13). Simpler than `adopt key`: no
+// clue resolution against a derived Machine is needed, since the target directory is built
+// entirely from --key-dir and the dotted profile name, mirroring `new key`'s own RunE (new.go).
+func newAdoptProfileCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "profile <name>",
+		Short: "Mark an existing directory that already holds keys as a managed profile (D13)",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flags, err := readGlobalFlags(cmd)
+			if err != nil {
+				return err
+			}
+			if err := requireKeyDir(flags); err != nil {
+				return err
+			}
+
+			plan, err := (app.AdoptProfileUseCase{}).Plan(app.AdoptProfileRequest{
+				KeyDir:  flags.KeyDir,
+				Profile: domain.ParseProfilePath(args[0]),
+			})
+			if err != nil {
+				return err
+			}
+
+			_, applied, err := runWritePlan(cmd, flags, plan)
+			if err != nil {
+				return err
+			}
+			if !applied || flags.JSON {
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "adopted profile %q\n", args[0])
+			return nil
+		},
+	}
 }

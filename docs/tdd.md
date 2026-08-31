@@ -275,8 +275,13 @@ type Change interface {
 type Preview struct {
     Summary string     // one-line description, always present
     Diff    []DiffLine // a line-oriented diff against the prior bytes; nil where there is no
-                        // natural "before" (MoveFile, CreateSymlink, Remove), or where diffing
-                        // would expose secret material — see WriteKeyFile below
+                        // natural "before" (MoveFile, CreateSymlink), where diffing would expose
+                        // secret material (see WriteKeyFile below), or where a Change's own prior
+                        // state simply wasn't read into its Preview — Remove is a natural "before"
+                        // wherever the file being deleted was already read to build the Plan (D15
+                        // elaboration 4 / D18: `release profile`'s `.hasp` removal shows the
+                        // marker's own contents first, so a note the user wrote is never a silent
+                        // loss), non-nil in exactly that case
 }
 
 type DiffLine struct {
@@ -299,9 +304,16 @@ type CreateSymlink struct{ Path, Target string }
 
 type CreateMarker struct{ Dir string; Header []byte }
 
-type Remove struct{ Path, Reason string } // e.g. release profile's `.hasp` removal (§9);
-                                           // always RequiresBackup() == true (P4) — nothing
-                                           // hasp deletes is deleted without a prior copy
+type Remove struct{ Path, Reason string; PriorContent []byte } // e.g. release profile's `.hasp`
+                                           // removal (§9); always RequiresBackup() == true (P4)
+                                           // — nothing hasp deletes is deleted without a prior
+                                           // copy. PriorContent is optional (nil by default) and
+                                           // populated only by a caller whose own D15/D18
+                                           // obligation requires showing what's being removed
+                                           // before it's gone — release profile's is the case
+                                           // that exists today; a nil PriorContent Preview()s with
+                                           // Diff == nil exactly as this section's own general rule
+                                           // states
 
 type WriteKeyFile struct {
     Path           string
