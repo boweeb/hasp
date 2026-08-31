@@ -1033,8 +1033,13 @@ Full argument: [T15](tech-decision-log.md#t15), [T20](tech-decision-log.md#t20),
    onto the (still-occupied) source path. `os.Rename` replaces an existing target atomically, so
    this single step both removes the now-redundant original copy and installs the alias in one
    operation; if it fails, the source path still holds a complete, valid, readable copy of the
-   key (not yet deduplicated into a symlink, which is a `check` finding, and idempotently
-   retryable — never a state where the top-level name resolves to nothing).
+   key — never a state where the top-level name resolves to nothing. That copy is not yet
+   deduplicated into a symlink, which `check` reports as `duplicate-key-confirmed`; resolving it
+   today is a manual step (remove the redundant destination copy, or finish the swap by hand),
+   not an automatic retry of `adopt` — the implementation does not (yet) recognize "the
+   destination already holds a verified, identical copy from a prior attempt" and re-derive that
+   it can proceed straight to the terminal replace, so retrying `adopt` unmodified fails closed
+   instead.
 5. **`new key` and `edit key --replace-material` are covered by this same discipline, not an
    exception to it.** `WriteKeyFile.Apply` follows point 1's atomic-write mechanism for the
    bytes; whether it is allowed to reach the final rename depends on `AllowOverwrite` (§4).

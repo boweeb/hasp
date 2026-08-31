@@ -171,6 +171,30 @@ type WriteFS interface {
 	// exists. If Move returns an error, from is guaranteed to still exist, readable and unchanged,
 	// at its original path — regardless of which step failed.
 	Move(from, to string) error
+
+	// ReplaceWithSymlink is `adopt`'s alias-preserving move (§4 "Change ordering", §11 point 4,
+	// T20): copy oldPath's bytes to newTarget (refusing if newTarget already exists), verify the
+	// copy byte-for-byte, then atomically os.Rename a freshly created symlink (oldPath ->
+	// newTarget) onto oldPath — replacing the original file there with an alias to its new home in
+	// a single, atomic operation. oldPath is never bare-unlinked. If ReplaceWithSymlink returns an
+	// error, oldPath is guaranteed to still hold either its original, unmodified file (if the
+	// terminal rename never ran) or the new alias (if it did) — never neither, and never a partial
+	// symlink. Note this is not itself a guarantee of retryability: if the error occurs after the
+	// verified copy already landed at newTarget but before the terminal rename, newTarget now
+	// exists, and this method refuses on a subsequent call for the same newTarget (see its own
+	// implementation) — recovery from that state is manual (§11 point 4), not automatic.
+	ReplaceWithSymlink(oldPath, newTarget string) error
+
+	// ReplaceSymlinkWithFile is `release`'s mirror of ReplaceWithSymlink: copy source's bytes to a
+	// fresh, independent file, verify the copy byte-for-byte, then atomically os.Rename it onto
+	// path — replacing whatever currently sits there (ReplaceSymlinkWithFile refuses unless it is
+	// a symlink, the shape adopt leaves behind) with a real, self-contained copy. source is never
+	// touched or removed by this call; that is the caller's own, separate step (mirroring D4's
+	// move rule read in reverse — the destination is replaced only once a verified copy exists,
+	// and the redundant source is cleaned up afterward, not before). If ReplaceSymlinkWithFile
+	// returns an error, path is guaranteed to still hold whatever it held before the call,
+	// unchanged.
+	ReplaceSymlinkWithFile(path, source string) error
 }
 
 // BackupStore snapshots a file's current bytes into the backup store (~/.ssh/.hasp-backups/, T8)

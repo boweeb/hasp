@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -55,4 +56,66 @@ func buildMachine(cmd *cobra.Command) (app.Machine, globalFlags, error) {
 		return app.Machine{}, globalFlags{}, err
 	}
 	return m, flags, nil
+}
+
+// resolveKeyClue finds exactly one key matching name-or-clue: an exact KeyName match first (the
+// same lookup app.ShowKey performs), falling back to app.FindKeys' fingerprint-fragment match
+// (J2) when no exact name matches. Shared by `adopt key` and `release key`, both of which take a
+// name-or-clue exactly as `show key`/`find key` already do — this is internal/app's own
+// ShowKey/FindKeys lookups, at the point a CLI argument needs to become a concrete key before an
+// AdoptKeyRequest/ReleaseKeyRequest can be built (tdd.md §3's Request-only framing: internal/app
+// never resolves a "which key does the user mean" clue itself).
+func resolveKeyClue(m app.Machine, clue string) (domain.Key, error) {
+	if detail, ok := app.ShowKey(m, clue); ok {
+		return detail.Key, nil
+	}
+	matches := app.FindKeys(m, clue)
+	switch len(matches) {
+	case 0:
+		return domain.Key{}, fmt.Errorf("key %q not found", clue)
+	case 1:
+		return matches[0], nil
+	default:
+		return domain.Key{}, fmt.Errorf("%q matches %d keys; use a more specific clue", clue, len(matches))
+	}
+}
+
+// singleRealLocation returns k's one non-alias (real, canonical) location, or an error if k has
+// zero or more than one — adopt operates on exactly one real file at a time (D5's alias-vs-real
+// distinction), and a key already spread across multiple real locations (T12's
+// unconfirmed-duplicate shape) is not something adopt knows how to move.
+func singleRealLocation(k domain.Key) (string, error) {
+	var real []string
+	for _, loc := range k.Locations {
+		if !loc.IsAlias {
+			real = append(real, loc.Path)
+		}
+	}
+	switch len(real) {
+	case 1:
+		return real[0], nil
+	case 0:
+		return "", fmt.Errorf("key %q has no real (non-alias) location", k.Name)
+	default:
+		return "", fmt.Errorf("key %q has %d real locations; not a shape adopt can move", k.Name, len(real))
+	}
+}
+
+// adoptedLocations returns the (source, alias) pair release needs: exactly one real location and
+// exactly one alias location, the shape adopt produces (tdd.md §9's `release` grid cell). Any
+// other shape — no alias at all, or more than one of either — is not something release knows how
+// to invert cleanly, and is reported as a usage error rather than guessed at.
+func adoptedLocations(k domain.Key) (source, alias string, err error) {
+	var reals, aliases []string
+	for _, loc := range k.Locations {
+		if loc.IsAlias {
+			aliases = append(aliases, loc.Path)
+		} else {
+			reals = append(reals, loc.Path)
+		}
+	}
+	if len(reals) != 1 || len(aliases) != 1 {
+		return "", "", fmt.Errorf("key %q is not in the simple adopted shape (1 real location + 1 alias); found %d real, %d alias", k.Name, len(reals), len(aliases))
+	}
+	return reals[0], aliases[0], nil
 }

@@ -31,6 +31,14 @@ func (f noopFS) Move(string, string) error {
 	f.t.Fatal("unexpected WriteFS.Move call")
 	return nil
 }
+func (f noopFS) ReplaceWithSymlink(string, string) error {
+	f.t.Fatal("unexpected WriteFS.ReplaceWithSymlink call")
+	return nil
+}
+func (f noopFS) ReplaceSymlinkWithFile(string, string) error {
+	f.t.Fatal("unexpected WriteFS.ReplaceSymlinkWithFile call")
+	return nil
+}
 
 // spyBackups records every path Snapshot was called with, in order — used to assert Applier's
 // backup-before-apply wiring without depending on the real backup.Store's filesystem effects.

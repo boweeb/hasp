@@ -1,0 +1,84 @@
+# The full adopt -> release cycle for a key (tdd.md §9, D13, D14, roadmap.md §4 exit criterion 1),
+# exercised end to end exactly as a real invocation would: preview is always rendered, --yes skips
+# the interactive confirm, and the key directory round-trips byte-for-byte.
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh
+mkdir $WORK/home/.ssh/work
+cp marker $WORK/home/.ssh/work/.hasp
+
+# Generate a key (private + .pub, both at the top level) to adopt.
+exec hasp new key id_ed25519_test --no-passphrase --yes --key-dir $WORK/home/.ssh
+exists $WORK/home/.ssh/id_ed25519_test
+exists $WORK/home/.ssh/id_ed25519_test.pub
+
+# No --yes and no TTY fails adopt's write-loop confirm gate closed, exactly as `new key` does
+# (tdd.md §11) — nothing is written.
+! exec hasp adopt key id_ed25519_test --profile work --key-dir $WORK/home/.ssh
+stderr 'stdin is not a terminal'
+! exists $WORK/home/.ssh/work/id_ed25519_test
+
+# --profile is required.
+! exec hasp adopt key id_ed25519_test --yes --key-dir $WORK/home/.ssh
+stderr '\-\-profile is required'
+
+# adopt into an unmarked directory is refused (D13's whole point: membership is derived from a
+# *managed* profile directory).
+mkdir $WORK/home/.ssh/unmanaged
+! exec hasp adopt key id_ed25519_test --profile unmanaged --yes --key-dir $WORK/home/.ssh
+stderr 'not managed'
+
+# --yes applies without a prompt; the preview line is still rendered first (tdd.md §4 step 3), and
+# names both the private key and its .pub sidecar.
+exec hasp adopt key id_ed25519_test --profile work --yes --key-dir $WORK/home/.ssh
+stdout 'adopt id_ed25519_test into profile work'
+stdout 'leaving a top-level alias'
+stdout 'adopted key "id_ed25519_test" into profile "work"'
+exists $WORK/home/.ssh/work/id_ed25519_test
+exists $WORK/home/.ssh/work/id_ed25519_test.pub
+exists $WORK/home/.ssh/id_ed25519_test
+exists $WORK/home/.ssh/id_ed25519_test.pub
+
+# A fresh inventory reports the key as a member of `work`, with both locations, and a correct
+# public-half/comment derivation (the .pub sidecar moved along with the private key).
+exec hasp show key id_ed25519_test --key-dir $WORK/home/.ssh
+stdout 'Profiles:\s+work'
+stdout 'Public half:\s+true'
+stdout '\(file\)'
+stdout '\(alias\)'
+
+# check reports no findings for the adopted key — the round trip so far is clean.
+exec hasp check key --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+# Adopting the same key again is refused: it already lives in profile "work".
+! exec hasp adopt key id_ed25519_test --profile work --yes --key-dir $WORK/home/.ssh
+stderr 'already lives in profile'
+
+# release: the exact inverse. Preview names the restore and the redundant-copy removal.
+exec hasp release key id_ed25519_test --yes --key-dir $WORK/home/.ssh
+stdout 'release id_ed25519_test from'
+stdout 'restore a real file at'
+stdout 'redundant profile-directory copy'
+stdout 'released key "id_ed25519_test"'
+
+# The top-level path is a real file again (not a symlink), and the profile-directory copy is gone
+# — roadmap.md §4 exit criterion 1's own claim, checked here structurally as well as in the Go
+# unit test's byte-for-byte snapshot comparison.
+! exists $WORK/home/.ssh/work/id_ed25519_test
+! exists $WORK/home/.ssh/work/id_ed25519_test.pub
+exists $WORK/home/.ssh/id_ed25519_test
+exists $WORK/home/.ssh/id_ed25519_test.pub
+
+# A fresh inventory of the released key reports it back in no profile — the pre-adopt state.
+exec hasp show key id_ed25519_test --key-dir $WORK/home/.ssh
+stdout 'Profiles:\s+\(none\)'
+stdout 'Public half:\s+true'
+
+# --json renders the plan.preview envelope, and stdout stays JSON-only afterward — no trailing
+# plain-text confirmation line (tdd.md §10, T14).
+exec hasp adopt key id_ed25519_test --profile work --yes --key-dir $WORK/home/.ssh --json
+stdout '"kind": "plan.preview"'
+! stdout 'adopted key'
+
+-- marker --
+# profile marker

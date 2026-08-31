@@ -60,6 +60,27 @@ func TestProfiles_KeyDirItselfNotACandidate(t *testing.T) {
 	}
 }
 
+// TestProfiles_ExcludesBackupStore is the profile-side mirror of TestKeys_ExcludesBackupStore:
+// hasp's own backup directory must never surface as a phantom, unmanaged profile candidate.
+func TestProfiles_ExcludesBackupStore(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "work", ".hasp"), "# profile marker\n")
+	writeFile(t, filepath.Join(dir, ".hasp-backups", "id_ed25519.20260828T140501Z"), "backed up key bytes")
+
+	got, err := Profiles(dir)
+	if err != nil {
+		t.Fatalf("Profiles: %v", err)
+	}
+	for _, c := range got {
+		if c.Path[0] == ".hasp-backups" {
+			t.Errorf("Profiles returned a candidate for .hasp-backups: %+v", c)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want exactly 1 (work, not .hasp-backups): %+v", len(got), got)
+	}
+}
+
 func TestProfiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	got, err := Profiles(dir)

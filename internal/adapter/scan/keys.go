@@ -31,6 +31,9 @@ func Keys(keyDir string) ([]KeyCandidate, error) {
 			return nil // fail-open: an unreadable entry mid-walk is skipped, never aborts the survey
 		}
 		if d.IsDir() {
+			if d.Name() == backupDirName {
+				return fs.SkipDir // T8: hasp's own backup snapshots are never key candidates
+			}
 			return nil
 		}
 

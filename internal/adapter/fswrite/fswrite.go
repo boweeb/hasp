@@ -205,3 +205,170 @@ func (fsys FS) Move(from, to string) error {
 	}
 	return nil
 }
+
+// ReplaceWithSymlink implements WriteFS.ReplaceWithSymlink: `adopt`'s alias-preserving move
+// (§11 point 4, T20). It refines Move's copy-verify-unlink sequence for the one case Move itself
+// cannot serve: the terminal step must leave a top-level alias behind (D13), and creating that
+// alias before the destination exists would risk os.Rename's replace-on-conflict semantics
+// destroying the very file it's supposed to stand in for (§4 "Change ordering"). So the sequence
+// is copy → verify → atomically replace oldPath with a symlink to newTarget, in that order, with
+// the replace itself a single os.Rename — never a bare unlink followed by a separate symlink
+// creation, which would leave a window where oldPath resolves to nothing at all.
+func (fsys FS) ReplaceWithSymlink(oldPath, newTarget string) error {
+	if _, err := os.Lstat(newTarget); err == nil {
+		return fmt.Errorf("adopt: %s already exists", newTarget)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("adopt: stat %s: %w", newTarget, err)
+	}
+
+	data, err := os.ReadFile(oldPath)
+	if err != nil {
+		return fmt.Errorf("adopt: read %s: %w", oldPath, err)
+	}
+	info, err := os.Stat(oldPath)
+	if err != nil {
+		return fmt.Errorf("adopt: stat %s: %w", oldPath, err)
+	}
+
+	if err := fsys.WriteFile(newTarget, data, info.Mode()); err != nil {
+		return fmt.Errorf("adopt: copy %s to %s: %w", oldPath, newTarget, err)
+	}
+
+	// Verification, byte-for-byte, exactly as Move's own comment explains: this primitive has no
+	// notion of "key" or "fingerprint," so a plain byte comparison is the undecidable-case check
+	// T15 names, and is at least as strong as a fingerprint comparison for any content.
+	written, err := os.ReadFile(newTarget)
+	if err != nil {
+		return fmt.Errorf("adopt: verify %s: %w", newTarget, err)
+	}
+	if !bytes.Equal(data, written) {
+		return fmt.Errorf("adopt: %s does not match %s byte-for-byte after copy, refusing to replace %s", newTarget, oldPath, oldPath)
+	}
+
+	// Terminal step: build the replacement symlink under a scratch name in oldPath's own
+	// directory, then os.Rename it onto oldPath. os.Rename replaces an existing target atomically,
+	// so this single call both removes the now-redundant copy at oldPath and installs the alias —
+	// oldPath is never unlinked on its own. Up to this point, every returned error leaves oldPath
+	// completely untouched; from here on, a failure still leaves oldPath holding either its
+	// original file (if the rename itself never ran) or the new alias (if it did) — never neither.
+	dir := filepath.Dir(oldPath)
+	tmpLink, err := reserveTempName(dir, ".hasp-adopt")
+	if err != nil {
+		return fmt.Errorf("adopt: %w", err)
+	}
+	if err := os.Symlink(newTarget, tmpLink); err != nil {
+		return fmt.Errorf("adopt: create replacement symlink: %w", err)
+	}
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpLink)
+		}
+	}()
+
+	if err := os.Rename(tmpLink, oldPath); err != nil {
+		return fmt.Errorf("adopt: copy of %s verified at %s, but replacing %s with an alias failed: %w", oldPath, newTarget, oldPath, err)
+	}
+	renamed = true
+
+	if err := fsyncDir(dir); err != nil {
+		return fmt.Errorf("adopt: fsync directory %s: %w", dir, err)
+	}
+	return nil
+}
+
+// ReplaceSymlinkWithFile implements WriteFS.ReplaceSymlinkWithFile: `release`'s mirror of
+// ReplaceWithSymlink. path must currently be a symlink — the shape adopt leaves behind — or this
+// refuses outright, before anything is read or written, exactly as Symlink refuses an existing
+// path and Move refuses an existing destination: WriteFS never silently replaces a filesystem
+// entry that isn't the shape its own contract expects.
+func (fsys FS) ReplaceSymlinkWithFile(path, source string) error {
+	lst, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("release: stat %s: %w", path, err)
+	}
+	if lst.Mode()&fs.ModeSymlink == 0 {
+		return fmt.Errorf("release: %s is not a symlink, refusing to replace it", path)
+	}
+
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return fmt.Errorf("release: read %s: %w", source, err)
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("release: stat %s: %w", source, err)
+	}
+
+	// Unlike WriteFile, the destination here (path) already holds something on purpose — a
+	// symlink to source — so the copy is verified in a scratch temp file *before* path is ever
+	// touched, rather than verified after a live write the way Move's own comment describes for
+	// a destination that didn't previously exist.
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".hasp-release-*")
+	if err != nil {
+		return fmt.Errorf("release: create temp file in %s: %w", dir, err)
+	}
+	tmpPath := tmp.Name()
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("release: write temp file %s: %w", tmpPath, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("release: fsync temp file %s: %w", tmpPath, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("release: close temp file %s: %w", tmpPath, err)
+	}
+	if err := os.Chmod(tmpPath, info.Mode()); err != nil {
+		return fmt.Errorf("release: chmod temp file %s: %w", tmpPath, err)
+	}
+	preserveOwnership(path, tmpPath) // best-effort, mirrors §11 point 3
+
+	written, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return fmt.Errorf("release: verify %s: %w", tmpPath, err)
+	}
+	if !bytes.Equal(data, written) {
+		return fmt.Errorf("release: temp copy of %s does not match byte-for-byte, refusing to replace %s", source, path)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("release: replace %s with a copy of %s: %w", path, source, err)
+	}
+	renamed = true
+
+	if err := fsyncDir(dir); err != nil {
+		return fmt.Errorf("release: fsync directory %s: %w", dir, err)
+	}
+	return nil
+}
+
+// reserveTempName finds a name not currently in use in dir, suitable for a scratch symlink about
+// to be renamed onto its final destination — os.CreateTemp guarantees the name was unique at
+// least momentarily, and removing the placeholder file it created leaves that name free. There is
+// an inherent, accepted TOCTOU gap between this call returning and os.Symlink using the name it
+// returned, bounded by the same single-user, single-process trust model
+// internal/app's requireWithinKeyDir doc comment already accepts for this codebase (P8).
+func reserveTempName(dir, prefix string) (string, error) {
+	f, err := os.CreateTemp(dir, prefix+"-*")
+	if err != nil {
+		return "", fmt.Errorf("reserve temp name in %s: %w", dir, err)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("close reserved temp file %s: %w", name, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return "", fmt.Errorf("remove reserved temp file %s: %w", name, err)
+	}
+	return name, nil
+}
