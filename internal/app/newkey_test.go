@@ -127,6 +127,65 @@ func TestNewKeyUseCase_ExitCriterion2_MatchesFreshInventory(t *testing.T) {
 	}
 }
 
+// TestNewKeyUseCase_ExitCriterion2_MatchesFreshInventory_Encrypted is the same exit-criterion-2
+// walk as TestNewKeyUseCase_ExitCriterion2_MatchesFreshInventory above, run against an encrypted
+// key instead of a plain one — a gap this close-out pass found: the sibling test above never
+// exercises a passphrase, and TestNewKeyUseCase_Plan_WithPassphrase_ProducesAnEncryptedKey (below)
+// only asserts Encrypted == true, not the full field-for-field parity roadmap.md §4 criterion 2
+// actually requires ("hasp new key's reported facts are identical to what a fresh hasp show key of
+// the finished artifact reports"). An encrypted key is the one shape where new key's own generation
+// path and a fresh Inspect's derivation path could plausibly disagree (Encrypted, and Identity's
+// derivability depend on whether the encryption round-trips through keyfile.Generate and back out
+// through keyfile.Inspect identically), so it is the case most worth proving explicitly rather than
+// assuming the plain-key test generalizes.
+func TestNewKeyUseCase_ExitCriterion2_MatchesFreshInventory_Encrypted(t *testing.T) {
+	dir := t.TempDir()
+	uc := NewKeyUseCase{}
+	secret := []byte("hunter2hunter2")
+	plan, err := uc.Plan(NewKeyRequest{Name: "id_ed25519_encrypted", KeyDir: dir, Passphrase: secret})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := &Applier{FS: fswrite.New(), Backups: backup.New(dir)}
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	m, err := Derive(DeriveOptions{KeyDir: dir})
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+	detail, ok := ShowKey(m, "id_ed25519_encrypted")
+	if !ok {
+		t.Fatal("ShowKey: freshly generated encrypted key not found by a fresh derivation")
+	}
+
+	k := detail.Key
+	if k.Format.String() != "openssh" {
+		t.Errorf("Format = %v, want openssh", k.Format)
+	}
+	if k.Algorithm != "ssh-ed25519" {
+		t.Errorf("Algorithm = %q, want ssh-ed25519", k.Algorithm)
+	}
+	if !k.Encrypted {
+		t.Error("Encrypted = false, want true (a passphrase was given)")
+	}
+	if !k.HasPublicHalf {
+		t.Error("HasPublicHalf = false, want true (the .pub sibling was written in the same Plan)")
+	}
+	// An encrypted OpenSSH private key still carries its fingerprint in cleartext in the key blob
+	// (the derivation gap, D12/T1, only bites PEM-encrypted keys with no .pub sidecar) — so
+	// Identity must still resolve to a real fingerprint here, not fall back to `unknown`, exactly as
+	// the plain-key sibling test asserts.
+	if string(k.Identity.Value()) == "" {
+		t.Error("Identity.Value() is empty, want a derived fingerprint")
+	}
+	if len(k.Locations) != 1 {
+		t.Errorf("Locations = %+v, want exactly 1", k.Locations)
+	}
+}
+
 // TestNewKeyUseCase_Plan_WithPassphrase_ProducesAnEncryptedKey confirms the passphrase actually
 // reaches the generated key material, and that a fresh Inspect reports Encrypted: true.
 func TestNewKeyUseCase_Plan_WithPassphrase_ProducesAnEncryptedKey(t *testing.T) {

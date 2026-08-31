@@ -20,6 +20,13 @@ stderr 'at least one of'
 ! exec hasp edit key id_ed25519_test --add-alias=work/id_ed25519_test --replace-material=$WORK/home/.ssh/id_ed25519_donor --yes --key-dir $WORK/home/.ssh
 stderr 'exactly one operation'
 
+# No --yes and no TTY fails edit's write-loop confirm gate closed, exactly as `adopt key`/`adopt
+# profile` do (this script's own sibling scripts) — roadmap.md §4 exit criterion 3, exercised here
+# for `edit key` specifically since this script had never asserted it before this close-out pass.
+! exec hasp edit key id_ed25519_test --name id_ed25519_never_renamed --key-dir $WORK/home/.ssh
+stderr 'stdin is not a terminal'
+! exists $WORK/home/.ssh/id_ed25519_never_renamed
+
 # --name: rename in place. Preview names the move; the old KeyName no longer resolves, the new one
 # does — M1's real read path, exercised against the finished artifact.
 exec hasp edit key id_ed25519_test --name id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
