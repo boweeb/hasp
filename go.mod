@@ -3,9 +3,11 @@ module github.com/boweeb/hasp
 go 1.26.6
 
 require (
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/rogpeppe/go-internal v1.16.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.55.0
+	golang.org/x/term v0.45.0
 )
 
 require (
