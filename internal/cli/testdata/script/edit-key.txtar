@@ -1,0 +1,104 @@
+# `edit key`'s four independent sub-operations (tdd.md §9's `edit` grid cell for `key`, T19, T22),
+# exercised end to end exactly as a real invocation would: preview is always rendered, --yes skips
+# the interactive confirm, and each operation's own precondition is checked before anything writes.
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh
+mkdir $WORK/home/.ssh/work
+cp marker $WORK/home/.ssh/work/.hasp
+mkdir $WORK/home/.ssh/personal
+cp marker $WORK/home/.ssh/personal/.hasp
+
+exec hasp new key id_ed25519_test --no-passphrase --yes --key-dir $WORK/home/.ssh
+exec hasp new key id_ed25519_donor --no-passphrase --yes --key-dir $WORK/home/.ssh
+
+# No edit flag at all is a usage error, before any write.
+! exec hasp edit key id_ed25519_test --yes --key-dir $WORK/home/.ssh
+stderr 'at least one of'
+
+# Two independent operations requested at once is refused (this phase's own judgment call: --name
+# and --profile may be combined, everything else is one operation per invocation).
+! exec hasp edit key id_ed25519_test --add-alias=work/id_ed25519_test --replace-material=$WORK/home/.ssh/id_ed25519_donor --yes --key-dir $WORK/home/.ssh
+stderr 'exactly one operation'
+
+# --name: rename in place. Preview names the move; the old KeyName no longer resolves, the new one
+# does — M1's real read path, exercised against the finished artifact.
+exec hasp edit key id_ed25519_test --name id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
+stdout 'edit key "id_ed25519_test": move'
+stdout 'edited key "id_ed25519_test"'
+! exists $WORK/home/.ssh/id_ed25519_test
+exists $WORK/home/.ssh/id_ed25519_renamed
+exists $WORK/home/.ssh/id_ed25519_renamed.pub
+
+! exec hasp show key id_ed25519_test --key-dir $WORK/home/.ssh
+stderr 'not found'
+exec hasp show key id_ed25519_renamed --key-dir $WORK/home/.ssh
+stdout 'Name:\s+id_ed25519_renamed'
+
+# --profile: relocate into an already-existing directory — a plain relocation, not adopt, so the
+# destination need not be managed, only present.
+exec hasp edit key id_ed25519_renamed --profile work --yes --key-dir $WORK/home/.ssh
+exists $WORK/home/.ssh/work/id_ed25519_renamed
+! exists $WORK/home/.ssh/id_ed25519_renamed
+
+# --profile into a directory that does not exist is refused: edit key --profile relocates a key,
+# it does not create directories.
+! exec hasp edit key id_ed25519_renamed --profile nosuchprofile --yes --key-dir $WORK/home/.ssh
+stderr 'does not exist'
+
+# --add-alias=<profile>/<name>: T19's own worked example shape, and D2's write path. A fresh
+# inventory reports the union of both profiles the key is now reachable from.
+exec hasp edit key id_ed25519_renamed --add-alias=personal/id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
+exists $WORK/home/.ssh/personal/id_ed25519_renamed
+exec hasp show key id_ed25519_renamed --key-dir $WORK/home/.ssh
+stdout 'Profiles:\s+personal, work'
+
+# --add-alias onto a path that already exists is refused.
+! exec hasp edit key id_ed25519_renamed --add-alias=personal/id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
+stderr 'already exists'
+
+# --remove-alias removes exactly the alias location named, never the real file.
+exec hasp edit key id_ed25519_renamed --remove-alias=personal/id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
+! exists $WORK/home/.ssh/personal/id_ed25519_renamed
+exec hasp show key id_ed25519_renamed --key-dir $WORK/home/.ssh
+stdout 'Profiles:\s+work'
+
+# --remove-alias refuses against the key's own real file — the one place a mistake could destroy
+# key material.
+! exec hasp edit key id_ed25519_renamed --remove-alias=work/id_ed25519_renamed --yes --key-dir $WORK/home/.ssh
+stderr 'not an alias'
+
+# --replace-material against something that isn't a parseable private key is refused, before
+# anything is written — checked first, before the successful replace below, since a successful
+# replace with byte-identical material to another real key on disk merges the two into one Key
+# (T12: two files sharing a fingerprint are one key with two locations), which would otherwise
+# change which name "id_ed25519_renamed" resolves under for the rest of this script.
+! exec hasp edit key id_ed25519_renamed --replace-material=$WORK/notakey.txt --yes --key-dir $WORK/home/.ssh
+stderr 'not contain a parseable private key'
+
+# --replace-material swaps the private key bytes (and .pub sidecar) for another key's material,
+# validated first and backed up before the overwrite (T22) — the round trip's own proof that the
+# bytes genuinely changed, not just that a write happened.
+cp $WORK/home/.ssh/work/id_ed25519_renamed before-material
+exec hasp edit key id_ed25519_renamed --replace-material=$WORK/home/.ssh/id_ed25519_donor --yes --key-dir $WORK/home/.ssh
+! cmp $WORK/home/.ssh/work/id_ed25519_renamed before-material
+cmp $WORK/home/.ssh/work/id_ed25519_renamed $WORK/home/.ssh/id_ed25519_donor
+cmp $WORK/home/.ssh/work/id_ed25519_renamed.pub $WORK/home/.ssh/id_ed25519_donor.pub
+exists $WORK/home/.ssh/.hasp-backups
+# The pre-replace material is recoverable from the backup store (P4) — proved byte-for-byte in
+# internal/app's own TestEditKeyUseCase_ReplaceMaterial_RoundTrip_BackupCapturesOldMaterialAnd...
+# test; here it is enough to confirm the store received something for this key.
+[exec:find] exec find $WORK/home/.ssh/.hasp-backups -name 'id_ed25519_renamed.*'
+[exec:find] stdout 'id_ed25519_renamed'
+
+# After replace-material, id_ed25519_renamed's bytes are now byte-identical to id_ed25519_donor's
+# — the derivation pipeline correctly merges them into one Key (T12), whose Name is now derived
+# from the alphabetically-first of its two real locations. This is the *correct*, expected
+# consequence of writing byte-identical material at a second path, not a defect in edit key.
+exec hasp show key id_ed25519_donor --key-dir $WORK/home/.ssh
+stdout 'id_ed25519_donor\s+\(file\)'
+stdout 'work/id_ed25519_renamed\s+\(file\)'
+
+-- marker --
+# profile marker
+-- notakey.txt --
+this is not a private key
