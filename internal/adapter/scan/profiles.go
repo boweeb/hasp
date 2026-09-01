@@ -34,6 +34,9 @@ func Profiles(keyDir string) ([]ProfileCandidate, error) {
 		if !d.IsDir() || path == keyDir {
 			return nil
 		}
+		if d.Name() == backupDirName {
+			return fs.SkipDir // T8: hasp's own backup store is never a profile candidate
+		}
 
 		rel, relErr := filepath.Rel(keyDir, path)
 		if relErr != nil {

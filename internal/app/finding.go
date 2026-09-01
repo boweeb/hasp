@@ -36,10 +36,22 @@ func (s Severity) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()
 // retired rather than recycled.
 type FindingID string
 
-// The v1 finding id set (T29's table), fixed from the start even though M1's read-only scope
-// means only some of these can ever actually fire yet (adopt-dependent repair paths don't exist,
-// and stanza-in-multiple-groups/stanza-in-no-group are partial-apply artifacts of a write path
-// M1 doesn't have — see check_host.go).
+// The v1 finding id set (T29's table), fixed from the start (T29: "the finding schema fixed from
+// the start"). check itself never repairs anything — it stays advisory everywhere (tdd.md §9's
+// grid: "repairing a finding it raises on an unmanaged resource requires adopt first") — but as of
+// M2, every key- and profile-scoped finding below now has a real, in-hasp write verb a user can run
+// in response to it: FindingKeyNoProfile and FindingUnmarkedProfileDir are addressed by `adopt
+// key`/`adopt profile`; FindingEmptyProfileDir by `release profile`. FindingDuplicateKeyConfirmed,
+// FindingDuplicateKeyUnconfirmed, FindingKeyMissingPublicHalf, and FindingFingerprintUnknown remain
+// unrepairable by design, not by omission — no verb removes a redundant copy, regenerates a missing
+// .pub, or resolves an undecidable fingerprint (D12 is permanent). Every host-scoped finding below
+// (FindingDanglingIdentityFile, FindingUnresolvableToken, FindingRelativeIdentityFile,
+// FindingShadowedStanza, FindingHostNoBinding, FindingMarkerDefect) is still report-only: `adopt
+// host`/`edit host`/`release host` and every WriteRegion change are M3's own work, explicitly out
+// of M2's scope (roadmap.md §4). FindingStanzaInMultipleGroups/FindingStanzaInNoGroup remain the
+// reserved, always-empty detectors check_host.go's own doc comment describes — their real trigger
+// (a stanza left in two host-group files, or none, by a partially-applied multi-file Plan) still
+// needs WriteRegion and the metadata channel (T25), neither of which M2 builds either.
 const (
 	FindingDuplicateKeyConfirmed   FindingID = "duplicate-key-confirmed"
 	FindingDuplicateKeyUnconfirmed FindingID = "duplicate-key-unconfirmed"

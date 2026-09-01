@@ -275,8 +275,13 @@ type Change interface {
 type Preview struct {
     Summary string     // one-line description, always present
     Diff    []DiffLine // a line-oriented diff against the prior bytes; nil where there is no
-                        // natural "before" (MoveFile, CreateSymlink, Remove), or where diffing
-                        // would expose secret material — see WriteKeyFile below
+                        // natural "before" (MoveFile, CreateSymlink), where diffing would expose
+                        // secret material (see WriteKeyFile below), or where a Change's own prior
+                        // state simply wasn't read into its Preview — Remove is a natural "before"
+                        // wherever the file being deleted was already read to build the Plan (D15
+                        // elaboration 4 / D18: `release profile`'s `.hasp` removal shows the
+                        // marker's own contents first, so a note the user wrote is never a silent
+                        // loss), non-nil in exactly that case
 }
 
 type DiffLine struct {
@@ -299,9 +304,16 @@ type CreateSymlink struct{ Path, Target string }
 
 type CreateMarker struct{ Dir string; Header []byte }
 
-type Remove struct{ Path, Reason string } // e.g. release profile's `.hasp` removal (§9);
-                                           // always RequiresBackup() == true (P4) — nothing
-                                           // hasp deletes is deleted without a prior copy
+type Remove struct{ Path, Reason string; PriorContent []byte } // e.g. release profile's `.hasp`
+                                           // removal (§9); always RequiresBackup() == true (P4)
+                                           // — nothing hasp deletes is deleted without a prior
+                                           // copy. PriorContent is optional (nil by default) and
+                                           // populated only by a caller whose own D15/D18
+                                           // obligation requires showing what's being removed
+                                           // before it's gone — release profile's is the case
+                                           // that exists today; a nil PriorContent Preview()s with
+                                           // Diff == nil exactly as this section's own general rule
+                                           // states
 
 type WriteKeyFile struct {
     Path           string
@@ -1033,8 +1045,13 @@ Full argument: [T15](tech-decision-log.md#t15), [T20](tech-decision-log.md#t20),
    onto the (still-occupied) source path. `os.Rename` replaces an existing target atomically, so
    this single step both removes the now-redundant original copy and installs the alias in one
    operation; if it fails, the source path still holds a complete, valid, readable copy of the
-   key (not yet deduplicated into a symlink, which is a `check` finding, and idempotently
-   retryable — never a state where the top-level name resolves to nothing).
+   key — never a state where the top-level name resolves to nothing. That copy is not yet
+   deduplicated into a symlink, which `check` reports as `duplicate-key-confirmed`; resolving it
+   today is a manual step (remove the redundant destination copy, or finish the swap by hand),
+   not an automatic retry of `adopt` — the implementation does not (yet) recognize "the
+   destination already holds a verified, identical copy from a prior attempt" and re-derive that
+   it can proceed straight to the terminal replace, so retrying `adopt` unmodified fails closed
+   instead.
 5. **`new key` and `edit key --replace-material` are covered by this same discipline, not an
    exception to it.** `WriteKeyFile.Apply` follows point 1's atomic-write mechanism for the
    bytes; whether it is allowed to reach the final rename depends on `AllowOverwrite` (§4).

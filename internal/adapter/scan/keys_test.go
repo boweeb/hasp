@@ -100,6 +100,31 @@ func TestKeys_SymlinkResolvedPath(t *testing.T) {
 	}
 }
 
+// TestKeys_ExcludesBackupStore regression-tests the gap found while proving M2's adopt/release
+// round trip: hasp's own backup snapshots (~/.ssh/.hasp-backups/, T8), written by BackupStore
+// mid-Plan, are byte-for-byte copies of real key material and would otherwise be discovered as
+// brand-new key candidates on the very next scan — silently duplicating the entry, and (worse)
+// sometimes winning projectKey's own lexicographic tie-break for "primary" location, since ".hasp-
+// backups" sorts before an ordinary profile directory name.
+func TestKeys_ExcludesBackupStore(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "id_ed25519"), "top-level key")
+	writeFile(t, filepath.Join(dir, ".hasp-backups", "id_ed25519.20260828T140501Z"), "backed up key bytes")
+
+	got, err := Keys(dir)
+	if err != nil {
+		t.Fatalf("Keys: %v", err)
+	}
+	for _, c := range got {
+		if filepath.Base(filepath.Dir(c.Path)) == ".hasp-backups" {
+			t.Errorf("Keys returned a candidate inside .hasp-backups: %s", c.Path)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want exactly 1 (the top-level key, not its backup)", len(got))
+	}
+}
+
 func TestKeys_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	got, err := Keys(dir)

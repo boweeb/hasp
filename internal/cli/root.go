@@ -49,16 +49,21 @@ func NewRootCmd() *cobra.Command {
 	root.PersistentFlags().Bool("json", false, "machine-readable output")
 	root.PersistentFlags().Bool("verbose", false, "enable diagnostic logging to stderr")
 	root.PersistentFlags().Bool("no-color", false, "disable ANSI color in human output")
-	// --yes is accepted now, ahead of any write verb, so no command's flag signature needs to
-	// change when M2 adds one: consent to apply a Plan non-interactively (tdd.md §9). It has no
-	// effect in M1 — nothing writes yet.
-	root.PersistentFlags().Bool("yes", false, "consent to apply a write non-interactively (no effect until M2)")
+	// --yes: consent to apply a Plan non-interactively (tdd.md §9, §4's command-loop step 4). Was
+	// a stub through M1, since nothing wrote yet; from M2's `new key` onward it gates every write
+	// command's confirm step (internal/cli/write.go's runWritePlan) — no TTY and no --yes fails
+	// closed (tdd.md §11).
+	root.PersistentFlags().Bool("yes", false, "consent to apply a write non-interactively")
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newListCmd())
 	root.AddCommand(newShowCmd())
 	root.AddCommand(newFindCmd())
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newNewCmd())
+	root.AddCommand(newAdoptCmd())
+	root.AddCommand(newReleaseCmd())
+	root.AddCommand(newEditCmd())
 
 	return root
 }

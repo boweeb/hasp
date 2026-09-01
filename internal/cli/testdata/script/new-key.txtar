@@ -1,0 +1,67 @@
+# The full read -> preview -> confirm -> write cycle (tdd.md §4) for `new key`, exercised end to
+# end exactly as a real invocation would: preview is always rendered, --yes skips the interactive
+# confirm, and a second attempt against the same name fails closed rather than overwriting (T22).
+env HOME=$WORK/home
+mkdir $WORK/home/.ssh
+
+# --yes applies without a prompt; the preview line is still rendered first (tdd.md §4 step 3).
+exec hasp new key id_ed25519_test --no-passphrase --yes --key-dir $WORK/home/.ssh
+stdout 'generate new key "id_ed25519_test"'
+stdout 'created key "id_ed25519_test"'
+exists $WORK/home/.ssh/id_ed25519_test
+exists $WORK/home/.ssh/id_ed25519_test.pub
+
+# A fresh inventory of the finished artifact reports the same facts new key itself claimed
+# (roadmap.md §4 exit criterion 2): ed25519, openssh, unencrypted.
+exec hasp show key id_ed25519_test --key-dir $WORK/home/.ssh
+stdout 'Algorithm:\s+ssh-ed25519'
+stdout 'Format:\s+openssh'
+stdout 'Encrypted:\s+false'
+stdout 'Public half:\s+true'
+
+# --json renders the plan.preview envelope with the diff field omitted (WriteKeyFile never
+# carries one, T26/P3) rather than present-and-null, and stdout stays JSON-only afterward — no
+# trailing plain-text confirmation line (tdd.md §10, T14: stdout is data, stderr is diagnostics).
+exec hasp new key id_ed25519_json --no-passphrase --yes --key-dir $WORK/home/.ssh --json
+stdout '"kind": "plan.preview"'
+! stdout '"diff"'
+! stdout 'created key'
+
+# new key never overwrites (T22, D4): a second attempt at the same name fails closed, before any
+# byte is written, and the original file is untouched.
+cp $WORK/home/.ssh/id_ed25519_test original-private-key
+! exec hasp new key id_ed25519_test --no-passphrase --yes --key-dir $WORK/home/.ssh
+stderr 'key file already exists'
+cmp $WORK/home/.ssh/id_ed25519_test original-private-key
+
+# No --yes and no TTY attached (the default for a testscript exec) fails the write-loop's own
+# confirm gate closed rather than hanging or guessing (tdd.md §11), even once a passphrase mode
+# has already resolved explicitly.
+! exec hasp new key id_ed25519_noninteractive --no-passphrase --key-dir $WORK/home/.ssh
+stderr 'stdin is not a terminal'
+! exists $WORK/home/.ssh/id_ed25519_noninteractive
+
+# With no passphrase flag, no env var, and no settings file, running non-interactively with no
+# chosen mode fails closed at resolution time (T6's own rule), before a Plan is even built.
+! exec hasp new key id_ed25519_nomode --yes --key-dir $WORK/home/.ssh
+stderr 'no passphrase mode was chosen'
+! exists $WORK/home/.ssh/id_ed25519_nomode
+
+# The three passphrase flags are mutually exclusive (T6) — a usage error, exit code 2 territory.
+! exec hasp new key id_ed25519_conflict --passphrase --no-passphrase --key-dir $WORK/home/.ssh
+stderr 'mutually exclusive'
+
+# --passphrase-stdin reads one line from stdin and generates an encrypted key non-interactively.
+stdin passphrase.txt
+exec hasp new key id_ed25519_encrypted --passphrase-stdin --yes --key-dir $WORK/home/.ssh
+exec hasp show key id_ed25519_encrypted --key-dir $WORK/home/.ssh
+stdout 'Encrypted:\s+true'
+
+# --profile places the key under the profile's directory rather than the top level.
+mkdir $WORK/home/.ssh/work
+exec hasp new key id_ed25519_work --no-passphrase --yes --profile work --key-dir $WORK/home/.ssh
+exists $WORK/home/.ssh/work/id_ed25519_work
+! exists $WORK/home/.ssh/id_ed25519_work
+
+-- passphrase.txt --
+correct horse battery staple
