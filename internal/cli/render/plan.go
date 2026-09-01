@@ -63,6 +63,14 @@ func PlanPreviewHuman(w io.Writer, plan app.Plan, noColor bool) error {
 }
 
 func printDiffLine(w io.Writer, line app.DiffLine, noColor bool) error {
+	// DiffElided is a synthetic summary line, not real file content — render it with no +/-/space
+	// prefix and no diff coloring, so it reads unambiguously as "hasp collapsed this" rather than as
+	// a line that ever existed in before/after (T26; windowing fix requirement 2).
+	if line.Kind == app.DiffElided {
+		_, err := fmt.Fprintln(w, "    "+line.Text)
+		return err
+	}
+
 	prefix, code := " ", ""
 	switch line.Kind {
 	case app.DiffAdded:

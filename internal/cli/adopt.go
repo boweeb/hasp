@@ -10,8 +10,8 @@ import (
 )
 
 // newAdoptCmd is the `adopt` parent command (tdd.md §9's `adopt` grid row), mirroring how
-// list/show/find/new are structured as parent+noun elsewhere in this package. `adopt key` and
-// `adopt profile` are wired as of this phase; `adopt host` is a later M2/M3 slice.
+// list/show/find/new are structured as parent+noun elsewhere in this package. `adopt key`,
+// `adopt profile`, and `adopt host` are all wired as of this phase (M3).
 func newAdoptCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adopt",
@@ -19,6 +19,7 @@ func newAdoptCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newAdoptKeyCmd())
 	cmd.AddCommand(newAdoptProfileCmd())
+	cmd.AddCommand(newAdoptHostCmd())
 	return cmd
 }
 
@@ -106,6 +107,44 @@ func newAdoptProfileCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "adopted profile %q\n", args[0])
+			return nil
+		},
+	}
+}
+
+// newAdoptHostCmd wires `adopt host <pattern>` (tdd.md §9's `adopt` grid cell: "Wrap an existing
+// hand-written stanza in hasp's markers", D7, D14). Mirrors newAdoptKeyCmd's own RunE shape
+// (buildMachine, then Plan, then runWritePlan) even though AdoptHostRequest needs no clue
+// resolution against the derived Machine — Pattern is matched exactly against the raw CST inside
+// app.AdoptHostUseCase.Plan itself (mirroring ShowHost's own exact-match semantics), not resolved
+// here the way resolveKeyClue resolves a key name-or-clue.
+func newAdoptHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "host <pattern>",
+		Short: "Wrap an existing hand-written Host stanza in hasp's markers (D7, D14)",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, flags, err := buildMachine(cmd)
+			if err != nil {
+				return err
+			}
+
+			plan, err := (app.AdoptHostUseCase{}).Plan(app.AdoptHostRequest{
+				KeyDir:  flags.KeyDir,
+				Pattern: args[0],
+			})
+			if err != nil {
+				return err
+			}
+
+			_, applied, err := runWritePlan(cmd, flags, plan)
+			if err != nil {
+				return err
+			}
+			if !applied || flags.JSON {
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "adopted host %q\n", args[0])
 			return nil
 		},
 	}

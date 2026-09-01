@@ -285,7 +285,7 @@ type Preview struct {
 }
 
 type DiffLine struct {
-    Kind DiffKind // DiffContext, DiffAdded, DiffRemoved
+    Kind DiffKind // DiffContext, DiffAdded, DiffRemoved, DiffElided
     Text string
 }
 
@@ -952,9 +952,11 @@ unified-diff-style block beneath it — `+`/`-`/context-prefixed lines, colorize
 `WriteKeyFile`) only the summary line appears — there is nothing to diff, or, for `WriteKeyFile`,
 deliberately nothing shown even though bytes exist (§4, §11). The JSON renderer marshals the same
 `Preview` value as part of a `plan.preview`-kind envelope: `{"summary": "...", "diff":
-[{"kind": "added"|"removed"|"context", "text": "..."}], ...}`, `diff` omitted (not merely empty)
-when it is `nil`, so a consumer can tell "no diff exists for this change" apart from "the diff is
-empty."
+[{"kind": "added"|"removed"|"context"|"elided", "text": "..."}], ...}`, `diff` omitted (not merely
+empty) when it is `nil`, so a consumer can tell "no diff exists for this change" apart from "the
+diff is empty." `"elided"` marks a synthetic summary line standing in for a run of unchanged lines
+the diff's windowing collapsed rather than emitting individually — never real file content, so a
+renderer or `--json` consumer must not mistake it for a `"context"` line.
 
 ### JSON envelope — versioned from the first release
 

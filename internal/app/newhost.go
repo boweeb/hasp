@@ -361,15 +361,22 @@ func findFirstTopLevelHostBlock(nodes []sshconfig.Node) *sshconfig.HostBlock {
 	return nil
 }
 
-// renderNewRegion wraps body in a freshly built MarkedRegion (whose Begin/End are byte-identical
-// to what scanMarkers recognizes on the next Parse) and renders it.
-func renderNewRegion(body []sshconfig.Node) []byte {
-	region := &sshconfig.MarkedRegion{
+// newManagedRegion builds a brand-new *sshconfig.MarkedRegion whose Begin/End are byte-identical
+// to what scanMarkers recognizes on the next Parse. Split out from renderNewRegion below (which
+// renders it immediately) because adopthost.go's own first-region-creation path needs the Node
+// itself, not pre-rendered bytes — it splices the new region into a whole-file Nodes slice before
+// a single, whole-file RenderNodes call.
+func newManagedRegion(body []sshconfig.Node) *sshconfig.MarkedRegion {
+	return &sshconfig.MarkedRegion{
 		Begin: []byte(sshconfig.ManagedRegionBegin + "\n"),
 		End:   []byte(sshconfig.ManagedRegionEnd + "\n"),
 		Body:  body,
 	}
-	return sshconfig.RenderNodes([]sshconfig.Node{region})
+}
+
+// renderNewRegion wraps body in a freshly built MarkedRegion and renders it.
+func renderNewRegion(body []sshconfig.Node) []byte {
+	return sshconfig.RenderNodes([]sshconfig.Node{newManagedRegion(body)})
 }
 
 // resolveHostGroupFile turns a short --group name into its file path (design.md §5.5, D9): "" is

@@ -73,6 +73,13 @@ const (
 	DiffContext DiffKind = iota
 	DiffAdded
 	DiffRemoved
+
+	// DiffElided marks a synthetic summary line standing in for a run of unchanged lines lineDiff's
+	// windowing collapsed rather than emitting individually (P5/D6: preview must stay readable; T26:
+	// WriteRegion's diff contract). Its Text carries a human-readable count (e.g. "... 143 unchanged
+	// lines ..."), never real file content — a renderer or a --json consumer (T14) must never mistake
+	// it for a DiffContext line.
+	DiffElided
 )
 
 func (k DiffKind) String() string {
@@ -81,6 +88,8 @@ func (k DiffKind) String() string {
 		return "added"
 	case DiffRemoved:
 		return "removed"
+	case DiffElided:
+		return "elided"
 	default:
 		return "context"
 	}
