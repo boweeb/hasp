@@ -10,8 +10,8 @@ import (
 )
 
 // newReleaseCmd is the `release` parent command (tdd.md §9's `release` grid row), the inverse of
-// `adopt` (D14). `release key` and `release profile` are wired as of this phase; `release host` is
-// a later M2/M3 slice.
+// `adopt` (D14). `release key`, `release profile`, and `release host` are all wired as of this
+// phase (M3).
 func newReleaseCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "release",
@@ -19,6 +19,7 @@ func newReleaseCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newReleaseKeyCmd())
 	cmd.AddCommand(newReleaseProfileCmd())
+	cmd.AddCommand(newReleaseHostCmd())
 	return cmd
 }
 
@@ -97,6 +98,40 @@ func newReleaseProfileCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "released profile %q\n", args[0])
+			return nil
+		},
+	}
+}
+
+// newReleaseHostCmd wires `release host <pattern>`, the inverse of `adopt host` (D14, D18).
+// Mirrors newAdoptHostCmd's own RunE shape.
+func newReleaseHostCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "host <pattern>",
+		Short: "Re-insert a managed Host stanza as plain text after hasp's marked region (D14, D18)",
+		Args:  exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_, flags, err := buildMachine(cmd)
+			if err != nil {
+				return err
+			}
+
+			plan, err := (app.ReleaseHostUseCase{}).Plan(app.ReleaseHostRequest{
+				KeyDir:  flags.KeyDir,
+				Pattern: args[0],
+			})
+			if err != nil {
+				return err
+			}
+
+			_, applied, err := runWritePlan(cmd, flags, plan)
+			if err != nil {
+				return err
+			}
+			if !applied || flags.JSON {
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "released host %q\n", args[0])
 			return nil
 		},
 	}

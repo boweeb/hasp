@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -128,14 +129,32 @@ func (g guardEnv) mkGuardMarkedDir(t *testing.T, rel string) string {
 	return dir
 }
 
+// mkGuardBareHostStanza appends an unmanaged "Host <pattern>" stanza to ~/.ssh/config, creating
+// the file if needed — fixture setup for `adopt host`'s guard case, bypassing the CLI exactly as
+// mkGuardMarkedDir does for `adopt profile`/`release profile`: there is no write verb that
+// produces a bare, unmanaged stanza (that is the state `adopt host` is defined to start from).
+func (g guardEnv) mkGuardBareHostStanza(t *testing.T, pattern string) {
+	t.Helper()
+	configPath := filepath.Join(g.keyDir, "config")
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "Host %s\n    HostName %s.example.com\n", pattern, pattern); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestWriteNothingGuard_EveryWriteCommand_FailsClosedWithNoTTYNoYes is roadmap.md §4 exit
 // criterion 3's milestone-level proof: rather than trusting that every write verb's own phase
 // remembered to test "no TTY, no --yes fails closed" once (write_test.go's runWritePlan tests do
 // this generically; each of new-key.txtar/adopt-release-key.txtar/adopt-release-profile.txtar/
 // edit-key.txtar asserts it for its own verb end to end through a real subprocess), this walks
 // every write subcommand currently registered on the CLI tree — new key, adopt key, release key,
-// adopt profile, release profile, and every one of edit key's five independent flags — in one
-// table, through the real cobra command tree (NewRootCmd, not a hand-built Plan), forcing
+// new host, adopt host, release host, adopt profile, release profile, every one of edit key's
+// five independent flags, and edit host — in one table, through the real cobra command tree
+// (NewRootCmd, not a hand-built Plan), forcing
 // isStdinTTY false and omitting --yes. A future write verb added to root.go without its own
 // no-TTY test still gets caught here only if this table is extended to include it — see the
 // "Judgment call" note on TestChangeKinds_RequiresBackup_GoldenList (change_requiresbackup_golden_
@@ -177,6 +196,27 @@ func TestWriteNothingGuard_EveryWriteCommand_FailsClosedWithNoTTYNoYes(t *testin
 				g.runGuardSetup(t, "new", "key", "case_release", "--no-passphrase")
 				g.runGuardSetup(t, "adopt", "key", "case_release", "--profile", "work")
 				return []string{"release", "key", "case_release"}
+			},
+		},
+		{
+			name: "new host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				return []string{"new", "host", "case_newhost", "--hostname", "example.com"}
+			},
+		},
+		{
+			name: "adopt host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				g.mkGuardBareHostStanza(t, "case_adopthost")
+				return []string{"adopt", "host", "case_adopthost"}
+			},
+		},
+		{
+			name: "release host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				g.mkGuardBareHostStanza(t, "case_releasehost")
+				g.runGuardSetup(t, "adopt", "host", "case_releasehost")
+				return []string{"release", "host", "case_releasehost"}
 			},
 		},
 		{
@@ -242,6 +282,14 @@ func TestWriteNothingGuard_EveryWriteCommand_FailsClosedWithNoTTYNoYes(t *testin
 				}
 
 				return []string{"edit", "key", "case_editreplace", "--replace-material", filepath.Join(replacementDir, "case_editdonor")}
+			},
+		},
+		{
+			name: "edit host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				g.mkGuardBareHostStanza(t, "case_edithost")
+				g.runGuardSetup(t, "adopt", "host", "case_edithost")
+				return []string{"edit", "host", "case_edithost", "--hostname", "case_edithost2.example.com"}
 			},
 		},
 	}

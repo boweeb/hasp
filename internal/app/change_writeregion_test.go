@@ -92,6 +92,55 @@ func TestWriteRegion_PreviewCarriesARealDiff(t *testing.T) {
 	}
 }
 
+// TestWriteRegion_EmptyBeforeCreatesFileThatDoesNotExist covers the M3 extension to Apply: a
+// brand-new whole-file-owned group file (D7) doesn't exist on disk yet, so os.ReadFile(c.File)
+// fails with ENOENT — Apply must tolerate that exactly when Before is also empty, treating it the
+// same as the existing-file append case, and create the file with exactly After's bytes.
+func TestWriteRegion_EmptyBeforeCreatesFileThatDoesNotExist(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "work.sshconfig")
+
+	c := WriteRegion{
+		File:   path,
+		Marker: "file",
+		Before: nil,
+		After:  []byte("# hasp:owned\nHost work\n    HostName work.example.com\n"),
+	}
+	if err := c.Apply(fswrite.New()); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(got) != string(c.After) {
+		t.Errorf("content = %q, want %q", got, c.After)
+	}
+}
+
+// TestWriteRegion_NonEmptyBeforeStillErrorsOnMissingFile confirms the ENOENT tolerance above is
+// narrowly scoped to the empty-Before case: a non-empty Before describing a span that should have
+// existed in a file that isn't even there at all must still be a hard error, not silently treated
+// as "nothing to splice against."
+func TestWriteRegion_NonEmptyBeforeStillErrorsOnMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+
+	c := WriteRegion{
+		File:   path,
+		Marker: "managed",
+		Before: []byte("Include foo\n"),
+		After:  []byte("Include bar\n"),
+	}
+	if err := c.Apply(fswrite.New()); err == nil {
+		t.Fatal("Apply succeeded against a nonexistent file with a non-empty Before, want an error")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("Apply's refusal still created the file, want no file at all")
+	}
+}
+
 // TestWriteRegion_RefusesAmbiguousBefore covers the safety refusal in spliceRegion: if Before
 // occurs more than once in the current file, Apply must refuse rather than guess which occurrence
 // to replace.
