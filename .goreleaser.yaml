@@ -40,8 +40,9 @@ release:
     name: hasp
 
 changelog:
+  # No `sort:` — GoReleaser's sort is alphabetical by commit subject, not
+  # chronological. Unset keeps `git log` order (newest first).
   use: git
-  sort: asc
 
 archives:
   - id: hasp
