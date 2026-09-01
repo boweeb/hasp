@@ -320,6 +320,61 @@ func TestEditHostUseCase_Plan_InPlace_CustomGroup(t *testing.T) {
 	}
 }
 
+// TestEditHostUseCase_Plan_InPlace_CustomGroup_NoTrailingNewline_AddsDirective covers a fourth
+// missing-newline junction found during M3 close-out's own exhaustive audit (not one of Bug A/B/C
+// as originally scoped, but the same bug class, caught by the audit's own grep methodology): the
+// target stanza is a custom group file's last content with no trailing newline, and the edit adds
+// a directive that did not previously exist. applyDirectiveFieldEdits appends the newly-authored
+// directive after every preserved one — including, here, the original "User bob" line, whose
+// preserved Terminator is nil because it really was the file's very last byte. Before the fix (now
+// in HostBlock.render() itself, hostblock.go — the shared rendering primitive, not a call-site
+// patch, mirroring MarkedRegion.render()'s own Bug B fix), this glued into "User bob    HostName
+// new.example.com", silently corrupting the User directive's own value and hiding the new
+// HostName's value inside it.
+func TestEditHostUseCase_Plan_InPlace_CustomGroup_NoTrailingNewline_AddsDirective(t *testing.T) {
+	dir := t.TempDir()
+	groupFile := filepath.Join(dir, "work.sshconfig")
+	// No trailing newline: "User bob" is the file's absolute last byte.
+	groupOriginal := "# hasp:owned\nHost target\n    User bob"
+	writeFile(t, groupFile, groupOriginal)
+
+	configPath := filepath.Join(dir, "config")
+	configOriginal := sshconfig.ManagedRegionBegin + "\nInclude " + groupFile + "\n" + sshconfig.ManagedRegionEnd + "\n"
+	writeFile(t, configPath, configOriginal)
+
+	uc := EditHostUseCase{}
+	// HostName was never set on this stanza — this is an addition, not a modification of an
+	// existing directive, which is what actually appends past the newline-less last line.
+	plan, err := uc.Plan(EditHostRequest{KeyDir: dir, Pattern: "target", HostName: strp("new.example.com")})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	written, err := os.ReadFile(groupFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed := sshconfig.Parse(written)
+	if !bytes.Equal(sshconfig.RenderNodes(parsed.Nodes), written) {
+		t.Error("Render(Parse(written)) != written; round-trip broken")
+	}
+	target := findHostBlock(t, parsed.Nodes, "target")
+	if target == nil {
+		t.Fatal("target stanza missing")
+	}
+	if got, ok := directiveValue(target, "User"); !ok || got != "bob" {
+		t.Errorf("target User = %q (ok=%v), want bob (untouched, not glued onto the new directive)", got, ok)
+	}
+	if got, ok := directiveValue(target, "HostName"); !ok || got != "new.example.com" {
+		t.Errorf("target HostName = %q (ok=%v), want new.example.com", got, ok)
+	}
+}
+
 // TestEditHostUseCase_Plan_CrossGroupMove_DefaultToNewCustom covers required test 6: default group
 // -> a brand-new custom group. The Include line lands correctly, the stanza is removed from
 // ~/.ssh/config's region, the new group file has the rebuilt stanza (directive change applied),
@@ -800,6 +855,71 @@ func TestEditHostUseCase_Plan_WitnessCoverage(t *testing.T) {
 			t.Fatalf("Witnesses = %+v, want exactly one on each of %s and %s", plan.Witnesses, sourceGroupFile, destGroupFile)
 		}
 	})
+}
+
+// TestEditHostUseCase_Plan_CrossGroupMove_CustomToExistingCustom_NoTrailingNewline is Bug A's own
+// regression test (M3 close-out, this review round): the identical scenario as
+// TestEditHostUseCase_Plan_CrossGroupMove_CustomToExistingCustom above, except destGroupFile's last
+// byte is not a newline — the shape newhost.go's own withLeadingNewlineIfNeeded fix already handles
+// at its "group already exists" call site, but which this cross-group-move destExists branch was
+// missing until this fix. Before the fix, the moved stanza's "Host target" header glued directly
+// onto "User dave" (destGroupFile's last, newline-less line), producing "User daveHost target" —
+// silent, undetectable corruption that also makes "already-there" disappear as its own stanza on
+// the very next Parse. This asserts zero MarkerDefects and that both stanzas survive intact and
+// separately.
+func TestEditHostUseCase_Plan_CrossGroupMove_CustomToExistingCustom_NoTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	sourceGroupFile := filepath.Join(dir, "old.sshconfig")
+	writeFile(t, sourceGroupFile, "# hasp:owned\nHost target\n    HostName old.example.com\n")
+	destGroupFile := filepath.Join(dir, "new.sshconfig")
+	// No trailing newline after "User dave" — the exact shape that glued corrupted the file before
+	// this fix.
+	writeFile(t, destGroupFile, "# hasp:owned\nHost already-there\n    User dave")
+
+	configPath := filepath.Join(dir, "config")
+	original := sshconfig.ManagedRegionBegin + "\nInclude " + sourceGroupFile + "\nInclude " + destGroupFile + "\n" + sshconfig.ManagedRegionEnd + "\n"
+	writeFile(t, configPath, original)
+
+	uc := EditHostUseCase{}
+	plan, err := uc.Plan(EditHostRequest{KeyDir: dir, Pattern: "target", NewGroup: strp("new")})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	destBytes, err := os.ReadFile(destGroupFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destParsed := sshconfig.Parse(destBytes)
+	if len(destParsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %+v, want none", destParsed.MarkerDefects)
+	}
+	// The pre-existing separator must be inserted, not glued: "User dave" must still be exactly
+	// "dave", not "daveHost target" or similar.
+	already := findHostBlock(t, destParsed.Nodes, "already-there")
+	if already == nil {
+		t.Fatal("pre-existing stanza (already-there) missing from the destination group file")
+	}
+	assertDirectiveValue(t, already, "User", "dave")
+	target := findHostBlock(t, destParsed.Nodes, "target")
+	if target == nil {
+		t.Fatal("moved (target) stanza missing from the destination group file")
+	}
+	assertDirectiveValue(t, target, "HostName", "old.example.com")
+
+	sourceBytes, err := os.ReadFile(sourceGroupFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceParsed := sshconfig.Parse(sourceBytes)
+	if findHostBlock(t, sourceParsed.Nodes, "target") != nil {
+		t.Error("target stanza still present in the source group file, want it removed")
+	}
 }
 
 // TestEditHostUseCase_Plan_RejectsEmptyRequest covers basic usage-error guards, mirroring

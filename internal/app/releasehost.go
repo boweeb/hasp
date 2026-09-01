@@ -78,13 +78,26 @@ func (uc ReleaseHostUseCase) Plan(req ReleaseHostRequest) (Plan, error) {
 
 	// Re-insert the released stanza as a top-level node immediately after the region (D18). It is
 	// unmanaged the instant it lands, so P2 protects it again from this point on.
-	modifiedNodes := make([]sshconfig.Node, 0, len(configFile.Nodes)+1)
-	modifiedNodes = append(modifiedNodes, configFile.Nodes[:regionIdx]...)
-	modifiedNodes = append(modifiedNodes, newRegion, hostBlock)
-	modifiedNodes = append(modifiedNodes, configFile.Nodes[regionIdx+1:]...)
+	//
+	// Bug C (this review round): newRegion and hostBlock are two different sources joined at a
+	// top-level node-list boundary — File.Render()/RenderNodes concatenates each node's own render
+	// with no separator check at all (render.go), unlike the fix now in MarkedRegion.render() itself,
+	// which only guards Body's own internal join to its own End, not End's own trailing bytes against
+	// whatever node lands after the region in the containing list. newRegion.End is captured verbatim
+	// from the original parse (region.go's own doc comment: "the exact marker lines hasp wrote,
+	// verbatim including their terminator") — ordinarily "\n"-terminated, but not if the end marker
+	// itself was already the file's own last physical line with no trailing newline (an unusual, but
+	// possible, hand-typed-marker-at-EOF precondition). Render everything up through newRegion first,
+	// then use the same withLeadingNewlineIfNeeded helper newhost.go/edithost.go's own junction-type-1
+	// fixes use, rather than relying on a single whole-list RenderNodes call to insert a separator it
+	// was never built to insert.
+	prefixNodes := append(append([]sshconfig.Node{}, configFile.Nodes[:regionIdx]...), newRegion)
+	prefix := sshconfig.RenderNodes(prefixNodes)
+	hostBlockBytes := withLeadingNewlineIfNeeded(prefix, sshconfig.RenderNodes([]sshconfig.Node{hostBlock}))
+	suffix := sshconfig.RenderNodes(configFile.Nodes[regionIdx+1:])
 
 	// Whole-file Before/After, exactly as AdoptHostUseCase.Plan's own doc comment explains.
-	after := sshconfig.RenderNodes(modifiedNodes)
+	after := append(append(append([]byte{}, prefix...), hostBlockBytes...), suffix...)
 
 	witness, err := NewWitness(configPath)
 	if err != nil {

@@ -27,6 +27,24 @@ const groupFileRegion RegionID = "file"
 // defaultGroupRegion is the RegionID for ~/.ssh/config's own hasp:managed marked region.
 const defaultGroupRegion RegionID = "managed"
 
+// withLeadingNewlineIfNeeded prefixes addition with "\n" when existing is non-empty and does not
+// already end in one. Found while proving roadmap.md §5 exit criterion 1 against a fixture with
+// no trailing newline: appending addition to existing raw (the shape both call sites below and
+// spliceRegion's own empty-Before branch use) otherwise glues hasp's first appended byte onto
+// whatever content — human or hasp's own — ends the file, corrupting that final line and making
+// hasp's own marker line unrecognizable as a marker on the very next Parse (scanMarkers matches a
+// physical line's content by exact equality). The inserted byte is new, not a rewrite of any
+// existing one, so it does not touch P2's byte-exact-outside-the-region guarantee — it is the
+// minimum separator required for the appended content to even parse as its own line.
+func withLeadingNewlineIfNeeded(existing, addition []byte) []byte {
+	if len(existing) == 0 || existing[len(existing)-1] == '\n' {
+		return addition
+	}
+	out := make([]byte, 0, 1+len(addition))
+	out = append(out, '\n')
+	return append(out, addition...)
+}
+
 // NewHostRequest is `new host`'s input (tdd.md §9's `new` grid cell, D9's host-group naming).
 // Group == "" means the default host group — ~/.ssh/config itself, D9's "sole exception" to the
 // <name>.sshconfig naming rule. HostName/User/Port/IdentityFile are each optional; an empty string
@@ -218,7 +236,8 @@ func (uc NewHostUseCase) Plan(req NewHostRequest) (Plan, error) {
 				return Plan{}, err
 			}
 			witnesses = append(witnesses, witness)
-			after := append(append([]byte{}, groupBytes...), sshconfig.RenderNodes([]sshconfig.Node{hostBlock})...)
+			hostBlockBytes := withLeadingNewlineIfNeeded(groupBytes, sshconfig.RenderNodes([]sshconfig.Node{hostBlock}))
+			after := append(append([]byte{}, groupBytes...), hostBlockBytes...)
 			changes = append(changes, WriteRegion{File: groupFile, Marker: groupFileRegion, Before: groupBytes, After: after})
 		}
 	}
@@ -310,7 +329,14 @@ func planRegionChange(configPath string, region *sshconfig.MarkedRegion, configN
 			}
 			return WriteRegion{File: configPath, Marker: defaultGroupRegion, Before: before, After: after}, &w, nil
 		}
-		return WriteRegion{File: configPath, Marker: defaultGroupRegion, Before: nil, After: renderNewRegion([]sshconfig.Node{newNode})}, nil, nil
+		// No pre-existing top-level HostBlock either: the new region is appended raw to whatever is
+		// already in the file (spliceRegion's own empty-Before branch). T2 guarantees
+		// RenderNodes(configNodes) == configBytes here (region == nil, so nothing has been carved
+		// out), which is what lets withLeadingNewlineIfNeeded check the real last byte without a
+		// second read.
+		raw := sshconfig.RenderNodes(configNodes)
+		newRegionBytes := withLeadingNewlineIfNeeded(raw, renderNewRegion([]sshconfig.Node{newNode}))
+		return WriteRegion{File: configPath, Marker: defaultGroupRegion, Before: nil, After: newRegionBytes}, nil, nil
 	}
 
 	before := sshconfig.RenderNodes([]sshconfig.Node{region})

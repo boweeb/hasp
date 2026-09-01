@@ -128,6 +128,80 @@ func TestAdoptHostUseCase_Plan_NoPriorRegion_CreatesRegionAtEOF(t *testing.T) {
 	}
 }
 
+// TestAdoptHostUseCase_Plan_NoPriorRegion_NoTrailingNewline is Bug B's own regression test (M3
+// close-out, this review round): the fixture is identical in shape to
+// TestAdoptHostUseCase_Plan_NoPriorRegion_CreatesRegionAtEOF above, except the target stanza — and
+// therefore the whole file — has no trailing newline. adopt host wraps the already-parsed
+// *HostBlock verbatim (no rebuild, unlike new host's freshly-authored content), so its own last
+// Directive keeps its original nil Terminator; before the fix (now in MarkedRegion.render() itself,
+// region.go, since this is a shared rendering primitive, not a call-site concern), the region's own
+// End marker glued directly onto "HostName solo.example.com", producing a garbled last line that
+// scanMarkers could not recognize as a marker line on the very next Parse — hasp locking itself out
+// of the region it had just created (DefectUnmatchedBegin). Asserts zero MarkerDefects, the correct
+// region structure, and that the adopt+release round trip still holds.
+func TestAdoptHostUseCase_Plan_NoPriorRegion_NoTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+	// No trailing newline: "HostName solo.example.com" is the file's absolute last byte.
+	original := "# hand-written\nHost solo\n    HostName solo.example.com"
+	writeFile(t, configPath, original)
+
+	uc := AdoptHostUseCase{}
+	plan, err := uc.Plan(AdoptHostRequest{KeyDir: dir, Pattern: "solo"})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	written, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	parsed := sshconfig.Parse(written)
+	if len(parsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %+v, want none", parsed.MarkerDefects)
+	}
+	region := soleMarkedRegion(t, parsed)
+	hb := soleHostBlock(t, region.Body)
+	if len(hb.Patterns) != 1 || hb.Patterns[0] != "solo" {
+		t.Errorf("Patterns = %v, want [solo]", hb.Patterns)
+	}
+	assertDirectiveValue(t, hb, "HostName", "solo.example.com")
+	if !bytes.HasPrefix(written, []byte("# hand-written\n")) {
+		t.Errorf("hand-written prefix not preserved: %q", written[:min(len(written), 30)])
+	}
+	if !bytes.Equal(sshconfig.RenderNodes(parsed.Nodes), written) {
+		t.Error("Render(Parse(written)) != written; round-trip broken")
+	}
+
+	// The adopt+release round trip must still hold from this shape, mirroring
+	// TestAdoptThenReleaseHost_RoundTrip_ByteIdentical's own discipline (D18: release restores the
+	// region to empty, not to no-region-at-all, so this compares against the post-adopt state, not
+	// the original no-trailing-newline fixture).
+	releasePlan, err := (ReleaseHostUseCase{}).Plan(ReleaseHostRequest{KeyDir: dir, Pattern: "solo"})
+	if err != nil {
+		t.Fatalf("release Plan: %v", err)
+	}
+	if _, err := applier.Apply(releasePlan); err != nil {
+		t.Fatalf("release Apply: %v", err)
+	}
+	released, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	releasedParsed := sshconfig.Parse(released)
+	if len(releasedParsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects after release = %+v, want none", releasedParsed.MarkerDefects)
+	}
+	if findHostBlock(t, releasedParsed.Nodes, "solo") == nil {
+		t.Fatal("released stanza not found back at top level")
+	}
+}
+
 // TestAdoptHostUseCase_Plan_NoPriorRegion_PlacedBeforeRemainingBareHostBlock covers required test
 // 3: the target plus another unrelated bare Host block that must remain unmanaged — after
 // adopting the target, the new region is placed before the remaining bare block (mirroring

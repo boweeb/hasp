@@ -133,3 +133,17 @@ func exactArgs(n int) cobra.PositionalArgs {
 		return nil
 	}
 }
+
+// minimumArgs wraps cobra.MinimumNArgs the same way exactArgs wraps cobra.ExactArgs, for the one
+// command in this tree whose positional args are variadic rather than fixed (`new host`'s one-or-
+// more Host patterns, T14): without this, a too-few-args refusal falls through to cobra's raw,
+// unprefixed error text and the generic exit code 3 instead of app.ErrUsage's exit code 2 and
+// `hasp: usage error: ...` shape (M3 close-out review finding 1).
+func minimumArgs(n int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := cobra.MinimumNArgs(n)(cmd, args); err != nil {
+			return fmt.Errorf("%w: %v", app.ErrUsage, err)
+		}
+		return nil
+	}
+}

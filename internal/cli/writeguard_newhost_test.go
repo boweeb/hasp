@@ -119,3 +119,53 @@ func TestNewHost_NoTTYNoYes_FailsClosed(t *testing.T) {
 	after := snapshotTree(t, home)
 	assertTreeUnchanged(t, before, after)
 }
+
+// TestNewHost_ZeroArgs_UsageErrorShape is the M3 close-out review's finding 1 regression test:
+// `new host`'s positional args (one-or-more Host patterns) were wired straight to
+// cobra.MinimumNArgs(1) in internal/cli/new.go, unlike every other positional-arg command in this
+// CLI (edit.go, profile.go, release.go, adopt.go, host.go, key.go, and new.go's own `new key`),
+// which all go through minimumArgs/exactArgs (internal/cli/root.go) so a cobra arg-count error
+// maps onto app.ErrUsage (exit code 2, tdd.md §10) with the "usage error: ..." message shape,
+// rather than falling through to cobra's raw, unprefixed error text and the generic exit code 3.
+// `edit host` (which already goes through exactArgs(1)) is exercised alongside `new host` here as
+// the live comparison point: both zero-arg refusals must share the same exit code and message
+// shape now that `new host` goes through minimumArgs(1) too.
+func TestNewHost_ZeroArgs_UsageErrorShape(t *testing.T) {
+	home := t.TempDir()
+	keyDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(keyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+
+	run := func(args ...string) error {
+		root := cli.NewRootCmd()
+		root.SetArgs(append(append([]string{}, args...), "--key-dir", keyDir))
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		return root.Execute()
+	}
+
+	newHostErr := run("new", "host")
+	if newHostErr == nil {
+		t.Fatal("hasp new host (zero patterns): want an error, got nil")
+	}
+	if got := cli.ExitCode(newHostErr); got != 2 {
+		t.Errorf("ExitCode(new host) = %d, want 2 (ErrUsage)", got)
+	}
+	if !strings.Contains(newHostErr.Error(), "usage error:") {
+		t.Errorf("new host error = %q, want it to contain %q", newHostErr.Error(), "usage error:")
+	}
+
+	editHostErr := run("edit", "host")
+	if editHostErr == nil {
+		t.Fatal("hasp edit host (zero args): want an error, got nil")
+	}
+	if got := cli.ExitCode(editHostErr); got != 2 {
+		t.Errorf("ExitCode(edit host) = %d, want 2 (ErrUsage)", got)
+	}
+	if !strings.Contains(editHostErr.Error(), "usage error:") {
+		t.Errorf("edit host error = %q, want it to contain %q", editHostErr.Error(), "usage error:")
+	}
+}

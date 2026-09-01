@@ -39,10 +39,24 @@ func (r *MarkedRegion) render() []byte {
 		return nil
 	}
 	out := append([]byte{}, r.Begin...)
+	// Bug B (M3 close-out) plus this round's hardening pass (finding 2): every junction here —
+	// between consecutive Body elements, and at the final Body->End junction — goes through the
+	// shared appendNodeWithSeparator helper (also used by HostBlock.render(), T2/T17/D7), so a
+	// terminator-less node can never glue onto whatever follows it, wherever in Body it lands.
+	// Body carved by Parse itself never needs this (scanMarkers only recognizes End on its own
+	// physical line, so every Parse-carved Body node but possibly the last already ends in a
+	// terminator) — it matters once app-layer code builds Body itself from an untouched node it
+	// did not author with an explicit trailing "\n" (e.g. adopthost.go wrapping an already-parsed
+	// *HostBlock that happened to be the file's last physical line with no trailing newline). Per
+	// this type's own doc comment above, Body's contract inside a region is already the weaker
+	// Render(Parse(Render(r))) == Render(r) (idempotent), not byte-exact for arbitrary content —
+	// D7 elaboration 1 licenses hasp to regenerate a region's body wholesale — so inserting a
+	// separator byte (never rewriting any byte Body already produced) does not touch T2/P2's
+	// byte-exact guarantee, which is scoped to outside a marked region.
 	for _, n := range r.Body {
-		out = append(out, renderNode(n)...)
+		out = appendNodeWithSeparator(out, renderNode(n))
 	}
-	out = append(out, r.End...)
+	out = appendNodeWithSeparator(out, r.End)
 	return out
 }
 

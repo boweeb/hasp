@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/boweeb/hasp/internal/adapter/backup"
@@ -541,6 +542,184 @@ func TestNewHostUseCase_Plan_DefaultGroup_FirstWriteWithPreExistingTopLevelHostB
 	if !bytes.Equal(sshconfig.RenderNodes(parsed.Nodes), written) {
 		t.Error("Render(Parse(written)) != written; round-trip broken")
 	}
+}
+
+// TestNewHostUseCase_Plan_PreservesRealisticHandWrittenConfig is roadmap.md §5's own exit
+// criterion 1, described there as "the single most important test in the project": a real
+// ~/.ssh/config combines hand comments, odd whitespace, and unrecognized directives, and every
+// byte of it outside hasp's own newly-added marked region must survive `new host` unchanged. This
+// fixture combines, in one file, everything Phase 2's own code review flagged as missing from the
+// hand-written-content-preservation coverage above: CRLF line endings throughout, no trailing
+// newline on the final line, a blank line containing only whitespace, trailing spaces on a
+// directive line, mixed tab/space indentation on a directive line, and an unrecognized/future
+// ssh_config directive sitting outside any marked region. No pre-existing top-level Host block is
+// included deliberately: that anchors the new region immediately before it (the anchor != nil
+// branch of planRegionChange), which is already covered by the FirstWriteWithPreExistingTopLevelHostBlock
+// test above and does not touch end-of-file at all — this fixture instead forces the new region
+// down the append-to-end-of-file branch (Before: nil), the one path that actually reads the
+// final byte of the existing content to decide whether a separating newline is needed
+// (withLeadingNewlineIfNeeded, added by this same phase after this fixture caught the file
+// ending with no trailing newline gluing hasp's begin marker onto the human content's last line,
+// corrupting it and making the marker itself unrecognizable as data on the very next Parse).
+func TestNewHostUseCase_Plan_PreservesRealisticHandWrittenConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+
+	// Every line below is CRLF-terminated except the last, which has no terminator at all.
+	original := "" +
+		"# hand-written config for review, please leave intact\r\n" +
+		"   \r\n" + // a blank line containing only whitespace
+		"FutureDirective enable-quantum-tunnel\r\n" + // an unrecognized directive, outside any region
+		"\t    Port    22   \r\n" + // mixed tab+space indentation, and trailing spaces after the value
+		"# a trailing-comment line, with trailing spaces of its own   \r\n" +
+		"UserKnownHostsFile ~/.ssh/known_hosts" // final line: no trailing newline at all
+	writeFile(t, configPath, original)
+
+	uc := NewHostUseCase{}
+	plan, err := uc.Plan(NewHostRequest{KeyDir: dir, Patterns: []string{"prod-east"}, HostName: "prod.example.com", User: "deploy"})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	written, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+
+	// Every byte outside hasp's newly-added marked region is unchanged: the entire original
+	// fixture — hand comments, odd whitespace, and the unrecognized directive alike — must appear
+	// as an exact, byte-for-byte prefix of what was written. hasp only ever appends after it here
+	// (no pre-existing top-level Host block to anchor before), so a plain HasPrefix check over the
+	// *whole* original fixture is the exact-comparison the roadmap calls for, not a partial slice.
+	if !bytes.HasPrefix(written, []byte(original)) {
+		t.Fatalf("hand-written content changed:\noriginal: %q\nwritten:  %q", original, written)
+	}
+	if len(written) == len(original) {
+		t.Fatal("nothing was appended; new host silently did nothing")
+	}
+
+	// The file the tool just wrote is itself valid, round-trippable input (T2's contract, restated
+	// for output this phase itself just produced).
+	parsed := sshconfig.Parse(written)
+	if len(parsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %+v, want none", parsed.MarkerDefects)
+	}
+	if !bytes.Equal(sshconfig.RenderNodes(parsed.Nodes), written) {
+		t.Error("Render(Parse(written)) != written; round-trip broken")
+	}
+
+	region := soleMarkedRegion(t, parsed)
+	hb := soleHostBlock(t, region.Body)
+	if len(hb.Patterns) != 1 || hb.Patterns[0] != "prod-east" {
+		t.Errorf("Patterns = %v, want [prod-east]", hb.Patterns)
+	}
+	assertDirectiveValue(t, hb, "HostName", "prod.example.com")
+	assertDirectiveValue(t, hb, "User", "deploy")
+}
+
+// TestNewHostUseCase_Apply_SymlinkedConfigWrittenThrough is roadmap.md §5 exit criterion 3 (T15
+// point 2), proven at the host-verb layer rather than fswrite's own isolated unit test
+// (TestWriteFile_SymlinkedTargetWrittenThrough): a dotfiles-managed ~/.ssh/config
+// (~/.ssh/config -> ~/dotfiles/ssh/config, T15's own named example) must be written through by
+// `new host`, not transparently replaced. Reuses fswrite_test.go's own inode-comparison
+// convention rather than inventing a second one (Lstat the symlink's own directory entry, before
+// and after — as distinct from whatever it resolves to, which is exactly what a buggy
+// unlink-and-recreate implementation would still get content-correct while silently converting
+// the symlink into an orphaned plain file).
+func TestNewHostUseCase_Apply_SymlinkedConfigWrittenThrough(t *testing.T) {
+	dir := t.TempDir()
+	dotfilesDir := filepath.Join(dir, "dotfiles", "ssh")
+	if err := os.MkdirAll(dotfilesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	realPath := filepath.Join(dotfilesDir, "config")
+	if err := os.WriteFile(realPath, []byte("# managed by dotfiles\nHost bastion\n    HostName bastion.example.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(dir, "config")
+	if err := os.Symlink(realPath, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	beforeLinkInode := symlinkInode(t, linkPath)
+
+	uc := NewHostUseCase{}
+	plan, err := uc.Plan(NewHostRequest{KeyDir: dir, Patterns: []string{"newhost"}, HostName: "new.example.com"})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// The symlink itself must be untouched: same directory entry, same inode, still a symlink,
+	// still pointing at the same real path — not unlinked and recreated as a plain file.
+	afterLinkInode := symlinkInode(t, linkPath)
+	if beforeLinkInode != afterLinkInode {
+		t.Errorf("symlink inode changed: before=%d after=%d — the symlink was replaced, not written through", beforeLinkInode, afterLinkInode)
+	}
+	linkInfo, err := os.Lstat(linkPath)
+	if err != nil {
+		t.Fatalf("Lstat(%s): %v", linkPath, err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is no longer a symlink after new host", linkPath)
+	}
+	gotTarget, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("Readlink(%s): %v", linkPath, err)
+	}
+	if gotTarget != realPath {
+		t.Errorf("symlink target = %q, want %q (unchanged)", gotTarget, realPath)
+	}
+
+	// The write actually went through: the real file behind the symlink carries the new stanza,
+	// and the pre-existing hand-written content is still present.
+	written, err := os.ReadFile(realPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", realPath, err)
+	}
+	if !bytes.Contains(written, []byte("Host bastion\n    HostName bastion.example.com\n")) {
+		t.Errorf("real config lost its pre-existing content: %q", written)
+	}
+	parsed := sshconfig.Parse(written)
+	if len(parsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %+v, want none", parsed.MarkerDefects)
+	}
+	if findHostBlock(t, soleMarkedRegion(t, parsed).Body, "newhost") == nil {
+		t.Error("real config behind the symlink has no newhost stanza; the write did not go through")
+	}
+
+	// Reading via the symlink path itself agrees with reading the real file — confirming this
+	// isn't merely a case of the real file being correct by coincidence while the symlink now
+	// points somewhere else (already ruled out above, but Derive is the actual consumer path).
+	m, err := Derive(DeriveOptions{KeyDir: dir})
+	if err != nil {
+		t.Fatalf("Derive: %v", err)
+	}
+	if findHostByPattern(m.Hosts, "newhost") == nil {
+		t.Error("Derive via the symlinked config did not see the new host")
+	}
+}
+
+func symlinkInode(t *testing.T, path string) uint64 {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat(%s): %v", path, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("Sys() for %s did not return *syscall.Stat_t", path)
+	}
+	return stat.Ino
 }
 
 // --- test helpers ---

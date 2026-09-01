@@ -472,8 +472,16 @@ func planCrossGroupMove(pattern, configPath string, configBytes []byte, configFi
 		if readErr != nil {
 			return Plan{}, fmt.Errorf("read %s: %w", destFile, readErr)
 		}
-		destParsed := sshconfig.Parse(destBytes)
-		after := sshconfig.RenderNodes(append(append([]sshconfig.Node{}, destParsed.Nodes...), rebuilt))
+		// Bug A (this review round): destBytes is raw-concatenated with the relocated stanza's own
+		// rendered bytes below — the identical missing-newline junction newhost.go's own "group
+		// already exists" branch already guards against (withLeadingNewlineIfNeeded's own doc
+		// comment), just missed here. T2 guarantees sshconfig.RenderNodes(sshconfig.Parse(destBytes).Nodes)
+		// == destBytes (destFile has no MarkedRegion of its own — D7's "the entire file is the region"
+		// for a custom group file means there is no separate marker span to carve out here), so
+		// destBytes is used directly as the withLeadingNewlineIfNeeded existing-content check without
+		// a separate parse+render round trip.
+		rebuiltBytes := withLeadingNewlineIfNeeded(destBytes, sshconfig.RenderNodes([]sshconfig.Node{rebuilt}))
+		after := append(append([]byte{}, destBytes...), rebuiltBytes...)
 		destWitness, err := NewWitness(destFile)
 		if err != nil {
 			return Plan{}, err

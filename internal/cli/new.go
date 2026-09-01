@@ -93,7 +93,7 @@ func newNewHostCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "host <pattern...>",
 		Short: "Create a new Host stanza",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  minimumArgs(1),
 	}
 	keyFlag := cmd.Flags().String("key", "", "bind this host to a key (name or clue); omit for no explicit binding")
 	groupFlag := cmd.Flags().String("group", "", "the host group to create this stanza in (default: ~/.ssh/config itself)")

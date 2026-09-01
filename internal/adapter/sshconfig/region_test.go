@@ -1,6 +1,7 @@
 package sshconfig
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -280,6 +281,158 @@ func TestScanMarkers_RegionBeforePreExistingTopLevelHostBlock(t *testing.T) {
 	}
 	if !sawBastion {
 		t.Error("pre-existing top-level Host bastion block was not preserved outside the region")
+	}
+}
+
+// TestMarkedRegionRender_InsertsSeparatorBeforeEnd_WhenBodyLacksTrailingNewline is Bug B's own
+// isolated unit test, directly against MarkedRegion.render() (via Parse+Render round-tripping the
+// rendered bytes, since render() itself is unexported), independent of any app-layer verb — this is
+// where the actual fix lives (region.go), not adopthost.go, so it deserves its own coverage at this
+// layer, not only indirect coverage through adopthost_test.go's own
+// TestAdoptHostUseCase_Plan_NoPriorRegion_NoTrailingNewline.
+//
+// A region's Body is only ever carved by Parse when End is recognized as its own physical line —
+// which already guarantees Body ends in a terminator — so this shape (a Body whose last node has no
+// trailing newline right before End) can only arise when app-layer code builds a MarkedRegion
+// itself from a node it did not author with an explicit terminator, exactly as adopthost.go's own
+// newManagedRegion([]sshconfig.Node{hostBlock}) call does. RenderNodes is exercised here instead of
+// render() directly (unexported) — the same public surface app-layer callers actually use.
+func TestMarkedRegionRender_InsertsSeparatorBeforeEnd_WhenBodyLacksTrailingNewline(t *testing.T) {
+	region := &MarkedRegion{
+		Begin: []byte(ManagedRegionBegin + "\n"),
+		End:   []byte(ManagedRegionEnd + "\n"),
+		Body: []Node{
+			&HostBlock{
+				Header: &Directive{Keyword: "Host", RawValue: []byte(" adoptme"), Terminator: []byte("\n")},
+				Directives: []Node{
+					// No trailing newline — the exact shape an already-parsed, file-final HostBlock
+					// carries when the file itself has no trailing newline.
+					&Directive{LeadingTrivia: []byte("    "), Keyword: "User", RawValue: []byte(" bob"), Terminator: nil},
+				},
+			},
+		},
+	}
+
+	rendered := RenderNodes([]Node{region})
+
+	want := ManagedRegionBegin + "\n" + "Host adoptme\n    User bob\n" + ManagedRegionEnd + "\n"
+	if string(rendered) != want {
+		t.Fatalf("render() = %q, want %q (a separating newline inserted before End)", rendered, want)
+	}
+
+	// The inserted separator must make the region recognizable again on the next Parse — the actual
+	// consequence of the bug this guards against (DefectUnmatchedBegin, hasp locking itself out of
+	// the region it just wrote).
+	reparsed := Parse(rendered)
+	if len(reparsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects after re-parse = %v, want none", reparsed.MarkerDefects)
+	}
+	var found *MarkedRegion
+	for _, n := range reparsed.Nodes {
+		if r, ok := n.(*MarkedRegion); ok {
+			found = r
+		}
+	}
+	if found == nil {
+		t.Fatal("no MarkedRegion recovered on re-parse")
+	}
+	if len(found.Body) != 1 {
+		t.Fatalf("re-parsed region body has %d nodes, want 1 HostBlock", len(found.Body))
+	}
+
+	// Idempotent, per this type's own doc comment (Body's contract is Render(Parse(Render(r))) ==
+	// Render(r), not byte-exact for arbitrary body content — D7 elaboration 1). The inserted
+	// separator byte is new, never a rewrite of a byte the caller supplied, so this does not touch
+	// T2/P2's stricter guarantee, which is scoped to outside a marked region.
+	again := reparsed.Render()
+	if !bytes.Equal(again, rendered) {
+		t.Fatalf("render is not idempotent:\n first: %q\nsecond: %q", rendered, again)
+	}
+}
+
+// TestMarkedRegionRender_NoTrailingNewlineNeeded_IsNoOp confirms the fix is a true no-op both when
+// Body already ends in a newline (the ordinary, Parse-carved case) and when Body is empty — the same
+// no-op discipline withLeadingNewlineIfNeeded's own doc comment (internal/app/newhost.go) already
+// establishes for junction-type-1's fix, mirrored here for junction-type-2.
+func TestMarkedRegionRender_NoTrailingNewlineNeeded_IsNoOp(t *testing.T) {
+	t.Run("body already ends in newline", func(t *testing.T) {
+		region := &MarkedRegion{
+			Begin: []byte(ManagedRegionBegin + "\n"),
+			End:   []byte(ManagedRegionEnd + "\n"),
+			Body: []Node{
+				&Directive{Keyword: "Include", RawValue: []byte(" ~/.ssh/work.sshconfig"), Terminator: []byte("\n")},
+			},
+		}
+		rendered := RenderNodes([]Node{region})
+		want := ManagedRegionBegin + "\nInclude ~/.ssh/work.sshconfig\n" + ManagedRegionEnd + "\n"
+		if string(rendered) != want {
+			t.Fatalf("render() = %q, want %q (no extra separator inserted)", rendered, want)
+		}
+	})
+
+	t.Run("body is empty", func(t *testing.T) {
+		region := &MarkedRegion{Begin: []byte(ManagedRegionBegin + "\n"), End: []byte(ManagedRegionEnd + "\n")}
+		rendered := RenderNodes([]Node{region})
+		want := ManagedRegionBegin + "\n" + ManagedRegionEnd + "\n"
+		if string(rendered) != want {
+			t.Fatalf("render() = %q, want %q (empty body inserts nothing)", rendered, want)
+		}
+	})
+}
+
+// TestMarkedRegionRender_InsertsSeparatorBetweenConsecutiveBodyNodes_WhenFirstLacksTrailingNewline
+// covers M3 close-out review round 2's finding 2: MarkedRegion.render()'s body loop only guarded
+// the final Body->End junction, not the junction between two consecutive Body elements. No current
+// app-layer call site ever inserts an untouched, terminator-less node into the *middle* of a
+// region's Body (this shape is not producible by Parse or by any of hasp's own write use cases
+// today), so it is directly constructed here rather than reached through an app-layer verb — this
+// is the hardening the shared appendNodeWithSeparator helper (render.go) exists for, proven to
+// actually work, not just to compile.
+func TestMarkedRegionRender_InsertsSeparatorBetweenConsecutiveBodyNodes_WhenFirstLacksTrailingNewline(t *testing.T) {
+	region := &MarkedRegion{
+		Begin: []byte(ManagedRegionBegin + "\n"),
+		End:   []byte(ManagedRegionEnd + "\n"),
+		Body: []Node{
+			// No trailing newline — a node the app layer authored without an explicit terminator,
+			// inserted before another Body element rather than as Body's last one.
+			&Directive{Keyword: "Include", RawValue: []byte(" ~/.ssh/work.sshconfig"), Terminator: nil},
+			&Directive{Keyword: "Include", RawValue: []byte(" ~/.ssh/personal.sshconfig"), Terminator: []byte("\n")},
+		},
+	}
+
+	rendered := RenderNodes([]Node{region})
+
+	want := ManagedRegionBegin + "\n" +
+		"Include ~/.ssh/work.sshconfig\n" +
+		"Include ~/.ssh/personal.sshconfig\n" +
+		ManagedRegionEnd + "\n"
+	if string(rendered) != want {
+		t.Fatalf("render() = %q, want %q (a separating newline inserted between the two Body nodes)", rendered, want)
+	}
+
+	reparsed := Parse(rendered)
+	if len(reparsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects after re-parse = %v, want none", reparsed.MarkerDefects)
+	}
+	var found *MarkedRegion
+	var regions int
+	for _, n := range reparsed.Nodes {
+		if r, ok := n.(*MarkedRegion); ok {
+			regions++
+			found = r
+		}
+	}
+	if regions != 1 {
+		t.Fatalf("got %d MarkedRegion nodes on re-parse, want 1", regions)
+	}
+	if len(found.Body) != 2 {
+		t.Fatalf("re-parsed region body has %d nodes, want 2 (both Include directives recovered distinctly)", len(found.Body))
+	}
+	for i, want := range []string{" ~/.ssh/work.sshconfig", " ~/.ssh/personal.sshconfig"} {
+		d, ok := found.Body[i].(*Directive)
+		if !ok || d.Keyword != "Include" || string(d.RawValue) != want {
+			t.Errorf("re-parsed Body[%d] = %#v, want an Include Directive with RawValue %q", i, found.Body[i], want)
+		}
 	}
 }
 

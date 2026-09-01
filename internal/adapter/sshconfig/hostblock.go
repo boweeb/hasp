@@ -27,8 +27,14 @@ func (h *HostBlock) render() []byte {
 		return nil
 	}
 	out := h.Header.render()
+	// Found during M3's close-out audit (the same bug class as region.go's MarkedRegion.render()
+	// fix, one layer down; consolidated into the shared appendNodeWithSeparator helper alongside
+	// it, T2/T17/D7): a HostBlock's own Header/Directives are joined here, one node at a time, so a
+	// freshly-authored Directive appended after an untouched, terminator-less preserved one (e.g.
+	// edit host's applyDirectiveFieldEdits, or a custom host-group file's last stanza) never glues
+	// onto the preserved node's value.
 	for _, n := range h.Directives {
-		out = append(out, renderNode(n)...)
+		out = appendNodeWithSeparator(out, renderNode(n))
 	}
 	return out
 }

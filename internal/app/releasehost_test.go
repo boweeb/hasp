@@ -84,6 +84,62 @@ func TestReleaseHostUseCase_Plan_SingleStanza_AppearsAsPlainTextAfterEmptyRegion
 	}
 }
 
+// TestReleaseHostUseCase_Plan_EndMarkerAtEOF_NoTrailingNewline is Bug C's own regression test (M3
+// close-out, this review round): the end marker line itself is the file's absolute last physical
+// line, with no trailing newline — an unusual but reachable precondition (a hand-typed or
+// already-malformed marker literally at EOF). newRegion.End is captured verbatim from the original
+// parse (region.go's own doc comment: "the exact marker lines hasp wrote, verbatim including their
+// terminator"), so it carries that same nil terminator forward; the released stanza is then inserted
+// immediately after the region node in the top-level node list (File.Render()/RenderNodes has no
+// separator logic of its own between two different top-level nodes — this junction lives outside
+// MarkedRegion.render() entirely, so Bug B's own fix does not reach it). Before this fix, the
+// released stanza's "Host solo" header glued directly onto the end marker line. Asserts zero
+// MarkerDefects and that the released stanza is recovered as its own distinct top-level node.
+func TestReleaseHostUseCase_Plan_EndMarkerAtEOF_NoTrailingNewline(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config")
+	// No trailing newline: the end marker line is the file's absolute last byte.
+	original := sshconfig.ManagedRegionBegin + "\n" +
+		"Host solo\n    HostName solo.example.com\n" +
+		sshconfig.ManagedRegionEnd
+	writeFile(t, configPath, original)
+
+	uc := ReleaseHostUseCase{}
+	plan, err := uc.Plan(ReleaseHostRequest{KeyDir: dir, Pattern: "solo"})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+
+	applier := newHostApplier(dir)
+	if _, err := applier.Apply(plan); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	written, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", configPath, err)
+	}
+	parsed := sshconfig.Parse(written)
+	if len(parsed.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %+v, want none", parsed.MarkerDefects)
+	}
+
+	region := soleMarkedRegion(t, parsed)
+	if len(region.Body) != 0 {
+		t.Errorf("region.Body = %+v, want empty (the only stanza was released)", region.Body)
+	}
+
+	released := findHostBlock(t, parsed.Nodes, "solo")
+	if released == nil {
+		t.Fatal("released stanza not found as a top-level node — it was likely glued onto the end marker line")
+	}
+	assertDirectiveValue(t, released, "HostName", "solo.example.com")
+
+	if !bytes.Equal(sshconfig.RenderNodes(parsed.Nodes), written) {
+		t.Error("Render(Parse(written)) != written; round-trip broken")
+	}
+}
+
 // TestReleaseHostUseCase_Plan_TwoStanzas_OneReleasedOneStaysManaged covers required test 9: region
 // has two stanzas, release one — the other remains inside the region, the released one appears
 // after the region as plain text, and hand-written content elsewhere is preserved.
