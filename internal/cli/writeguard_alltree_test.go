@@ -152,8 +152,9 @@ func (g guardEnv) mkGuardBareHostStanza(t *testing.T, pattern string) {
 // this generically; each of new-key.txtar/adopt-release-key.txtar/adopt-release-profile.txtar/
 // edit-key.txtar asserts it for its own verb end to end through a real subprocess), this walks
 // every write subcommand currently registered on the CLI tree — new key, adopt key, release key,
-// adopt profile, release profile, and every one of edit key's five independent flags — in one
-// table, through the real cobra command tree (NewRootCmd, not a hand-built Plan), forcing
+// new host, adopt host, release host, adopt profile, release profile, every one of edit key's
+// five independent flags, and edit host — in one table, through the real cobra command tree
+// (NewRootCmd, not a hand-built Plan), forcing
 // isStdinTTY false and omitting --yes. A future write verb added to root.go without its own
 // no-TTY test still gets caught here only if this table is extended to include it — see the
 // "Judgment call" note on TestChangeKinds_RequiresBackup_GoldenList (change_requiresbackup_golden_
@@ -281,6 +282,14 @@ func TestWriteNothingGuard_EveryWriteCommand_FailsClosedWithNoTTYNoYes(t *testin
 				}
 
 				return []string{"edit", "key", "case_editreplace", "--replace-material", filepath.Join(replacementDir, "case_editdonor")}
+			},
+		},
+		{
+			name: "edit host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				g.mkGuardBareHostStanza(t, "case_edithost")
+				g.runGuardSetup(t, "adopt", "host", "case_edithost")
+				return []string{"edit", "host", "case_edithost", "--hostname", "case_edithost2.example.com"}
 			},
 		},
 	}
