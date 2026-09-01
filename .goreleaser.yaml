@@ -30,6 +30,19 @@ builds:
       - -X github.com/boweeb/hasp/internal/cli.commit={{.Commit}}
       - -X github.com/boweeb/hasp/internal/cli.date={{.Date}}
 
+gitea_urls:
+  api: http://localhost:3333/api/v1
+  download: http://localhost:3333
+
+release:
+  gitea:
+    owner: stuff
+    name: hasp
+
+changelog:
+  use: git
+  sort: asc
+
 archives:
   - id: hasp
     formats: [tar.gz]
