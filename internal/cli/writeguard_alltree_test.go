@@ -180,6 +180,12 @@ func TestWriteNothingGuard_EveryWriteCommand_FailsClosedWithNoTTYNoYes(t *testin
 			},
 		},
 		{
+			name: "new host",
+			setup: func(t *testing.T, g guardEnv) []string {
+				return []string{"new", "host", "case_newhost", "--hostname", "example.com"}
+			},
+		},
+		{
 			name: "adopt profile",
 			setup: func(t *testing.T, g guardEnv) []string {
 				if err := os.MkdirAll(filepath.Join(g.keyDir, "newprofile"), 0o700); err != nil {

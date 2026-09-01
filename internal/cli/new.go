@@ -12,14 +12,15 @@ import (
 )
 
 // newNewCmd is the `new` parent command (tdd.md §9's `new` grid row), mirroring how
-// list/show/find/check are structured as parent+noun elsewhere in this package. Only `new key`
-// is wired in this phase; `new host` and `new profile` are later M2 slices.
+// list/show/find/check are structured as parent+noun elsewhere in this package. `new key` and
+// `new host` are wired as of this phase; `new profile` is a later M3 slice.
 func newNewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Create a new key, host, or profile",
 	}
 	cmd.AddCommand(newNewKeyCmd())
+	cmd.AddCommand(newNewHostCmd())
 	return cmd
 }
 
@@ -80,6 +81,71 @@ func newNewKeyCmd() *cobra.Command {
 			return nil
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "created key %q\n", args[0])
+		return nil
+	}
+	return cmd
+}
+
+// newNewHostCmd wires `new host <pattern...>` (tdd.md §9's `new` grid cell, D9/T11's host-group
+// semantics, design.md §5.5): creates a new "Host ..." stanza, in ~/.ssh/config's own managed
+// region by default, or in a custom host group file (--group) hasp owns wholly.
+func newNewHostCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "host <pattern...>",
+		Short: "Create a new Host stanza",
+		Args:  cobra.MinimumNArgs(1),
+	}
+	keyFlag := cmd.Flags().String("key", "", "bind this host to a key (name or clue); omit for no explicit binding")
+	groupFlag := cmd.Flags().String("group", "", "the host group to create this stanza in (default: ~/.ssh/config itself)")
+	hostNameFlag := cmd.Flags().String("hostname", "", "the HostName directive's value")
+	userFlag := cmd.Flags().String("user", "", "the User directive's value")
+	portFlag := cmd.Flags().String("port", "", "the Port directive's value")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// Always derive the full Machine, even when --key is omitted: --key-dir resolution and
+		// validation is shared with the clue-resolution path below, and there is no cheaper
+		// equivalent for a command that may need either (adopt.go's own `adopt key` does the same).
+		m, flags, err := buildMachine(cmd)
+		if err != nil {
+			return err
+		}
+
+		var identityFile string
+		if *keyFlag != "" {
+			key, err := resolveKeyClue(m, *keyFlag)
+			if err != nil {
+				return err
+			}
+			location, err := singleRealLocation(key)
+			if err != nil {
+				return err
+			}
+			identityFile = location
+		}
+
+		plan, err := (app.NewHostUseCase{}).Plan(app.NewHostRequest{
+			KeyDir:       flags.KeyDir,
+			Patterns:     args,
+			Group:        *groupFlag,
+			HostName:     *hostNameFlag,
+			User:         *userFlag,
+			Port:         *portFlag,
+			IdentityFile: identityFile,
+		})
+		if err != nil {
+			return err
+		}
+
+		_, applied, err := runWritePlan(cmd, flags, plan)
+		if err != nil {
+			return err
+		}
+		if !applied || flags.JSON {
+			// --json's stdout is data only (tdd.md §10, T14): the "plan.preview" envelope
+			// runWritePlan already rendered is the entire machine-readable answer.
+			return nil
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "created host %q\n", hostPatternName(args))
 		return nil
 	}
 	return cmd

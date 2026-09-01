@@ -9,9 +9,14 @@ import (
 // harder case, tdd.md §6). Matched by exact byte equality against a physical line's content
 // (no leading/trailing whitespace tolerance) — these are "the exact marker lines hasp wrote,"
 // and a line that doesn't match exactly is simply not recognized as a marker, not a defect.
+// Exported so app-layer use cases (e.g. `new host`, M3) can construct a well-formed new
+// MarkedRegion whose Begin/End bytes scanMarkers will recognize on the next Parse.
 const (
-	markedRegionBeginSentinel = "# >>> hasp:managed >>>"
-	markedRegionEndSentinel   = "# <<< hasp:managed <<<"
+	ManagedRegionBegin = "# >>> hasp:managed >>>"
+	ManagedRegionEnd   = "# <<< hasp:managed <<<"
+
+	markedRegionBeginSentinel = ManagedRegionBegin
+	markedRegionEndSentinel   = ManagedRegionEnd
 )
 
 // metadataSentinel prefixes a #:hasp key = value line (§7, T25) inside a MarkedRegion body.
@@ -143,10 +148,17 @@ type MarkerDefect struct {
 // writes one — and returns beginIdx == -1 (or endIdx == -1) when there is none to carve, with
 // every anomaly recorded in defects.
 //
-// A marker line found after the file's first Host/Match line is "nested in a Host/Match block":
-// ssh_config has no way to return to top-level scope within one parse pass once a Host/Match
-// line has appeared (every later line belongs to some block), so this is a simple latching flag,
-// not a depth counter.
+// A marker line found after a Host/Match line that appeared *outside* any hasp-opened region is
+// "nested in a Host/Match block": ssh_config has no way to return to top-level scope within one
+// parse pass once a Host/Match line has appeared (every later line belongs to some block), so
+// this is a simple latching flag, not a depth counter. The latch is deliberately not armed by a
+// Host/Match line encountered while a region is already open (state == stateOpen): once hasp's
+// own begin marker has been recognized, a HostBlock appearing before the matching end marker is
+// hasp's own content (M3, D7 elaboration 1's "rigid regeneration" — hasp authored it and owns
+// whatever scope it sits in), not a hazard of the region having landed inside someone else's
+// scope, which is what this defect exists to catch. This is what makes it possible for hasp's own
+// managed region in the default host group to carry a HostBlock directly, per tdd.md §6's
+// MarkedRegion.Body sketch, rather than exclusively Include lines.
 func scanMarkers(lines []physicalLine) (beginIdx, endIdx int, defects []MarkerDefect) {
 	beginIdx, endIdx = -1, -1
 
@@ -159,8 +171,10 @@ func scanMarkers(lines []physicalLine) (beginIdx, endIdx int, defects []MarkerDe
 	inHostBlock := false
 
 	for i, pl := range lines {
-		if kw, _, _, ok := lineKeyword(pl.Content); ok && isHostOrMatchKeyword(kw) {
-			inHostBlock = true
+		if state != stateOpen {
+			if kw, _, _, ok := lineKeyword(pl.Content); ok && isHostOrMatchKeyword(kw) {
+				inHostBlock = true
+			}
 		}
 
 		switch string(pl.Content) {

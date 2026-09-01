@@ -64,16 +64,17 @@ func TestDerive_UnmanagedHostStillGetsComputedProfile(t *testing.T) {
 }
 
 // TestDerive_HostAfterRegionIsUnmanaged documents a structural consequence of ssh_config's own
-// grammar, not a hasp limitation: once any Host/Match line has appeared, every later line
-// belongs to some Host/Match stanza (there is no way back to "top level" in the format itself),
-// so a begin/end MarkedRegion's closing marker can never come after a Host block it is meant to
-// contain — the marker would be swallowed into that stanza's own directive list and reported as
-// DefectNestedInHostBlock instead (T18, exercised directly in sshconfig's own tests). This is
-// exactly why hasp's marked region in the co-owned config only ever wraps Include lines (T11):
-// a Host stanza hasp itself manages directly lives in a wholly-owned host-group file instead,
-// under D7's *other* marker convention (a single header comment, no begin/end pair) — which is
-// unreachable in M1 because nothing before M3 creates such a file. A Host block that follows a
-// clean region in the same file is simply outside it, and correctly reports Managed=false.
+// grammar, not a hasp limitation: once any Host/Match line has appeared *outside* any hasp-opened
+// region, every later line belongs to some Host/Match stanza (there is no way back to "top level"
+// in the format itself) until the next Host/Match header, so a marker line appearing there would
+// be swallowed into that stanza's own directive list and reported as DefectNestedInHostBlock
+// (T18, exercised directly in sshconfig's own tests) — this is why, in this fixture, the Host
+// block deliberately sits *after* the region's own end marker rather than being written into it
+// directly. This is unrelated to whether hasp's own marked region can itself carry a HostBlock
+// (M3 does write one there, for the default host group — see sshconfig's scanMarkers doc comment:
+// a Host/Match line encountered *inside* an already-open hasp region does not arm this latch,
+// since hasp authored it and owns whatever scope it sits in). A Host block that follows a clean
+// region in the same file is simply outside it, and correctly reports Managed=false.
 func TestDerive_HostAfterRegionIsUnmanaged(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "config"),

@@ -11,6 +11,12 @@ func (f *File) Render() []byte {
 	return out
 }
 
+// RenderNodes renders an arbitrary node slice to bytes, without exposing renderNode itself. This
+// is how an app-layer use case (e.g. `new host`, M3) renders a freshly-built MarkedRegion or
+// HostBlock it constructed itself, before either splicing it into a WriteRegion Change's After or
+// (for a whole-file-owned group file, D7) using it as the entire file's new content.
+func RenderNodes(nodes []Node) []byte { return (&File{Nodes: nodes}).Render() }
+
 // renderNode dispatches on Node's concrete type. A type switch here, rather than an exported
 // method on the Node interface, keeps Node itself the minimal marker interface tdd.md §3
 // sketches while centralizing every node kind's byte-reconstruction logic in one place.

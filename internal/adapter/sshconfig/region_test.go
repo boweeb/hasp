@@ -206,6 +206,83 @@ func TestRoundTrip_AllDefectFixtures(t *testing.T) {
 	}
 }
 
+// TestScanMarkers_HostBlockInsideOpenRegion_NoDefects covers review finding 3: a HostBlock inside
+// an open hasp region, followed by a valid end marker, must produce zero MarkerDefects and exactly
+// one MarkedRegion recovered with the HostBlock in its Body — the core case the inHostBlock latch's
+// own "not armed while state == stateOpen" carve-out (scanMarkers's own doc comment) exists for,
+// currently only covered indirectly through internal/app's newhost_test.go fixtures.
+func TestScanMarkers_HostBlockInsideOpenRegion_NoDefects(t *testing.T) {
+	f := Parse([]byte(
+		"# >>> hasp:managed >>>\n" +
+			"Host newhost\n" +
+			"    User dave\n" +
+			"# <<< hasp:managed <<<\n",
+	))
+	if len(f.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %v, want none", f.MarkerDefects)
+	}
+	var region *MarkedRegion
+	var regions int
+	for _, n := range f.Nodes {
+		if r, ok := n.(*MarkedRegion); ok {
+			regions++
+			region = r
+		}
+	}
+	if regions != 1 {
+		t.Fatalf("got %d MarkedRegion nodes, want 1", regions)
+	}
+	if len(region.Body) != 1 {
+		t.Fatalf("region body has %d nodes, want 1 HostBlock", len(region.Body))
+	}
+	hb, ok := region.Body[0].(*HostBlock)
+	if !ok {
+		t.Fatalf("region.Body[0] = %T, want *HostBlock", region.Body[0])
+	}
+	if len(hb.Patterns) != 1 || hb.Patterns[0] != "newhost" {
+		t.Errorf("Patterns = %v, want [newhost]", hb.Patterns)
+	}
+}
+
+// TestScanMarkers_RegionBeforePreExistingTopLevelHostBlock covers review finding/bug 2's shape,
+// corrected: a hasp-managed region placed immediately *before* a pre-existing top-level Host block
+// (rather than appended after it) must parse with zero defects and exactly one MarkedRegion — this
+// is the sshconfig-layer fact internal/app's planRegionChange fix (newhost.go) relies on: since the
+// region's own begin/end markers appear before scanMarkers's inHostBlock latch is ever armed by
+// "Host bastion", the latch never triggers DefectNestedInHostBlock for them, unlike appending the
+// region after the block would (region_test.go's own TestScanMarkers_NestedInHostBlock covers that
+// failure shape). The pre-existing block itself is preserved outside the region, as ordinary
+// top-level content.
+func TestScanMarkers_RegionBeforePreExistingTopLevelHostBlock(t *testing.T) {
+	f := Parse([]byte(
+		"# >>> hasp:managed >>>\n" +
+			"Host newhost\n" +
+			"    User dave\n" +
+			"# <<< hasp:managed <<<\n" +
+			"Host bastion\n" +
+			"    HostName bastion.example.com\n",
+	))
+	if len(f.MarkerDefects) != 0 {
+		t.Fatalf("MarkerDefects = %v, want none", f.MarkerDefects)
+	}
+	var regions int
+	var sawBastion bool
+	for _, n := range f.Nodes {
+		if _, ok := n.(*MarkedRegion); ok {
+			regions++
+		}
+		if hb, ok := n.(*HostBlock); ok && len(hb.Patterns) == 1 && hb.Patterns[0] == "bastion" {
+			sawBastion = true
+		}
+	}
+	if regions != 1 {
+		t.Fatalf("got %d MarkedRegion nodes, want 1", regions)
+	}
+	if !sawBastion {
+		t.Error("pre-existing top-level Host bastion block was not preserved outside the region")
+	}
+}
+
 func TestMarkerDefectKind_String(t *testing.T) {
 	cases := map[MarkerDefectKind]string{
 		DefectUnmatchedBegin:    "unmatched-begin",

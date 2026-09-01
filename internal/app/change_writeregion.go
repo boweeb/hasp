@@ -2,7 +2,9 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 )
 
@@ -14,7 +16,9 @@ type RegionID string
 // WriteRegion rewrites one hasp-owned marked region wholesale (D7 elaboration 1, "rigid
 // regeneration"). Before is the region's current rendered bytes, captured as a read when the Plan
 // was built (P5), so Preview() can produce a real diff (T26); After is the fully regenerated
-// replacement.
+// replacement. This also covers whole-file-owned creation (D7's custom-host-group case, M3): a
+// group file hasp is creating outright has no "current bytes" to read at all, which Apply treats
+// identically to the first-write-into-an-existing-file case below (empty Before, ENOENT).
 type WriteRegion struct {
 	File   string
 	Marker RegionID
@@ -39,22 +43,36 @@ func (c WriteRegion) backupPath() string { return c.File }
 func (c WriteRegion) Apply(fsys WriteFS) error {
 	current, err := os.ReadFile(c.File)
 	if err != nil {
-		return fmt.Errorf("write region: read %s: %w", c.File, err)
+		// A brand-new group file (D7's whole-file-owned case) doesn't exist on disk yet — there is
+		// no prior region to locate, exactly the same "nothing to splice against" shape
+		// spliceRegion already handles for an existing-but-empty-region file, just extended to a
+		// not-yet-existing file. Any other read error still propagates unchanged.
+		if errors.Is(err, fs.ErrNotExist) && len(c.Before) == 0 {
+			current = nil
+		} else {
+			return fmt.Errorf("write region: read %s: %w", c.File, err)
+		}
 	}
 	next, err := spliceRegion(current, c.Before, c.After)
 	if err != nil {
 		return fmt.Errorf("write region: %s: %w", c.File, err)
 	}
-	// mode 0: WriteFile ignores the mode argument whenever the target already exists (it always
-	// does here — Apply just read it) and preserves the file's own current mode instead (§11
-	// point 3).
+	// mode 0: when c.File already exists, WriteFile ignores the mode argument and preserves the
+	// file's own current mode instead (§11 point 3). When it does not yet exist (the brand-new
+	// group file case above), WriteFile's own default (0o600) applies — a hasp-owned group file
+	// carries no secrets, but 0o600 is a harmless, conservative default for a freshly created
+	// config file, matching the private-key default rather than the world-readable 0o644 `new key`
+	// uses for a .pub sidecar.
 	return fsys.WriteFile(c.File, next, 0)
 }
 
 // spliceRegion reconstructs the file's full replacement content. WriteRegion carries only the
 // region's own bytes (Before/After), not the file's full content, so Apply locates that exact
-// span within current and substitutes it. An empty Before means this is a first-time region
-// write — nothing to locate — so After is appended to the end of current instead.
+// span within current and substitutes it. An empty Before means there is nothing to locate — After
+// is appended to the end of current instead — which covers two distinct callers identically: a
+// first-time region write into an existing file (current holds whatever pre-existed outside the
+// region), and a brand-new whole-file-owned group file (current is nil, since Apply never even
+// read a file; the "append" degenerates to After becoming the entire new file).
 //
 // current is guaranteed, by Applier's witness re-verification (T30), to be byte-identical to what
 // Plan() read when it captured Before — so an exact, single-occurrence match is expected, not a
