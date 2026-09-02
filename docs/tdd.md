@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-02
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -109,6 +109,18 @@ directly.
 | --- | --- |
 | `github.com/rogpeppe/go-internal/testscript` | End-to-end `.txtar` command-line tests (§12) |
 | `testing.F` (stdlib `go test -fuzz`) | The CST round-trip fuzz test (§12); no external fuzzing library |
+
+**Build-time only, never shipped:**
+
+| Dependency | Used for |
+| --- | --- |
+| `github.com/magefile/mage` | The CI/release target set — `Build`, `Test`, `Vet`, `Lint`, `Cross`, `Fuzz`, `Fixtures`, `Docs`, `Release`, `CI` (§17, [T32](tech-decision-log.md#t32)) |
+
+`magefiles/` carries `//go:build mage` throughout, so `go build ./...` and `go vet ./...` never
+compile it, and [T13](tech-decision-log.md#t13)'s `go list -deps` layering guard extends to assert
+`github.com/magefile/mage` never appears in `cmd/hasp`'s own dependency graph — a magefile
+importing it is the point; `cmd/hasp` importing it would be a regression the same guard already
+catches for `internal/domain`.
 
 ### Explicit non-dependencies
 
@@ -920,6 +932,21 @@ against touching an existing key still forbids exactly what it always did.**
 *assigns* a profile. A host's profile membership is computed (§5, T5), not declared — the grid
 has nothing to write there because there is nothing to write.
 
+### Commands outside the grid
+
+The 3×8 grid above is the *domain* surface — D10 fixes it at 3 nouns × 8 verbs permanently — and
+three more commands exist on `hasp` without being a fourth noun, because none of them is a domain
+operation:
+
+| Command | What it does | Why it is not a grid cell |
+| --- | --- | --- |
+| `version` | Reports hasp's own release version, commit, and build date, falling back to `runtime/debug.ReadBuildInfo()` for a `go install`-built binary ([`tdd.md` §13](#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought), [T31](tech-decision-log.md#t31)) | Reports a fact about the binary, not about `key`, `host`, or `profile` |
+| `completion` | Cobra's built-in shell-completion generator ([T3](tech-decision-log.md#t3)) | Generates shell integration, touches no domain object |
+| `help` | Cobra's built-in usage text | Documents the command tree, touches no domain object |
+
+Stating this plainly is the fix: without it, §9 reads as though the grid were the whole binary,
+and it is not — these three sit beside it, not inside it.
+
 ---
 
 ## 10. Output contract — stdout is data, stderr is diagnostics
@@ -1211,6 +1238,25 @@ is therefore for CI/scripted use, with the key directory bind-mounted in, and UI
 mapping across that boundary is the sharp edge: a mismatched UID inside the container silently
 produces a `~/.ssh` the host user cannot read.
 
+### Staging: what ships now, what waits on one fact
+
+Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33)):
+
+| Channel | Status |
+| --- | --- |
+| `tar.gz` archives, all four targets | Shipping — the Gitea release |
+| Generated shell completions and man pages | **Stated above as shipping, currently unbuilt** — nothing in this repository generates either today, and `.goreleaser.yaml` has no handling for them |
+| `sboms` | **In M3.5's scope, currently unbuilt** — `.goreleaser.yaml` names `sboms` only in its own deferred-sections comment and has no `sboms:` block |
+| `nfpms` (`.deb`/`.rpm`/`.apk`) | Deferred |
+| `aur` | Deferred — blocked on a publicly reachable origin |
+| `homebrew_casks` | Deferred — blocked on a publicly reachable origin |
+| `ko` | Deferred — blocked on a publicly reachable origin |
+| `signs` | Deferred — blocked on a publicly reachable origin |
+
+The four deferred channels share one blocker, not four independent ones: none of AUR, Homebrew,
+`ko`, or keyless signing can be satisfied by a `localhost` Gitea remote, and the same fact also
+governs the module path ([T31](tech-decision-log.md#t31)).
+
 ---
 
 ## 14. Constraints M4 must not foreclose
@@ -1253,13 +1299,27 @@ own gaps.
 | `release host` extrapolating D15's rule to hosts (§9) | [D18](decision-log.md#d18) — `release` is content-preserving for every noun; a released stanza is re-inserted as plain text, never deleted |
 | A severity taxonomy for `check` findings (§10) | [T29](tech-decision-log.md#t29) — a permanent `id` plus a re-tunable `severity`, with severity deliberately not affecting the exit code |
 
-**One remains genuinely open, and it is open by choice rather than omission:**
+**Three remain genuinely open, and each is open by choice rather than omission:**
 
 1. **Multi-directory / non-default key locations**, exactly as `design.md` §10 leaves them.
    Nothing in §3's domain types or §5's derivation pipeline hardcodes a single directory —
    `--key-dir` is a value threaded explicitly through every layer (§12) rather than a global — so
    multi-directory support is additive whenever a case for it actually arrives. It is not designed
    here, and no part of this document assumes it never will be.
+2. **The public-origin / module-path question** ([T31](tech-decision-log.md#t31),
+   [T33](tech-decision-log.md#t33)): whether hasp gets a publicly reachable remote — a GitHub or
+   GitLab mirror, or a public Gitea. One answer settles `go.mod`'s module path before the
+   compatibility surface freezes it, unlocks `go install github.com/boweeb/hasp/cmd/hasp@latest`,
+   and unblocks every deferred distribution channel §13's staging table names, all at once. Not
+   designed here, because the answer is the user's to give, not this document's to assume.
+3. **SSH key inspection detail** — what `list key` and `show key` should report beyond the fact
+   set §9's grid already names (name, algorithm, fingerprint-or-`unknown`, format, encrypted?,
+   profiles, comment for `list`; every location, profile, and bound host for `show`), awaiting the
+   user's own specification of which candidate additions matter. Any answer has to hold to P7 (the
+   default read stays one screen, so new detail likely belongs behind `show` or a flag rather than
+   in `list`), P1 (every added fact is derived at read time, never stored), §5.1's derivation gap
+   (any new fact needs an honest `unknown`), and [T31](tech-decision-log.md#t31)'s contract (a new
+   `--json` field is additive; changing an existing one is not).
 
 **One further gap was found during the same review and closed rather than added to this list**,
 recorded here for the same reason the table is: [T26](tech-decision-log.md#t26) named a
@@ -1267,3 +1327,90 @@ preview/apply race — a `Plan` is computed against a snapshot, and the target f
 the user is reading the preview — and nothing acted on it, while §11 presented itself as listing
 every guard in the system. [T30](tech-decision-log.md#t30) closes it with a witness re-verified
 before any write, failing closed, and §11 now carries the row.
+
+---
+
+## 16. Versioning and the compatibility surface
+
+Full argument: [T31](tech-decision-log.md#t31). hasp adopts **Semantic Versioning**.
+
+**The public contract** — breaking any of the following needs a major version bump:
+
+| # | Surface | Ratified by |
+| --- | --- | --- |
+| 1 | The four exit codes and their meanings, including that `1` stays `check`-exclusive | §10, [T14](tech-decision-log.md#t14) |
+| 2 | The `--json` envelope's shape: `version`, `kind`, `data`, `warnings` | §10, [T14](tech-decision-log.md#t14) |
+| 3 | `kind` strings (`key.list`, `host.show`, `check.report`, …) — permanent, retired rather than recycled | §10, [T14](tech-decision-log.md#t14) |
+| 4 | `check` finding `id`s | §9, [T29](tech-decision-log.md#t29) |
+| 5 | The verb×noun grid, and the global flag names and semantics — removing or renaming is breaking, adding is additive | §9, [D10](decision-log.md#d10) |
+| 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | §6, §7, [T10](tech-decision-log.md#t10), [T25](tech-decision-log.md#t25) |
+
+Row 6 is the least obvious of the six and the most damaging, because the artifact it governs
+outlives the binary that wrote it — a marked region written by one hasp release still has to parse
+under a much later one.
+
+**The explicit non-contract**, which matters as much as the table above: human-readable output
+(P7 governs it; §10's two renderers are permitted to diverge in *form*, never in content — a
+script needing stability uses `--json`); finding `severity` (§10, [T29](tech-decision-log.md#t29)
+makes it deliberately re-tunable); `--verbose` stderr diagnostics; and the exact filename format
+inside `~/.ssh/.hasp-backups/` (§11, [T8](tech-decision-log.md#t8) — P6 guarantees those backups
+stay legible and recoverable without hasp, not that their names never change).
+
+**The relationship between the two version numbers runs one way only.** §10's `Envelope.Version`
+is independent of hasp's own release version in the sense that it does not increment on the same
+schedule — but the inference does not run backward: **a change to `Envelope.Version` implies a
+major hasp version bump; a major hasp version bump does not imply a change to `Envelope.Version`.**
+The envelope can stay stable across several major hasp releases; it cannot change without one.
+
+`hasp version` (§9, §13) is the surface that makes this checkable at runtime: build info injected
+via `-X` ldflags, with `runtime/debug.ReadBuildInfo()` as the fallback for a `go install`-built
+binary that never went through GoReleaser.
+
+**Release notes are generated, not hand-maintained.** GoReleaser's `changelog: use: git` output is
+the changelog of record; there is no `CHANGELOG.md`.
+
+---
+
+## 17. Continuous integration and release automation
+
+Full argument: [T32](tech-decision-log.md#t32). Every build/test/lint/release action is a **Mage
+target** in `magefiles/` (`github.com/magefile/mage`); a platform workflow file's only job is
+checkout → set up Go → invoke one target.
+
+**The target set:** `Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`,
+`Fixtures`, `Docs`, `Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
+
+**The thin-shim rule.** A platform's workflow YAML (`.github/workflows/`, `.gitea/workflows/`)
+never encodes build logic directly — it invokes a Mage target and nothing else. Moving to a new
+platform is therefore a new shim file, not a rewrite.
+
+**Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
+as `go run mage.go <target>`; CI needs no separately installed mage binary. This bootstrap has a
+caveat load-bearing for a project with a four-code exit contract (§10): *"because of the
+peculiarities of `go run`, if you run this way, go run will only ever exit with an error code of 0
+or 1."* Every workflow shim treats a non-zero exit from the bootstrap as a single boolean failure
+and never branches on its specific value.
+
+**Build-time-only dependency.** §2's dependency budget carries `github.com/magefile/mage` in a
+"Build-time only, never shipped" row, guarded by the same `go list -deps` mechanism §3's layering
+guard already uses: `github.com/magefile/mage` must never appear in `cmd/hasp`'s dependency graph.
+`//go:build mage` tags keep `magefiles/` out of `go build ./...` and `go vet ./...` entirely.
+
+**Pinned, not floating.** `golangci-lint` is pinned to an exact version inside the `Lint` target,
+replacing today's unpinned `@latest` invocation; `.golangci.yml` declares `version: "2"` and a real
+linter set, replacing today's bare timeout; and `mise.toml` pins the exact Go toolchain in use,
+rather than `go = "latest"`.
+
+**Darwin compiles in CI.** `Cross` runs `GOOS=darwin` builds for both `darwin/amd64` and
+`darwin/arm64` as part of `CI`, closing the gap between what §13 builds locally and what the CI
+pipeline has ever actually compiled.
+
+**The `Docs` target.** Regenerates and diff-checks everything §16's compatibility surface and §13
+depend on staying honest: the CLI reference, man pages, and shell completions (§9), plus the
+doc-verification checks this documentation set's own culture depends on — broken links and
+anchors, every `Dn`/`Tn` citation resolving to a real `<a id>`, the per-log invariants (index row
+count equals anchor count, IDs contiguous, every entry carrying a `### Consequence`), and
+verbatim-quotation checking. Two gotchas are worth stating here because they produce false results
+otherwise: GitHub anchor slugs give each space its own hyphen and do not collapse them, so an
+em-dash heading yields a double hyphen; and a quotation can wrap across source lines, so comparison
+must normalize whitespace and strip `**`, `*`, and backticks before matching.

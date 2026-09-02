@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-02
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -52,12 +52,12 @@ rejected.
 | [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted — ratified upstream as [D17](decision-log.md#d17) |
 | [T7](#t7) | A settings file, read-only, reaching P9's last rung | Accepted — ratified upstream as [D16](decision-log.md#d16) |
 | [T8](#t8) | Backups live in `~/.ssh/.hasp-backups/`, timestamped, never pruned by hasp | Accepted |
-| [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted |
+| [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted — staged by [T33](#t33) |
 | [T10](#t10) | Metadata format: sentinel-prefixed TOML fragments as comments | Accepted — amended by [T25](#t25) |
 | [T11](#t11) | Host-group composition: one `Include` line per group, hasp orders them | Accepted |
 | [T12](#t12) | Key identity: fingerprint when derivable, else canonical path | Accepted |
 | [T13](#t13) | DDD adapted to Go: no Unit of Work, no message bus, split aggregate boundary | Accepted |
-| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29) |
+| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29), [T31](#t31) |
 | [T15](#t15) | Safety mechanics: atomic write, symlink-through, mode preservation, D4's move rule | Accepted — refined by [T20](#t20), [T22](#t22); amended by [T30](#t30) |
 | [T16](#t16) | Implicit default-identity probing is a distinct, labelled binding kind | Accepted — amends [T5](#t5); amended by [T28](#t28) |
 | [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
@@ -72,8 +72,12 @@ rejected.
 | [T26](#t26) | `WriteRegion` previews carry a real diff; key material is never diffed | Accepted — amends [T4](#t4); gap closed by [T30](#t30) |
 | [T27](#t27) | Go, and a fresh implementation rather than a repair of the predecessor | Accepted — closes `design.md` §10's stack item |
 | [T28](#t28) | Relative `IdentityFile` resolves against the key directory, and says so | Accepted — amends [T5](#t5), [T16](#t16) |
-| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14) |
+| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31) |
 | [T30](#t30) | The preview/apply race is detected by a witness, and fails closed | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29) |
+| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted |
+| [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9) |
+| [T34](#t34) | User-facing documentation is generated wherever it can drift | Accepted |
 
 ---
 
@@ -2060,9 +2064,304 @@ which is exactly the *"apology rather than a safety property"* shape
 
 ---
 
+<a id="t31"></a>
+## T31 — Semantic versioning, and the compatibility surface v1.0.0 freezes
+
+**Date:** 2026-09-02 · **Status:** Accepted · **Amends:** [T14](#t14), [T29](#t29)
+
+### Context
+
+Four tags exist — `v0.1.0` through `v0.4.0` — and none of them rests on a stated compatibility
+policy. [T14](#t14) already makes the `--json` envelope a contract, and [T29](#t29) already makes
+a `check` finding's `id` permanent; a compatibility surface is therefore *implied* by decisions
+already ratified, but it has never been written down as a surface in its own right — only as
+promises scattered across individual entries. hasp cannot promise stability it has never
+enumerated, and `design.md` §6.3 is explicit about why the promise exists at all: *"Every read has
+a **machine-readable form**. hasp lives in a terminal beside other tools; a tool whose output can
+only be looked at is half a tool."* [P6](design.md#4-principles) is the other half of the
+argument: nothing hasp knows may be trapped inside it, which is only true in practice if a
+consumer built against hasp today can trust what still holds tomorrow.
+
+### Decision
+
+hasp adopts **Semantic Versioning**. **v1.0.0 is tagged at the close of
+[M3.5](roadmap.md#55-m35--hardening)** — the milestone that closes the SSH story and is the
+natural point at which a compatibility surface can be frozen rather than merely described. M4/J9
+then lands as **v1.1.0**, additive by construction: `tdd.md` §14 already constrains `Profile` to
+stay additive across that boundary, which is precisely what a minor bump requires and a major one
+would not.
+
+The **public contract** — breaking any of the following needs a major version bump:
+
+| # | Surface | Ratified by |
+| --- | --- | --- |
+| 1 | The four exit codes and their meanings, including that `1` stays `check`-exclusive | [T14](#t14) |
+| 2 | The `--json` envelope's shape: `version`, `kind`, `data`, `warnings` | [T14](#t14) |
+| 3 | `kind` strings (`key.list`, `host.show`, `check.report`, …) — permanent, retired rather than recycled, the same guarantee a `Dn`/`Tn` ID carries | [T14](#t14) |
+| 4 | `check` finding `id`s | [T29](#t29) |
+| 5 | The verb×noun grid and the global flag names and semantics — removing or renaming is breaking, adding is additive | [D10](decision-log.md#d10), `tdd.md` §9 |
+| 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | `tdd.md` §6, §7; [T10](#t10), [T25](#t25) |
+
+Row 6 is the least obvious and the most damaging of the six, because the artifact this promise
+governs outlives the binary that wrote it: a `~/.ssh/config` marked in 2026 has to still parse
+under whatever hasp binary someone runs against it in 2030.
+
+The explicit **non-contract**, which matters as much as the contract does: human-readable output
+([P7](design.md#4-principles) governs it, and [T14](#t14) already permits the two renderers to
+diverge in *form* — a script needing stability uses `--json`); finding `severity`
+([T29](#t29) makes it deliberately re-tunable); `--verbose` stderr diagnostics; and the exact
+filename format inside `~/.ssh/.hasp-backups/` ([T8](#t8) — [P6](design.md#4-principles)
+guarantees those backups stay legible and recoverable without hasp, not that their names never
+change).
+
+**The relationship between the two version numbers runs one way only.** [T14](#t14)'s own struct
+comment describes `Envelope.Version` as "independent of hasp's own release version" — true, but a
+phrasing that invites the wrong inference. Stated exactly: **a change to `Envelope.Version`
+implies a major hasp version bump; a major hasp version bump does not imply a change to
+`Envelope.Version`.** The envelope can stay stable across several major hasp releases; it cannot
+change without one.
+
+`hasp version`
+([`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought))
+is the surface that makes all of this checkable at runtime rather than merely asserted in a
+document, so this entry is where the command is finally documented as design — [T9](#t9)
+mentioned it only as a build-info consumer.
+
+**Release notes are generated, not hand-maintained.** GoReleaser's `changelog: use: git` output is
+the changelog of record; there is no hand-maintained `CHANGELOG.md`, because a file that must be
+remembered is a file that drifts, and the git history already is the truth.
+
+**The historical tag mapping**, recorded here so it is not mysterious later: `v0.1.0` → M1,
+`v0.2.0` → M2, `v0.3.0` → M3, `v0.4.0` → the GoReleaser/Gitea release-plumbing commit that
+followed M3's merge.
+
+### Rationale
+
+A compatibility surface stated after the first breaking change is a postmortem, not a promise. Six
+of the nine principles in `design.md` are already load-bearing on this surface without saying so —
+enumerating it now, before v1.0.0, is the only order in which "breaking this needs a major bump"
+means anything.
+
+### Consequence
+
+**The Go module path problem is now load-bearing, not cosmetic.** `go.mod` declares
+`github.com/boweeb/hasp`; the only remote is a local Gitea (`git@localhost:stuff/hasp.git`), so
+`go install github.com/boweeb/hasp/cmd/hasp@latest` cannot resolve today, and Go's own module
+rules mean a future v2 requires a `/v2` path suffix regardless of what the current path resolves
+to. **v1.0.0 freezes the module path** as surely as it freezes the six rows above, so this has to
+be settled *before* the tag, not after — [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) carries
+it as a named input-needed item rather than deciding it here, which is not this entry's place to
+do.
+
+---
+
+<a id="t32"></a>
+## T32 — Mage is the build/CI contract; platform workflows are thin shims
+
+**Date:** 2026-09-02 · **Status:** Accepted
+
+### Context
+
+CI today is GitHub Actions YAML running against a Gitea remote — the near-term target — with GitHub
+or GitLab as a long-term possibility if [T31](#t31)'s public-origin question resolves that way. As
+it stands: no release workflow exists at all, so nothing triggers GoReleaser; the linter runs
+unpinned (`go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest`); `.golangci.yml`
+configures no linters, only a timeout; darwin is never compiled in CI, though GoReleaser targets
+`darwin/arm64` among four platforms; and `mise.toml` is `[tools] go = "latest"`, which
+`roadmap.md` §2 already calls "pinning the toolchain" and `tdd.md` §2 already calls "installed via
+`mise` (`go = \"latest\"`)" — neither description is true of `latest`. Encoding the actual build
+logic in any one platform's YAML makes a future move a rewrite instead of a shim.
+
+### Decision
+
+Every build/test/lint/release action becomes a **Mage target** in `magefiles/`
+(`github.com/magefile/mage`, latest **v1.17.2**, verified against the module proxy this session);
+a platform workflow file's only job is checkout → set up Go → invoke one target. The target set:
+`Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`, `Fixtures`, `Docs`,
+`Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
+
+**Zero-install bootstrap**, so CI needs no mage binary of its own: a `mage.go` carrying
+`//go:build ignore` that calls `mage.Main()`, invoked as `go run mage.go <target>`. This bootstrap
+has a caveat worth stating verbatim rather than discovering it against a red build later, from
+magefile.org: *"because of the peculiarities of `go run`, if you run this way, go run will only
+ever exit with an error code of 0 or 1."* A project with a four-code exit contract ([T14](#t14))
+must not build an exit-code-sensitive pipeline — `CI`'s own exit status — on a bootstrap that
+flattens every failure to `1`; the workflow shims (below) treat any non-zero exit from
+`go run mage.go ci` as failure and never branch on its specific value.
+
+**Dependency budget: a new row.** Mage is the first build-time-only dependency this project has
+taken on. `tdd.md` §2's "Test-only, never shipped" table gets a sibling, "Build-time only, never
+shipped," carrying `github.com/magefile/mage`. The guard is mechanical, in this project's own
+style: [T13](#t13)'s existing `go list -deps` layering guard extends to assert
+`github.com/magefile/mage` never appears in `cmd/hasp`'s dependency graph — a magefile importing
+it is fine; `cmd/hasp` importing it is a regression. `//go:build mage` tags stay on every file
+under `magefiles/`, so `go build ./...` and `go vet ./...` ignore them exactly as they do today.
+
+**Also decided here**, because each is a direct consequence of moving CI into Mage rather than an
+unrelated bundle of chores:
+
+- `golangci-lint` is pinned to an exact version inside the `Lint` target — an unpinned `@latest`
+  makes lint non-reproducible and turns an unrelated upstream release into a red build on a commit
+  that changed nothing.
+- `.golangci.yml` adopts a real linter set — noting that golangci-lint v2 requires `version: "2"`
+  in the config file, which the current file does not declare.
+- `mise.toml` is pinned to the exact Go toolchain in use, which resolves the contradiction named
+  in Context.
+
+**Gitea specifics**, named so they are not discovered the hard way: Gitea Actions consumes
+GitHub-Actions-compatible YAML but needs a registered `act_runner`, and resolves a step's `uses:`
+against its own `DEFAULT_ACTIONS_URL` rather than implicitly against github.com; the release shim
+needs a `GITEA_TOKEN`. Both `.github/workflows/` and `.gitea/workflows/` shims are kept — each is
+a handful of lines precisely because the logic lives in Mage, not in either file.
+
+**The `Docs` target is the one that protects this project's own culture**, and is worth its own
+paragraph rather than a line item. It commits the doc checkers this repository already relies on
+by hand — broken links and anchors, every `Dn`/`Tn` citation resolving to a real `<a id>`, the
+per-log invariants (index row count equals anchor count, IDs contiguous, every entry carrying a
+`### Consequence`), and verbatim-quotation checking — and runs them in CI as part of `CI`'s
+`mg.Deps` set. They are written in Go, as a Mage target, rather than adding a Python dependency:
+the toolchain is already here, and a doc-verification script that needs a second language
+installed is a script nobody runs locally. Two gotchas are recorded here because they have already
+cost real time once and would again: (a) GitHub anchor slugs give each space its own hyphen and do
+not collapse them, so an em-dash heading yields a *double* hyphen and a naive `\s+`→`-` regex
+reports a dozen false breaks; (b) a quotation can wrap across source lines, so a single-line
+`grep -F` produces false misses — normalize whitespace and strip `**`, `*`, and backticks before
+comparing.
+
+### Rationale
+
+`mg.Deps` runs its dependencies concurrently and `mg.SerialDeps` runs them in sequence, and either
+way Mage guarantees each dependency is "guaranteed to run exactly once in a single execution of
+mage" — precisely the primitive a `CI` aggregate target needs to compose `Vet`, `Lint`, `Test`,
+`Cross`, and `Docs` without hand-rolling its own dependency bookkeeping. `mage -compile <path>` can
+also emit a standalone static binary later, if the zero-install `go run` path ever proves too slow
+for local iteration — an escape hatch that costs nothing to have and nothing to use today.
+
+### Consequence
+
+- Moving to GitHub or GitLab later — the outcome [T31](#t31)'s public-origin question may
+  produce — is a new shim file, not a rewrite: the workflow file changes, `magefiles/` does not.
+- The doc-verification pass becomes mechanical, run on every push, rather than something someone
+  has to remember to run before merging — which is exactly the discipline this repository's
+  culture already claims to have and, until this entry, did not actually enforce.
+- `mage.go`'s exit-code caveat means the workflow shims must treat "CI failed" as a single boolean,
+  never inspect a specific non-zero code from the bootstrap path — a distinction any future
+  workflow author needs to know before reaching for it.
+
+---
+
+<a id="t33"></a>
+## T33 — Distribution is staged: self-hosted now, public channels blocked on one missing fact
+
+**Date:** 2026-09-02 · **Status:** Accepted · **Amends:** [T9](#t9)
+
+### Context
+
+[T9](#t9) enumerated the full GoReleaser surface — `ko`, `nfpms`, `aur`, `homebrew_casks`,
+`sboms`, `signs` — as though every section were equally reachable from where the project actually
+stands. It is not: `.goreleaser.yaml`'s own header comment still opens "M0 scope only" and still
+closes "Not releasing anything yet" — true when written, false since Gitea publishing was
+configured. [T9](#t9) also states that generated shell completions and man pages are "packaged
+into the release archives" — nothing in the repository generates either today, and
+`.goreleaser.yaml` has no handling for them. `design.md` §3.1 scopes hasp to one laptop, one
+human; the near-term distribution reality is a `localhost` Gitea remote, not a public one.
+
+### Decision
+
+**M3.5 ships**: `tar.gz` archives for all four build targets, **generated shell completions and
+man pages** — closing the gap [T9](#t9) stated but never built, which cobra already provides via
+`GenManTree` and the `completion` subcommand ([T3](#t3)) — plus `sboms`, published to the Gitea
+release. `aur`, `homebrew_casks`, `ko`, and `signs` stay deferred.
+
+**The synthesis that makes this one decision instead of four separate chores**, and the most
+useful thing this entry records: **all four deferred channels are blocked on the same missing
+fact — hasp has no publicly reachable origin.** AUR needs a fetchable source URL; Homebrew needs a
+tap repository; `ko` needs a registry to push an image to; keyless signing needs a public
+OIDC-issuing CI provider. A `localhost` Gitea satisfies none of the four. It is also, precisely,
+**the same question** [T31](#t31) already names as the module-path blocker: one answer to "does
+hasp get a publicly reachable origin" unlocks all five items — the module path and the four
+deferred channels — and no answer blocks all five. No amount of additional GoReleaser
+configuration substitutes for answering it.
+
+### Rationale
+
+Treating four TODOs as four independent chores invites solving each partway — a tap repo pointed
+at a private remote, a signing setup with no public issuer to trust — none of which actually work.
+Naming the single shared blocker converts four speculative pieces of GoReleaser configuration into
+one tracked decision with a clear unblocking condition.
+
+### Consequence
+
+The deferral is now a single named blocker — recorded as an input-needed item in
+[`roadmap.md` §5.5](roadmap.md#55-m35--hardening) — rather than four independent "later" items
+that each look individually actionable and are not. `.goreleaser.yaml`'s stale "M0 scope only"
+header becomes a tracked M3.5 doc-hygiene item rather than a comment nobody owns.
+
+---
+
+<a id="t34"></a>
+## T34 — User-facing documentation is generated wherever it can drift
+
+**Date:** 2026-09-02 · **Status:** Accepted
+
+### Context
+
+`docs/` is entirely design documentation aimed at *building* hasp. There is nothing aimed at
+*using* it — no install path, no command reference, and nothing telling a user what the files hasp
+leaves in `~/.ssh` actually are. That last gap is not a nicety: [P6](design.md#4-principles)
+promises that "If hasp breaks, or is abandoned again, the user loses a convenience and nothing
+else" — and that promise is only real if someone who has never run hasp can read those artifacts
+without it.
+
+### Decision
+
+Split user-facing documentation by whether it can drift out of step with the binary.
+
+**Generated, regenerated by a Mage target ([T32](#t32)'s `Docs`), CI fails if stale** — diff-check
+regenerated output against the committed copy, the same mechanism [T29](#t29) and [T7](#t7)
+already rely on for their own golden-list guard tests, so a gap becomes visible in a diff rather
+than in a consumer's `jq` filter silently failing to match: man pages, shell completions, and a
+CLI reference under `docs/cli/` generated from cobra's markdown generator. A hand-written flag
+table is a table that will be wrong by v1.1.0.
+
+**Hand-written narrative**, because it carries argument rather than syntax:
+
+- A real root `README.md` — orientation, install, a sixty-second demo, license.
+- A user guide organized around **J1–J8** ([`design.md` §7](design.md#7-journeys)), since the
+  journeys are already the project's success stories and give the guide a table of contents that
+  `design.md` itself keeps honest.
+- A page on what hasp leaves on disk — the one this project specifically owes its user: `.hasp`
+  markers, in-file region markers, the settings file, and `~/.ssh/.hasp-backups/`, **which
+  [T8](#t8) states hasp never prunes**, so the user must be told plainly that it grows without
+  bound and that pruning is theirs to do. Paired with the full withdrawal path — release every
+  adopted resource, delete the markers — which is what makes [D14](decision-log.md#d14)'s two-way
+  door and P6 literal instead of aspirational.
+- A `SECURITY.md` that restates guarantees which already exist rather than inventing new ones:
+  [P3](design.md#4-principles) and `design.md` §3.2's position that hasp never takes custody of
+  private key material, and [D17](decision-log.md#d17)'s four constraints on the single passphrase
+  prompt — generation only, never persisted, never transmitted, buffer zeroed.
+
+### Rationale
+
+A generated reference and a hand-rolled one fail differently, and the split follows that fault
+line rather than a topic boundary. Anything that is really a restatement of the command surface —
+flags, subcommands, man pages — is wrong the moment the code changes under it unless something
+regenerates and checks it; anything that carries *why* — a journey, a threat model, a promise about
+what happens if hasp is abandoned — has no source of truth to regenerate from and has to be
+written and kept honest by hand, the same way `design.md` itself is.
+
+### Consequence
+
+`docs/README.md` now indexes two audiences instead of one — documentation aimed at *building*
+hasp, and documentation aimed at *using* it — and the generated half of the second audience cannot
+silently disagree with the binary, because [T32](#t32)'s `Docs` target fails the build when it
+does.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T30` are all accepted.
+**Nothing.** `T1` through `T34` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
@@ -2071,8 +2370,21 @@ defect in it. The first pass ran with `docs/design.md` frozen, so gaps it found 
 is also how [D16](decision-log.md#d16), [D17](decision-log.md#d17) and
 [D18](decision-log.md#d18) came to exist.
 
-One item in `tdd.md` §15 remains genuinely open, and it is open by choice rather than omission:
-**multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not designed
-here. `--key-dir` is threaded explicitly through every layer rather than defaulted anywhere inside
-`internal/app` or `internal/domain`, so supporting more than one is additive whenever a case for
-it actually arrives.
+**Three items in `tdd.md` §15 remain genuinely open, and each is open by choice rather than
+omission**, as of the reassessment recorded in [T31](#t31)–[T34](#t34):
+
+- **Multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not
+  designed here. `--key-dir` is threaded explicitly through every layer rather than defaulted
+  anywhere inside `internal/app` or `internal/domain`, so supporting more than one is additive
+  whenever a case for it actually arrives.
+- **The public-origin / module-path question** ([T31](#t31), [T33](#t33)): whether hasp gets a
+  publicly reachable remote, which settles `go.mod`'s path before v1.0.0 freezes it and unblocks
+  every deferred distribution channel at once. Recorded as an input-needed item in
+  [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) because the answer is the user's to give, not
+  this log's to assume.
+- **SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set
+  `tdd.md` §9's grid already names, awaiting the user's own specification of which candidate
+  additions matter. Also recorded as an input-needed item in
+  [`roadmap.md` §5.5](roadmap.md#55-m35--hardening); any answer is bound by P7, P1,
+  `design.md` §5.1's derivation gap, and [T31](#t31)'s compatibility surface, and will need its
+  own entry here.

@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-29
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-02
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -39,6 +39,27 @@ boundary here is a point where the tool works and could be abandoned without los
 
 **M1 is the milestone to defend.** `design.md` §9: *"M1 is therefore the only milestone whose
 scope should be defended aggressively."* Anything that can be argued into M2 should be.
+
+### Status — where the project actually is (2026-09-02)
+
+This document has sequenced work since it was written, but never once recorded which of that work
+actually finished — a roadmap with no completion record is only half a roadmap. This reassessment
+pass fixes that drift and gives it one, rather than adding it as a separate tracking document this
+document's own §8 already forbids.
+
+| Milestone | Status | Tag | Merge commit |
+| --- | --- | --- | --- |
+| §2 M0 — Bootstrap | Complete | *(no tag — folded into M1's early history)* | — |
+| §3 M1 — Inventory | Complete | `v0.1.0` | `41a7a1a` |
+| §4 M2 — Curation | Complete | `v0.2.0` | `d009473` |
+| §5 M3 — Configuration | Complete | `v0.3.0` | `4577e17` |
+| *(release plumbing, not a milestone)* | — | `v0.4.0` | `d7699c6` |
+| §5.5 M3.5 — Hardening | Current | — | — |
+| §6 M4 — Identity | Gated | — | — |
+
+`v0.4.0` tags the commit that configured GoReleaser's Gitea publishing and added the repository's
+`LICENSE` — release plumbing that followed M3's merge, not a milestone of its own, listed here
+because it is the tag sitting immediately behind M3.5's own work.
 
 ---
 
@@ -215,6 +236,107 @@ so is every `WriteRegion` change — M2 writes key files, symlinks, and `.hasp` 
 
 ---
 
+## 5.5. M3.5 — Hardening
+
+The `.5` is deliberate, not a placeholder. §2 through §5 above are cited directly by roughly
+twenty Go source comments — `roadmap.md §2` for M0, `§3` for M1, `§4` for M2, `§5` for M3 — and
+renumbering any of them to make room for a new milestone would break every one of those citations
+invisibly, with no compiler error to catch it. This section sits at `§5.5` for exactly that
+reason, and §6 through §8 keep the numbers they already had.
+
+> *hasp is something someone else could install, trust, and walk away from.* Covers no new
+> journey — it makes **J1** (Survey) survivable by a stranger, and discharges **P6**.
+
+**Work**
+
+- **Versioning** — the SemVer commitment and the compatibility surface it freezes
+  ([`tdd.md` §16](tdd.md#16-versioning-and-the-compatibility-surface),
+  [T31](tech-decision-log.md#t31)).
+- **CI/CD** — the Mage target set and the thin-shim rule
+  ([`tdd.md` §17](tdd.md#17-continuous-integration-and-release-automation),
+  [T32](tech-decision-log.md#t32)).
+- **Distribution** — archives, generated completions and man pages, and an SBOM shipping now; the
+  four publicly-origin-blocked channels staying deferred
+  ([`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought),
+  [T33](tech-decision-log.md#t33)).
+- **User-facing documentation** — the generated/hand-written split
+  ([T34](tech-decision-log.md#t34)).
+- **Doc hygiene** — the stale claims a new reader trips over first: the root `README.md`'s
+  "M1" / "Writes … arrive in M2" status section; `docs/README.md`'s closing claim that no root
+  `README.md` exists yet; `.goreleaser.yaml`'s header comment claiming M0 scope and that nothing
+  is being released; and two passages inside `docs/tech-decision-log.md` that have quietly drifted
+  from current truth — [T20](tech-decision-log.md#t20)'s worked-example ordering for `adopt key`
+  and [T22](tech-decision-log.md#t22)'s `Consequence` text describing
+  `edit key --replace-material` — both superseded by `tdd.md`'s later reasoning. Per this log's
+  own append-only rule, neither gets edited in place; each needs a new entry naming what it
+  amends. Also there: `docs/tech-decision-log.md`'s declared status vocabulary (`Accepted`,
+  `Open`, `Amended by Tn`, `Superseded by Tn`, `Rejected`) no longer matches what the index
+  actually uses — `extended by`, `refined by`, `ratified upstream as` and `staged by` all appear
+  — so either the declaration or the usage should be reconciled.
+- **Key inspection** — the input-needed item below. Scoping it needs an answer this document does
+  not have, so it is carried by exit criterion 8 rather than by a criterion of its own: the
+  milestone may close with the question **answered** or **explicitly deferred**, but not with it
+  merely unaddressed.
+
+**Explicitly out of scope**
+
+Anything touching J9 or M4. The four distribution channels [T33](tech-decision-log.md#t33)
+defers. Multi-directory / non-default key locations — `design.md` §10 leaves them deferred and
+this milestone does not reopen them.
+
+**Exit criteria**
+
+1. `v1.0.0` is tagged, and the release it produces carries archives for all four targets plus
+   generated completions, man pages, and an SBOM.
+2. A clean checkout passes `go run mage.go ci` with no platform-specific step, and that same
+   target is what both workflow shims invoke.
+3. The darwin targets compile in CI.
+4. The doc-verification target passes with zero broken links, zero unresolved `Dn`/`Tn`
+   citations, and matching log index/anchor counts — and fails the build when it does not.
+5. The committed CLI reference, man pages, and completions are byte-identical to freshly
+   generated output; CI fails if they are stale.
+6. **The clean-room test passes**: in a container with no repository checkout, following only the
+   published `README.md`'s install steps, `hasp list key` returns an accurate inventory of a
+   synthetic `~/.ssh` fixture, `hasp adopt` then `hasp release` returns that fixture
+   **byte-identical** to where it started, and the whole run is covered by §3's write-nothing
+   snapshot guard. This is the mechanical form of "a stranger can install it, trust it, and walk
+   away from it" — the milestone's own one-line claim — and it is deliberately a script rather
+   than a judgement, because every other exit criterion in this document is.
+7. `golangci-lint` and the Go toolchain are both pinned to exact versions.
+8. **Both input-needed items below are closed** — each either answered and recorded in its own
+   `Tn` entry, or explicitly deferred by a recorded decision. Neither may close by being
+   forgotten. The public-origin question is additionally gated by criterion 1, since tagging
+   `v1.0.0` freezes the module path ([T31](tech-decision-log.md#t31)).
+
+> **⚠ INPUT NEEDED — SSH key inspection detail.**
+>
+> What hasp reports today (`tdd.md` §9): `list key` gives name, algorithm,
+> fingerprint-or-`unknown`, format, encrypted?, profiles, and comment. `show key` adds every
+> location/alias, profiles, and the hosts that bind it.
+>
+> Candidate additions below are *prompts, not decisions* — this milestone does not pick among
+> them: RSA modulus size and ECDSA curve; a second fingerprint form (MD5 alongside SHA256) for
+> consoles that still print it; the OpenSSH-format KDF/cipher and rounds on an encrypted key; file
+> mode and mtime; whether the public half actually matches the private; certificate detection for
+> `*-cert.pub`; and cross-referencing `authorized_keys`/`known_hosts`.
+>
+> Any answer must satisfy: **P7** (the default read stays one screen, so new detail likely
+> belongs behind `show` or a flag rather than in `list`); **P1** (every added fact is derived at
+> read time, never stored); **§5.1's derivation gap** (any new fact needs an honest `unknown`);
+> and **T31's contract** (a new field in `--json` is additive, changing an existing one is not).
+> The answer needs its own `T` entry.
+
+> **⚠ INPUT NEEDED — a publicly reachable origin.**
+>
+> Whether hasp gets one — a GitHub or GitLab mirror, or a public Gitea — settles the Go module
+> path (frozen the moment v1.0.0 tags, [T31](tech-decision-log.md#t31)), `go install`, and all
+> four distribution channels [T33](tech-decision-log.md#t33) defers, all at once.
+> **Recommendation, offered rather than decided:** if the long-term CI target is GitHub or GitLab
+> anyway, a mirror is what makes the existing `github.com/boweeb/hasp` module path honest rather
+> than aspirational.
+
+---
+
 ## 6. M4 — Identity
 
 > *A profile answers "who am I being" across SSH, Git, and signing.* Covers **J9**.
@@ -223,6 +345,12 @@ so is every `WriteRegion` change — M2 writes key files, symlinks, and `.hasp` 
 that no near-term milestone may include it, and
 [`docs/project-assessment-2026-08.md`](project-assessment-2026-08.md) documents this project
 having already died once from opening a second front before the first was done.
+
+**[M3.5 — Hardening](#55-m35--hardening) now sits between M3 and this milestone.** The gate above
+is unweakened by its insertion — M3.5 touches no J9 work and exists precisely to keep this
+milestone from starting early, not to soften the wait for it. When M4 does land, it ships as
+**v1.1.0**, additive over the v1.0.0 surface M3.5 freezes
+([T31](tech-decision-log.md#t31)).
 
 No work breakdown is written here on purpose. `tdd.md` §14 states only the constraints M4 must not
 foreclose — that `Profile` stays additive, that P9 governs Git/GPG taxonomy exactly as it governs
@@ -241,6 +369,9 @@ now would be the failure mode this gate exists to prevent.
 | **Scope creep toward J9** — the documented, already-experienced failure mode | Any | `D8`, and M4's hard gate above |
 | **`settings.toml` grows into the old state file** — it has exactly that shape | M2 onward | `D16`'s admission rule, enforced by the field-set test rather than by review discipline |
 | **The docs and the code drift apart** — the thing that killed the predecessor's design | Any | Every `Dn`/`Tn` ID is stable and citable from code comments and commit messages; a change contradicting one is supposed to be caught by that citation failing to make sense |
+| **The compatibility surface freezes at v1.0.0 while the module path is still unsettled** — a problem that becomes unfixable-after-the-fact the moment the tag is cut | The v1.0.0 tag ([M3.5](#55-m35--hardening)) | [T31](tech-decision-log.md#t31) makes it a named prerequisite, tracked as an input-needed item in §5.5 rather than left implicit |
+| **CI logic drifts back into a platform's YAML** — the failure mode the Mage shim exists to prevent | Whenever a new platform is added | [T32](tech-decision-log.md#t32)'s thin-shim rule and the single `CI` aggregate target |
+| **Generated documentation goes stale** — a CLI reference, man pages, or completions that silently disagree with the binary | Continuously, every time a flag or command changes | [T34](tech-decision-log.md#t34)'s CI staleness check |
 
 ---
 
