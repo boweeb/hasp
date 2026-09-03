@@ -1,7 +1,7 @@
 ---
 Status: APPROVED
 DateCreated: 2026-08-26
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-03
 Related:
   - "[`docs/design.md`](design.md)"
   - "[`docs/tdd.md`](tdd.md)"
@@ -48,11 +48,15 @@ alternatives were rejected, and what each decision commits the project to.
 | [D11](#d11) | Offboarding and unified identity are ratified journeys | Accepted |
 | [D12](#d12) | hasp has no persisted state; it is a pure function of the machine | Accepted — completed by [D13](#d13) |
 | [D13](#d13) | Profile membership lives in the filesystem; taxonomy prefers natural structures | Accepted — adds P9; amended by [D15](#d15), [D16](#d16) |
-| [D14](#d14) | Managed vs. unmanaged resources; `adopt` and `release` | Accepted — amends [D10](#d10), J1; amended by [D15](#d15), [D17](#d17) |
+| [D14](#d14) | Managed vs. unmanaged resources; `adopt` and `release` | Accepted — amends [D10](#d10), J1; amended by [D15](#d15), [D17](#d17), [D19](#d19) |
 | [D15](#d15) | hasp reads the marker's presence, never its contents | Accepted — amends [D13](#d13), [D14](#d14); extended by [D18](#d18) |
 | [D16](#d16) | A settings file exists; P9's last rung is reached | Accepted — amends [D13](#d13)'s P9 |
-| [D17](#d17) | `new key` may ask for a passphrase at generation time | Accepted — narrows §3.2, P3 |
+| [D17](#d17) | `new key` may ask for a passphrase at generation time | Accepted — narrows §3.2, P3; generalized by [D19](#d19) |
 | [D18](#d18) | `release` never deletes content, for hosts as for profiles | Accepted — extends [D15](#d15) |
+| [D19](#d19) | P3 is split: custody stays absolute, access becomes consent-gated | Accepted — narrows P3; generalizes [D17](#d17) |
+| [D20](#d20) | J2 spans fingerprint schemes, not merely spellings | Accepted — amends J2 (§7) |
+| [D21](#d21) | Investigation is a first-class purpose; J10 is ratified | Accepted — adds J10; amends §1, §3.1 |
+| [D22](#d22) | Confidence is part of the fact; P10 is added | Accepted — adds P10; generalizes §5.1's `unknown` |
 
 ---
 
@@ -1191,9 +1195,183 @@ an apology.
 
 ---
 
+<a id="d19"></a>
+## D19 — P3 is split: custody stays absolute, access becomes consent-gated
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Narrows:** P3 · **Generalizes:** [D17](#d17)
+
+### Context
+
+P3 bundles three distinct jobs: a scope boundary (hasp is not a vault, agent, or passphrase
+manager, §3.2), a data-flow rule (private key bytes never enter hasp's own records), and an
+access rule (hasp never asks for a passphrase to open something that already exists). Only the
+access rule has ever blocked anything, and it has now blocked twice: [D17](#d17) narrowed it once,
+for `new key`. The AWS created-RSA fingerprint scheme — which hashes the *private* key, not the
+public half — and the comment on an encrypted OpenSSH key both need it narrowed again, and neither
+is a case D17 covers, because both are reads of a key that already exists. Worth stating plainly,
+now that it has recurred: the access rule was a reasonable default chosen to limit complexity at
+project liftoff, not a requirement anything else in the design actually rests on.
+
+### Decision
+
+Keep the scope boundary and the data-flow rule **absolute and unchanged.** Replace the access rule
+with the consent rule — [D17](#d17)'s four constraints, promoted from a special case covering one
+write path to the general rule covering every read: hasp may read private key material only when
+the user has explicitly asked for an operation that requires it, only for that operation's
+duration, held in memory and zeroed after use; never automatically, and never as a side effect of
+a read that did not ask for it.
+
+### Rationale
+
+Retiring P3 outright was considered and rejected. It has 18 citations across `docs/` and 4 in the
+Go source, and nearly all of them cite the scope boundary or the data-flow rule, both of which
+remain true without qualification. Retiring the whole principle would orphan [D14](#d14)'s
+reasoning for not annotating existing private keys, §5.1's derivation-gap rationale,
+[D17](#d17)'s own narrowing, and [T6](tech-decision-log.md#t6)'s structural audit — which states
+that *"a reviewer reading a diff that adds passphrase-accepting code anywhere else in the tree is
+reading a P3 violation on sight"* — every one of which is an argument about custody or data flow,
+not about access. Splitting the principle preserves all of them; narrowing the whole thing again,
+the way D17 did, would not.
+
+### Consequence
+
+The audit heuristic changes shape rather than disappearing. Passphrase-accepting code is no longer
+forbidden outside `new key`, so what a reviewer checks at a call site is no longer "does this
+exist" but whether it is **user-initiated, scoped to one operation, and zeroed** — the same three
+tests D17 already applied to key generation, now the general review question for any read. §5.1's
+derivation gap is also no longer permanent for every case it names: a fact that was `unknown`
+because deriving it needed a passphrase may become derivable the moment the user explicitly asks.
+
+---
+
+<a id="d20"></a>
+## D20 — J2 spans fingerprint schemes, not merely spellings
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** J2 (§7)
+
+### Context
+
+J2 currently reads *"Punctuation and case shouldn't matter,"* which frames normalization as
+cosmetic — as though there were one fingerprint per key and only its spelling varied. That is
+false: AWS alone computes an RSA fingerprint one of two different ways depending on a key's
+provenance (SHA-1 over the private key if AWS generated it, MD5 over the public key if it was
+imported), and a third way again for ED25519, so the same key can carry more than one valid
+fingerprint and the console shows exactly one of them. A user pasting a console fingerprint into a
+tool that only knows the scheme its own key format natively produces gets silence back — and
+silence reads as "you don't have this key," which is a confidently wrong answer, not a missing
+one.
+
+### Decision
+
+J2's requirement is matching across every **scheme** hasp knows, not just every spelling.
+Normalization spans hash algorithm and encoding, not only punctuation and case — including
+stripping base64 `=` padding, which AWS emits and `ssh-keygen` omits.
+
+### Rationale
+
+The failure mode is silent and produces a confident wrong answer, which is worse than an explicit
+error. This is exactly the question §2 opens with: a fingerprint from an AWS console, and which of
+the user's keys it is.
+
+### Consequence
+
+`find` acquires a scheme registry. A false negative here is now a defect against a ratified
+journey, not a missing convenience.
+
+---
+
+<a id="d21"></a>
+## D21 — Investigation is a first-class purpose; J10 is ratified
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Adds:** J10 · **Amends:** §1, §3.1
+
+### Context
+
+hasp's documented framing is management, with comprehension (P7) as the read-side goal. But the
+project was born from an investigation: a Bash loop running `ssh-keygen -l -f` across `~/.ssh`,
+grepping for a fingerprint held in hand from an AWS console. §2 already asks the question that
+founding story motivates; what the design has never said is that *answering* it is a distinct kind
+of work from managing an arrangement.
+
+### Decision
+
+Name **visibility** as the root purpose, serving two ends: **investigation** (answering a question
+whose shape you do not yet know) and **operational management** (arranging what you already have).
+Ratify **J10 — Investigate**. ID order is not chronological here any more than it is in the
+technical log, where [T27](tech-decision-log.md#t27) was decided first and numbered last: J10 is
+numbered last and is v1 scope, while J9 remains post-v1.
+
+### Rationale
+
+An investigation needs *more* data than comprehension does — including signals hasp cannot itself
+interpret, because the human is looking for a thread hasp was never taught to see. That is the
+opposite of P7's instinct, and it needs its own name so the two do not fight. P7 does not need
+amending — it already scopes itself to *"The default output of a read"* — but the inversion is
+worth stating rather than leaving implicit: under `--investigate` the human correlating output
+*is* the intended workflow, exactly the case P7 elsewhere calls a failure.
+
+### Consequence
+
+`--investigate` has a journey to cite, and future commands may grow the same mode. §2's founding
+story is recorded rather than left as folklore.
+
+---
+
+<a id="d22"></a>
+## D22 — Confidence is part of the fact; P10 is added
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Adds:** P10 · **Generalizes:** §5.1's `unknown`
+
+### Context
+
+§5.1 already established that hasp reports an epistemic status rather than only a value —
+`unknown` is a first-class answer, because asserting an unverifiable fingerprint is worse than
+admitting ignorance. Investigation needs the same honesty for the *middle* of that range: an
+origin inferred from a matched console fingerprint is certain for RSA, an origin guessed from the
+key alone is a hint, and an ED25519 origin can never be more than a hint — AWS's own fingerprint
+scheme for ED25519 carries no origin signal at all, because created and imported keys produce an
+identical fingerprint.
+
+### Decision
+
+Add **P10 — Confidence is part of the fact.** Every reported fact carries a status from a closed
+set: `derived` (read directly from the artifact), `confirmed` (established by matching external
+evidence the user supplied), `possible` (consistent with the evidence, not established), `unknown`
+(cannot be determined). Weak assertions are permitted and useful, but must be marked as such and
+must never be rendered in a way that reads as established.
+
+### Rationale
+
+This one feature needs all four statuses, which is the evidence the taxonomy is right-sized: a
+matched RSA console fingerprint is `confirmed`; an ED25519 guess from the key alone is `possible`;
+a value read straight off an artifact is `derived`; an underivable value stays `unknown`. Three of
+the four words cost nothing new — they are already this project's vocabulary. [T12](tech-decision-log.md#t12)'s
+duplicate detection already splits findings into a *confirmed* duplicate and one it reports as
+*possible*, "cannot confirm"; `unknown` is §5.1's own word for the derivation gap. Only `derived`
+is genuinely new, because nothing before this needed to distinguish "read from the artifact" from
+"matched against something the user supplied."
+
+**Alternative rejected:** recording an explicit origin as metadata when hasp creates a key. Three
+reasons, the third decisive. §5.8's metadata channel exists only inside marked regions of
+configuration files, and §5.9 states plainly that *"there is no per-key marker, because writing
+one would mean rewriting a private key file."* Origin-at-creation is also **history**, which §5.7
+already places out of scope: *"'This key replaced that one' is history — genuinely underivable,
+and out of scope."* And even setting both of those aside, it would help only hasp-created keys —
+exactly the population that never needs investigating, because their origin is already known at
+the moment of creation.
+
+### Consequence
+
+The confidence vocabulary becomes a **compatibility surface**: a consumer filtering on `derived`
+is making a safety decision, so unlike [T29](tech-decision-log.md#t29)'s deliberately re-tunable
+`severity`, this vocabulary is closed and permanent. Downstream work must carry it into
+[T31](tech-decision-log.md#t31)'s contract table.
+
+---
+
 ## Still open
 
-**Nothing.** D1 through D18 are all ratified.
+**Nothing.** D1 through D22 are all ratified.
 
 [D13](#d13) closed the last of the original fifteen by putting profile membership in the
 filesystem, which makes [D12](#d12)'s "no persisted state" literally true with no asterisk: hasp
@@ -1213,6 +1391,15 @@ live: cross-machine synchronization (`docs/design.md` §3.3) and multi-directory
 (§10). Neither is a question waiting on an answer; both are doors held shut on purpose.
 
 The technical questions this document deferred are settled downstream in
-[`docs/tech-decision-log.md`](tech-decision-log.md) under `T1`–`T30` — including the two
+[`docs/tech-decision-log.md`](tech-decision-log.md) under `T1`–`T39` — including the two
 `docs/design.md` §10 called load-bearing: the **metadata format** ([D7](#d7)'s comment channel,
 `T10`) and the **configuration parsing approach** (`T2`).
+
+**D19 through D22 arrived from a third direction — from use.** Answering a fingerprint held in
+hand from a cloud console needed a hash computed over a *private* key ([D19](#d19)), a `find` that
+spans schemes rather than spellings ([D20](#d20)), a name for the investigative work hasp was
+actually born from ([D21](#d21)), and a way to say how sure hasp is rather than only what it found
+([D22](#d22)). None of the four came from deriving a downstream document; all four came from a
+question the tool could not yet answer. [D19](#d19) is the sharpest of them, because it retires a
+stance — P3's absolute prohibition on reading an existing key's material — that was a reasonable
+default at liftoff and had since been mistaken for a requirement.

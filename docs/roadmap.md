@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-29
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-09-02
+DateLastReviewed: 2026-09-03
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -40,7 +40,7 @@ boundary here is a point where the tool works and could be abandoned without los
 **M1 is the milestone to defend.** `design.md` §9: *"M1 is therefore the only milestone whose
 scope should be defended aggressively."* Anything that can be argued into M2 should be.
 
-### Status — where the project actually is (2026-09-02)
+### Status — where the project actually is (2026-09-03)
 
 This document has sequenced work since it was written, but never once recorded which of that work
 actually finished — a roadmap with no completion record is only half a roadmap. This reassessment
@@ -55,11 +55,14 @@ document's own §8 already forbids.
 | §5 M3 — Configuration | Complete | `v0.3.0` | `4577e17` |
 | *(release plumbing, not a milestone)* | — | `v0.4.0` | `d7699c6` |
 | §5.5 M3.5 — Hardening | Current | — | — |
+| §5.6 M3.6 — Investigation | Next | — | — |
 | §6 M4 — Identity | Gated | — | — |
 
 `v0.4.0` tags the commit that configured GoReleaser's Gitea publishing and added the repository's
 `LICENSE` — release plumbing that followed M3's merge, not a milestone of its own, listed here
-because it is the tag sitting immediately behind M3.5's own work.
+because it is the tag sitting immediately behind M3.5's own work. This reassessment split what had
+been a single M3.5 into [§5.5](#55-m35--hardening) and [§5.6](#56-m36--investigation) — see the
+new milestone's own opening note for why the split, and why the section number it landed on.
 
 ---
 
@@ -273,21 +276,26 @@ reason, and §6 through §8 keep the numbers they already had.
   `Open`, `Amended by Tn`, `Superseded by Tn`, `Rejected`) no longer matches what the index
   actually uses — `extended by`, `refined by`, `ratified upstream as` and `staged by` all appear
   — so either the declaration or the usage should be reconciled.
-- **Key inspection** — the input-needed item below. Scoping it needs an answer this document does
-  not have, so it is carried by exit criterion 8 rather than by a criterion of its own: the
-  milestone may close with the question **answered** or **explicitly deferred**, but not with it
-  merely unaddressed.
+- **SSH key inspection** — no longer scoped here. What began as an input-needed question was
+  answered from an unexpected direction, downstream in [§5.6](#56-m36--investigation): rather than
+  adding fields to `list key`/`show key`'s plain output, `--investigate`
+  ([`tdd.md` §18](tdd.md#18-investigation--schemes-confidence-and-gated-derivation),
+  [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39)) answers a superset of the
+  candidate additions this bullet used to carry, behind a flag rather than in the default read.
 
 **Explicitly out of scope**
 
 Anything touching J9 or M4. The four distribution channels [T33](tech-decision-log.md#t33)
 defers. Multi-directory / non-default key locations — `design.md` §10 leaves them deferred and
-this milestone does not reopen them.
+this milestone does not reopen them. **Investigation** ([§5.6](#56-m36--investigation)) — this
+milestone hardens what M1–M3 already built; it does not extend the read surface.
 
 **Exit criteria**
 
-1. `v1.0.0` is tagged, and the release it produces carries archives for all four targets plus
-   generated completions, man pages, and an SBOM.
+1. A release is tagged, and it carries archives for all four targets plus generated completions,
+   man pages, and an SBOM. **`v1.0.0` itself is not claimed here** — it is reserved for
+   [M3.6](#56-m36--investigation)'s close, per `design.md` §9, once the investigation surface is
+   frozen alongside everything this milestone hardens.
 2. A clean checkout passes `go run mage.go ci` with no platform-specific step, and that same
    target is what both workflow shims invoke.
 3. The darwin targets compile in CI.
@@ -303,28 +311,10 @@ this milestone does not reopen them.
    away from it" — the milestone's own one-line claim — and it is deliberately a script rather
    than a judgement, because every other exit criterion in this document is.
 7. `golangci-lint` and the Go toolchain are both pinned to exact versions.
-8. **Both input-needed items below are closed** — each either answered and recorded in its own
-   `Tn` entry, or explicitly deferred by a recorded decision. Neither may close by being
-   forgotten. The public-origin question is additionally gated by criterion 1, since tagging
-   `v1.0.0` freezes the module path ([T31](tech-decision-log.md#t31)).
-
-> **⚠ INPUT NEEDED — SSH key inspection detail.**
->
-> What hasp reports today (`tdd.md` §9): `list key` gives name, algorithm,
-> fingerprint-or-`unknown`, format, encrypted?, profiles, and comment. `show key` adds every
-> location/alias, profiles, and the hosts that bind it.
->
-> Candidate additions below are *prompts, not decisions* — this milestone does not pick among
-> them: RSA modulus size and ECDSA curve; a second fingerprint form (MD5 alongside SHA256) for
-> consoles that still print it; the OpenSSH-format KDF/cipher and rounds on an encrypted key; file
-> mode and mtime; whether the public half actually matches the private; certificate detection for
-> `*-cert.pub`; and cross-referencing `authorized_keys`/`known_hosts`.
->
-> Any answer must satisfy: **P7** (the default read stays one screen, so new detail likely
-> belongs behind `show` or a flag rather than in `list`); **P1** (every added fact is derived at
-> read time, never stored); **§5.1's derivation gap** (any new fact needs an honest `unknown`);
-> and **T31's contract** (a new field in `--json` is additive, changing an existing one is not).
-> The answer needs its own `T` entry.
+8. **The input-needed item below is closed** — answered and recorded in its own `Tn` entry, or
+   explicitly deferred by a recorded decision. It may not close by being forgotten. Settling it
+   here, ahead of [M3.6](#56-m36--investigation), is what lets that milestone's `v1.0.0` tag
+   freeze the module path without a last-minute scramble ([T31](tech-decision-log.md#t31)).
 
 > **⚠ INPUT NEEDED — a publicly reachable origin.**
 >
@@ -337,6 +327,69 @@ this milestone does not reopen them.
 
 ---
 
+## 5.6. M3.6 — Investigation
+
+Sits at `§5.6`, immediately after [M3.5](#55-m35--hardening) and before `§6`, for the same reason
+M3.5 sits at `§5.5`: §2 through §5 are cited by roughly twenty Go source comments, and renumbering
+any of them would break every one of those citations invisibly.
+
+> *hasp answers a fingerprint held in hand, computed under any scheme, and says how sure it is.*
+> Covers **J10** (Investigate) and makes **J2** (Identify) honest — matching a clue across every
+> scheme hasp knows, not only the one its own tooling natively produces.
+
+**Work**
+
+- **P3's split landing in code** ([D19](decision-log.md#d19)) — the consent-gated access rule
+  generalized from `new key`'s passphrase prompt to any read that explicitly asks.
+- **The fingerprint scheme registry** ([`tdd.md` §18](tdd.md#18-investigation--schemes-confidence-and-gated-derivation),
+  [T35](tech-decision-log.md#t35)) — open, pure-Go, no subprocess, no network.
+- **Multi-scheme `find`** ([T36](tech-decision-log.md#t36)) — a clue's shape routes the search
+  across every registered scheme, not only the SSH-native one.
+- **The confidence vocabulary, across both renderers** ([T37](tech-decision-log.md#t37)) —
+  `derived`/`confirmed`/`possible`/`unknown`, closed and permanent, in both the human and `--json`
+  output.
+- **The `ssh-agent` source** ([T38](tech-decision-log.md#t38)) — a loaded key's public half and
+  comment, labelled `agent-sourced`, with no passphrase and no secret handling.
+- **Passphrase-gated derivation** ([T39](tech-decision-log.md#t39)) — explicit, lazy, one
+  passphrase per invocation, degrading rather than failing closed with no TTY.
+- **`--investigate` on `show key` and `list key`** ([`tdd.md` §9](tdd.md#9-command-surface--the-38-grid-spelled-out)) —
+  opt-in, out of the default read path entirely.
+
+**Explicitly out of scope**
+
+The keyring-backed passphrase cache — considered and rejected for now (`design.md` §10); the
+two rungs this milestone ships (agent, explicit prompt) are expected to suffice without one.
+Anything touching J9 or M4.
+
+**Exit criteria**
+
+1. A committed fingerprint under each of the **four** registered schemes is matched by
+   `hasp find key` to the correct fixture key, and the reported origin's `confidence` is
+   `confirmed` for the two AWS RSA schemes and `possible` for both SSH-native/ED25519 and legacy
+   SSH MD5.
+   1a. **The MD5 collision resolves both ways**: the same fixture's imported-RSA and legacy SSH
+   MD5 fingerprints are different values of identical shape, and a 47-character clue matching
+   either one finds the key. A regression that collapses the MD5 shape to a single scheme must
+   fail this criterion rather than silently miss every legacy clue
+   ([T36](tech-decision-log.md#t36)).
+2. `hasp show key --investigate --json` emits every registered scheme's value or an explicit
+   `unknown` with a machine-readable reason; no scheme is silently omitted.
+3. The confidence vocabulary matches its golden list, and no value outside the closed set is
+   emitted anywhere.
+4. With a key loaded into a fake `ssh-agent`, the comment of an OpenSSH-format **encrypted** key is
+   reported and labelled agent-sourced; with `SSH_AUTH_SOCK` unset the same command degrades to
+   `unknown` and exits `0`.
+5. `hasp show key --investigate --json </dev/null` with no TTY exits `0`, reports what is
+   derivable, and marks the rest `unknown` with `passphrase-required-no-tty`.
+6. The no-network guard passes: no scheme opens a socket.
+7. `hasp list key` **without** `--investigate` is byte-identical to its pre-M3.6 output — the
+   investigation mode never leaks into the default read (P7).
+8. **`v1.0.0` is tagged at this milestone's close** — not M3.5's — once criterion 7 above confirms
+   the default read is untouched and [M3.5](#55-m35--hardening)'s own exit criteria have already
+   passed.
+
+---
+
 ## 6. M4 — Identity
 
 > *A profile answers "who am I being" across SSH, Git, and signing.* Covers **J9**.
@@ -346,11 +399,12 @@ that no near-term milestone may include it, and
 [`docs/project-assessment-2026-08.md`](project-assessment-2026-08.md) documents this project
 having already died once from opening a second front before the first was done.
 
-**[M3.5 — Hardening](#55-m35--hardening) now sits between M3 and this milestone.** The gate above
-is unweakened by its insertion — M3.5 touches no J9 work and exists precisely to keep this
-milestone from starting early, not to soften the wait for it. When M4 does land, it ships as
-**v1.1.0**, additive over the v1.0.0 surface M3.5 freezes
-([T31](tech-decision-log.md#t31)).
+**[M3.5 — Hardening](#55-m35--hardening) and [M3.6 — Investigation](#56-m36--investigation) now
+sit between M3 and this milestone.** The gate above is unweakened by their insertion — neither
+touches J9 work, and both exist precisely to keep this milestone from starting early, not to
+soften the wait for it. When M4 does land, it ships as **v1.1.0**, additive over the v1.0.0
+surface M3.6 freezes at its close ([T31](tech-decision-log.md#t31),
+[T37](tech-decision-log.md#t37)).
 
 No work breakdown is written here on purpose. `tdd.md` §14 states only the constraints M4 must not
 foreclose — that `Profile` stays additive, that P9 governs Git/GPG taxonomy exactly as it governs
@@ -369,9 +423,11 @@ now would be the failure mode this gate exists to prevent.
 | **Scope creep toward J9** — the documented, already-experienced failure mode | Any | `D8`, and M4's hard gate above |
 | **`settings.toml` grows into the old state file** — it has exactly that shape | M2 onward | `D16`'s admission rule, enforced by the field-set test rather than by review discipline |
 | **The docs and the code drift apart** — the thing that killed the predecessor's design | Any | Every `Dn`/`Tn` ID is stable and citable from code comments and commit messages; a change contradicting one is supposed to be caught by that citation failing to make sense |
-| **The compatibility surface freezes at v1.0.0 while the module path is still unsettled** — a problem that becomes unfixable-after-the-fact the moment the tag is cut | The v1.0.0 tag ([M3.5](#55-m35--hardening)) | [T31](tech-decision-log.md#t31) makes it a named prerequisite, tracked as an input-needed item in §5.5 rather than left implicit |
+| **The compatibility surface freezes at v1.0.0 while the module path is still unsettled** — a problem that becomes unfixable-after-the-fact the moment the tag is cut | The v1.0.0 tag ([M3.6](#56-m36--investigation)) | [T31](tech-decision-log.md#t31) makes it a named prerequisite, tracked as an input-needed item in §5.5 rather than left implicit — settled a milestone ahead of the tag it gates, not at the last moment |
 | **CI logic drifts back into a platform's YAML** — the failure mode the Mage shim exists to prevent | Whenever a new platform is added | [T32](tech-decision-log.md#t32)'s thin-shim rule and the single `CI` aggregate target |
 | **Generated documentation goes stale** — a CLI reference, man pages, or completions that silently disagree with the binary | Continuously, every time a flag or command changes | [T34](tech-decision-log.md#t34)'s CI staleness check |
+| **Investigation scope grows past what J10 actually needs** — an open-ended registry and an opt-in mode are both natural places for "just one more candidate field" to accrete | [M3.6](#56-m36--investigation) | Held by that milestone's own exit criteria (a fixed set of fixture-backed assertions, not a growing wishlist) and by the keyring rung staying explicitly deferred (`design.md` §10) |
+| **The confidence vocabulary leaks a fifth value, or one of the four gets silently redefined** — the exact failure P10's closed-set promise exists to prevent | [M3.6](#56-m36--investigation) onward | The golden-list guard ([T37](tech-decision-log.md#t37), [`tdd.md` §12](tdd.md#12-testing-strategy--a-function-of-a-directory)) — the same mechanism already used for `check`'s finding `id`s and the settings field set |
 
 ---
 

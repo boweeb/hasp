@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-09-02
+DateLastReviewed: 2026-09-03
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -32,7 +32,7 @@ rejected.
 - An entry needs a **Consequence** to be complete. A decision whose cost nobody wrote down is a
   decision nobody actually made — the rule `docs/decision-log.md` established, kept here without
   modification.
-- Every entry cites the principle (P1–P9), decision (D1–D15), or journey (J1–J9) it serves.
+- Every entry cites the principle (P1–P10), decision (D1–D22), or journey (J1–J10) it serves.
   This project settles arguments by appeal to `docs/design.md`; a decision with no citation is
   a decision that gets re-litigated.
 
@@ -49,7 +49,7 @@ rejected.
 | [T3](#t3) | `spf13/cobra` for the CLI, commands registered from a table | Accepted |
 | [T4](#t4) | The `Plan` type: change is represented as data before it is applied | Accepted — amended by [T20](#t20), [T22](#t22), [T26](#t26), [T30](#t30) |
 | [T5](#t5) | A host's profile membership is derived from its key bindings | Accepted — amended by [T16](#t16), [T28](#t28) |
-| [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted — ratified upstream as [D17](decision-log.md#d17) |
+| [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted — ratified upstream as [D17](decision-log.md#d17); amended by [T39](#t39) |
 | [T7](#t7) | A settings file, read-only, reaching P9's last rung | Accepted — ratified upstream as [D16](decision-log.md#d16) |
 | [T8](#t8) | Backups live in `~/.ssh/.hasp-backups/`, timestamped, never pruned by hasp | Accepted |
 | [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted — staged by [T33](#t33) |
@@ -57,7 +57,7 @@ rejected.
 | [T11](#t11) | Host-group composition: one `Include` line per group, hasp orders them | Accepted |
 | [T12](#t12) | Key identity: fingerprint when derivable, else canonical path | Accepted |
 | [T13](#t13) | DDD adapted to Go: no Unit of Work, no message bus, split aggregate boundary | Accepted |
-| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29), [T31](#t31) |
+| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29), [T31](#t31), [T37](#t37) |
 | [T15](#t15) | Safety mechanics: atomic write, symlink-through, mode preservation, D4's move rule | Accepted — refined by [T20](#t20), [T22](#t22); amended by [T30](#t30) |
 | [T16](#t16) | Implicit default-identity probing is a distinct, labelled binding kind | Accepted — amends [T5](#t5); amended by [T28](#t28) |
 | [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
@@ -72,12 +72,17 @@ rejected.
 | [T26](#t26) | `WriteRegion` previews carry a real diff; key material is never diffed | Accepted — amends [T4](#t4); gap closed by [T30](#t30) |
 | [T27](#t27) | Go, and a fresh implementation rather than a repair of the predecessor | Accepted — closes `design.md` §10's stack item |
 | [T28](#t28) | Relative `IdentityFile` resolves against the key directory, and says so | Accepted — amends [T5](#t5), [T16](#t16) |
-| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31) |
+| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31); amended by [T37](#t37) |
 | [T30](#t30) | The preview/apply race is detected by a witness, and fails closed | Accepted — amends [T4](#t4), [T15](#t15) |
-| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29) |
+| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29); amended by [T37](#t37) |
 | [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted |
 | [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9) |
 | [T34](#t34) | User-facing documentation is generated wherever it can drift | Accepted |
+| [T35](#t35) | The fingerprint scheme registry: open, pure-Go, no subprocess, no network | Accepted |
+| [T36](#t36) | `find` matches across every registered scheme; the clue's shape routes the search | Accepted — amends `tdd.md` §9 |
+| [T37](#t37) | Confidence is a closed, permanent vocabulary in the output contract | Accepted — amends [T14](#t14), [T29](#t29), [T31](#t31) |
+| [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
+| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
 
 ---
 
@@ -2359,9 +2364,385 @@ does.
 
 ---
 
+<a id="t35"></a>
+## T35 — The fingerprint scheme registry: open, pure-Go, no subprocess, no network
+
+**Date:** 2026-09-03 · **Status:** Accepted
+
+### Context
+
+[D20](decision-log.md#d20) widens [J2](design.md#7-journeys) from matching spellings to matching
+**schemes** — the same key produces a different fingerprint depending on how it was computed, and
+AWS alone uses three: SHA-1 over the PKCS#8 DER of the *private* key for an AWS-created RSA key,
+MD5 over the PKIX/SPKI DER of the *public* key for an imported RSA key, and SHA-256 over the SSH
+wire-format public key for ED25519 (created or imported — identical either way). This session
+verified all three against `https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/verify-keys.html`
+and confirmed them on the repository's own fixtures:
+
+| Scheme | Hashed input | Hash | Needs | Verified value (`testdata/keys/rsa-pem-plain-pub`) |
+| --- | --- | --- | --- | --- |
+| AWS created-RSA | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted | `97:47:11:3c:af:56:47:b3:f9:a9:89:36:6d:ca:be:0b:33:a0:05:f7` |
+| AWS imported-RSA | PKIX/SPKI DER of the **public** key | MD5 | public half only | `a8:e7:45:95:5f:a3:f0:b1:79:6c:c2:f1:d2:80:57:ea` |
+| AWS ED25519 (created *or* imported) | SSH wire-format public key | SHA-256 | public half only | `SHA256:lqTGTP6KJSQptQJQEZj7scuX7jLWFfb0qoAHTT1IpPA` (`testdata/keys/ed25519-openssh-plain-pub`) |
+| Legacy SSH MD5 | SSH wire-format public key | MD5 | public half only | `34:29:f4:da:3c:db:49:4b:35:ba:c1:c2:cd:2e:75:a8` |
+
+**The fourth row is the one a reader should not skip.** Legacy SSH MD5 — what `ssh-keygen -E md5`
+prints, what OpenSSH printed by default before 6.8, and what a great deal of surviving
+documentation shows — has **exactly the same shape** as AWS imported-RSA (16 bytes, colon-hex, 47
+characters) and a **completely different value**, because one hashes the SSH wire-format blob and
+the other hashes the PKIX/SPKI DER encoding. The two rows above prove it on the same key:
+`34:29:f4:…` versus `a8:e7:45:…`. [T1](#t1) anticipated exactly this, noting that
+`FingerprintLegacyMD5` *"exists if a future `find key` clue needs to match one"*. Registering it
+here, rather than leaving it to be discovered by a user whose correct clue silently failed to
+match, is the difference between an open registry and an AWS-shaped one.
+[T36](#t36) carries the consequence: a 47-character clue is ambiguous and both schemes are
+computed.
+
+**Six shell "strategies" collapse to three values.** Proven on the repository's own fixtures:
+`openssl rsa -pubout -outform DER | openssl md5` and
+`ssh-keygen -e -m PEM | openssl rsa -RSAPublicKey_in -outform DER | openssl md5` both produce the
+imported-RSA value above, on the same input. The second pipeline exists only because `openssl rsa
+-in` cannot read an OpenSSH-format private key — verified this session: exit 1, `"Could not find
+private key"`. hasp parses both formats natively ([T1](#t1)), so it needs **one code path per
+scheme**, never one per shell incantation that happens to produce that scheme.
+
+**A shell pipeline that loses its input silently emits a hash of nothing**, and that hash is
+shaped exactly like a real fingerprint: `d41d8c…` is MD5 of the empty string, `da39a3…` is SHA-1
+of the empty string. Either one slots into a fingerprint-shaped field without complaint. A native
+Go implementation that reads the key bytes it already parsed cannot make that mistake — there is
+no pipe stage for the input to fall out of.
+
+### Decision
+
+A **registry** of scheme definitions, each declaring: a stable `id`, the hash function, the
+encoding it renders as, and — the load-bearing field — **which key material it needs**: public
+half only, or the decrypted private key. A scheme is `func(Key) (Fingerprint, error)`, computed
+entirely from bytes hasp already has in memory; nothing in the registry ever opens a socket. This
+is the boundary the user ratified explicitly: **a scheme is an encoding of facts about the key,
+computed locally — never a network call** — which keeps §3.2's *"Not a key distribution
+mechanism."* intact even though this feature is, on its face, about matching a value from an
+external console.
+
+Every scheme is stdlib or already-required: `x509.MarshalPKCS8PrivateKey` +
+`crypto/sha1` for created-RSA; `x509.MarshalPKIXPublicKey` + `crypto/md5` for imported-RSA; the
+existing `x/crypto/ssh` wire-format marshaling + `FingerprintSHA256` ([T1](#t1)) for the
+SSH-native/ED25519 scheme. **Zero new modules.**
+
+**The registry is open from the start, not closed at three.** GitHub and GitLab both display
+SHA-256 fingerprints — already covered by the SSH-native scheme — and other consoles will surface
+their own schemes over time. Each scheme's declared input requirement is what lets a caller (§9's
+`find`, [T36](#t36)) know in advance whether a given key can even be evaluated against it without
+asking the user for anything.
+
+### Rationale
+
+The three-scheme table is not incidental complexity — it is the literal shape of the problem
+[J10](design.md#7-journeys) exists to answer, and D20's own rationale is that a false negative here
+reads as *"you don't have this key,"* which is worse than an honest miss. The empty-digest hazard
+is the strongest available argument for computing every scheme natively rather than shelling out
+to whichever `openssl`/`ssh-keygen` pipeline happens to exist on the caller's `PATH`: a broken
+pipe silently produces a value indistinguishable from a real one, and [T1](#t1)'s "no subprocess"
+rule already forecloses that failure class for the read path generally — this is one more scheme
+falling under a rule already in force, not a new exception to it.
+
+### Consequence
+
+- [T36](#t36)'s `find` and any future `--investigate` surface consume the registry as a single
+  dependency; adding a fourth scheme is one new entry, not a new call site scattered through the
+  command surface.
+- Each scheme's declared input requirement (public half vs. private key) is exactly what
+  [D19](decision-log.md#d19)'s consent gate keys off of: a caller can enumerate every scheme
+  computable from what has already been read, and knows in advance which remaining ones would
+  require asking the user for something.
+- `tdd.md` §5 gains scheme computation as a projection step in the derivation pipeline, and §12
+  gains a fixture-backed test asserting the AWS vectors above by name, plus a guard that no scheme
+  performs I/O beyond reading the key file already in memory.
+
+---
+
+<a id="t36"></a>
+## T36 — `find` matches across every registered scheme; the clue's shape routes the search
+
+**Date:** 2026-09-03 · **Status:** Accepted — amends `tdd.md` §9's `find` cell
+
+### Context
+
+[D20](decision-log.md#d20) requires `find key` to match a clue given in *any* scheme hasp knows,
+not only the SSH-native one `tdd.md` §9 originally described ("identify a key from a fingerprint
+fragment... normalizing punctuation and case"). [T35](#t35) supplies the schemes; this entry
+supplies the matching algorithm — including how a bare clue, with no metadata attached, is routed
+to a candidate scheme before any key is even examined.
+
+### Decision
+
+**Normalization**, applied to the clue before routing: strip colons and internal whitespace,
+lowercase hex digits, strip base64 `=` padding (AWS emits it, `ssh-keygen` omits it — D20 names
+this explicitly), and tolerate an optional `SHA256:`/`MD5:` prefix.
+
+**The clue's raw shape NARROWS the search; it does not uniquely determine it.** That distinction
+is the whole of this decision, and getting it wrong would reintroduce the silent miss
+[D20](decision-log.md#d20) exists to eliminate.
+
+| Clue shape | Candidate schemes |
+| --- | --- |
+| 59-character colon-hex (40 hex digits) | SHA-1 — [T35](#t35)'s created-RSA scheme. One candidate |
+| 47-character colon-hex (32 hex digits) | MD5 — **two** candidates: AWS imported-RSA (MD5 over PKIX/SPKI DER) **and** legacy SSH MD5 (MD5 over the SSH wire-format blob) |
+| base64, with or without a `SHA256:` prefix | SHA-256 — the SSH-native/ED25519 scheme. One candidate |
+
+**The MD5 collision is real and was anticipated by this log.** [T1](#t1) already noted that hasp
+reports SHA-256 and *"never the legacy MD5 colon-hex form, though `FingerprintLegacyMD5` exists if
+a future `find key` clue needs to match one"* — this entry is that future. Legacy SSH MD5 and AWS
+imported-RSA are **different hashes over different byte sequences of the same key**: the former
+over the SSH wire-format public blob, the latter over the PKIX/SPKI DER encoding. They produce
+different digests and identical shapes. A 47-character clue is therefore ambiguous by
+construction, and `find` **computes both and compares both** rather than guessing one. Legacy MD5
+clues are not exotic — they are what `ssh-keygen -E md5` prints, what OpenSSH printed by default
+before 6.8, and what a great deal of still-circulating documentation shows.
+
+`find` computes only the schemes a clue's shape admits, not every registered scheme for every key,
+so the common case (an SSH-native clue) stays exactly as cheap as it is today. What the shape
+buys is a smaller candidate set, never a single answer.
+
+**Which scheme matched is the origin evidence — but only for the AWS schemes.** Per
+[P10](design.md#4-principles): a match under created-RSA or imported-RSA is deterministic proof of
+provenance, because AWS computes one or the other depending on exactly how the key came to exist,
+so `find` reports origin as `confirmed`. A match under **legacy SSH MD5** proves nothing about AWS
+provenance — it is simply another way of naming the same public key — so origin stays `possible`.
+The same holds for the SSH-native/ED25519 scheme, because AWS's ED25519 fingerprint is identical
+whether the key was created or imported (Background, verified against AWS's documentation). Only
+two of the four registered schemes carry provenance, and conflating "the clue matched" with "the
+origin is proven" is exactly the error P10's vocabulary exists to prevent.
+
+### Rationale
+
+D20's own rationale carries this entry: a silent miss on a clue given in a scheme hasp did not
+think to try reads as "you don't have this key," which is a confidently wrong answer, not a
+missing one — precisely the question §2 opens the whole document with. Routing by shape rather
+than computing every scheme against every key keeps the common path — an SSH-native fingerprint,
+the overwhelming majority of clues in practice — exactly as cheap as it was before this entry.
+
+### Consequence
+
+- `tdd.md` §9's `find` cell for **key** is amended to describe multi-scheme matching; the **host**
+  and **profile** `find` cells are unaffected, since neither is fingerprint-shaped.
+- A clue that matches under the created-RSA scheme is proof hasp read the *private* key
+  ([T35](#t35)) — which only happens under [D19](decision-log.md#d19)'s consent gate — so a
+  successful created-RSA match is also, incidentally, evidence the gate fired correctly for that
+  key during this invocation.
+- `check`'s existing duplicate-detection vocabulary ([T12](#t12)) already distinguishes confirmed
+  from unconfirmed; `find`'s confirmed/possible split is the same distinction applied to a
+  different question, which is part of the evidence [D22](decision-log.md#d22) cites for P10's
+  taxonomy being right-sized rather than newly invented.
+
+---
+
+<a id="t37"></a>
+## T37 — Confidence is a closed, permanent vocabulary in the output contract
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T14](#t14), [T29](#t29), [T31](#t31)
+
+### Context
+
+[D22](decision-log.md#d22) ratified [P10](design.md#4-principles): every reported fact carries a
+status from a closed set — `derived`, `confirmed`, `possible`, `unknown`. [T14](#t14) already makes the `--json` envelope a
+public contract, [T29](#t29) already makes a `check` finding's `id` permanent, and [T31](#t31)
+already enumerates the compatibility surface those two entries imply. Confidence has to land in
+exactly that surface, not beside it, or it is a promise nobody actually made.
+
+### Decision
+
+An `--investigate` response carries an `origins` array (and, more generally, any reported fact
+carries the same shape wherever P10 applies):
+
+```json
+"origins": [
+  {"id": "aws-ec2-created", "confidence": "possible",
+   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+]
+```
+
+`because` carries **machine-readable evidence tokens, never prose** — a fixed vocabulary of short,
+`key=value`-shaped strings a consumer can branch on without parsing English. Free text belongs in
+the human renderer only, which is free to turn the same tokens into a sentence.
+
+**Contrast with [T29](#t29)'s `severity` explicitly, because the two look alike and are not.**
+`severity` is deliberately re-tunable — hasp may decide next year that a finding deserves a
+different severity without breaking anything, because [T29](#t29) says so outright. `confidence`
+is **closed and permanent**: a consumer filtering on `derived` to decide whether to *trust* a
+value is making a safety decision, and a vocabulary a producer can silently expand out from under
+that filter would be a contract violation dressed as a feature. Nothing about the confidence
+vocabulary is subject to future re-tuning the way `severity` is.
+
+[T31](#t31)'s compatibility-surface table gains a seventh row: **the confidence
+vocabulary — `derived`, `confirmed`, `possible`, `unknown` — is closed; adding, removing, or
+redefining a value is a breaking change**, exactly like [T29](#t29)'s finding `id`s (row 4) and
+unlike its `severity` (explicitly named in the non-contract).
+
+**A correction to [T31](#t31)'s own body, recorded here since this is the entry that amends it.**
+T31's Decision section states *"v1.0.0 is tagged at the close of
+[M3.5](roadmap.md#55-m35--hardening)"* — true when T31 was written, on 2026-09-02, against the
+milestone structure that existed then. [D21](decision-log.md#d21) and [D22](decision-log.md#d22)
+split that milestone: `roadmap.md` §5.5 (M3.5 — Hardening) now closes without tagging anything, and
+a new §5.6 (M3.6 — Investigation) closes with the tag instead, per `design.md` §9. T31's sentence
+is **pre-amendment text** — the same treatment [T27](#t27) and [T29](#t29) give an earlier draft's
+superseded claim — and the current truth is `roadmap.md` §5.6, not §5.5.
+
+### Rationale
+
+[D22](decision-log.md#d22)'s own rationale is the evidence this taxonomy is right-sized: this one
+feature genuinely needs all four statuses at once — a matched RSA console fingerprint is
+`confirmed` ([T36](#t36)); an ED25519 guess is `possible`; a value read straight off an artifact
+(most of what `list key` already reports) is `derived`; an underivable value stays `unknown`,
+exactly as §5.1 already uses the word. Landing it in the same three entries that already govern
+the output contract, rather than inventing a fourth place for stability promises to live, is what
+keeps [T31](#t31)'s enumeration actually complete.
+
+### Consequence
+
+- `Envelope` itself ([T14](#t14)) is unchanged in shape — `version`, `kind`, `data`, `warnings` —
+  because confidence lives inside `data`, not the envelope wrapper. T14 is amended in the sense
+  that its `data` payloads for investigation-bearing kinds now carry a new, contract-bound shape,
+  not in the sense that the struct above changes.
+- [T29](#t29)'s own text is unchanged and remains correct; this entry's contrast with it is worth
+  reading alongside T29 for any future reader deciding whether a new field belongs in the
+  `severity` camp (re-tunable) or the `confidence` camp (closed).
+- `tdd.md` §16's compatibility-surface table gains the row described above, citing this entry.
+
+---
+
+<a id="t38"></a>
+## T38 — `ssh-agent` is a derivation source for public facts, and its contribution is labelled
+
+**Date:** 2026-09-03 · **Status:** Accepted
+
+### Context
+
+§5.1's derivation gap is total for an OpenSSH-format encrypted key's **comment** — the public half
+is embedded unencrypted in the private file, so the fingerprint and algorithm are derivable, but
+the comment lives inside the encrypted blob and is not. A loaded `ssh-agent` already holds the
+decrypted key in memory for exactly this reason — it has to, to sign challenges — and its protocol
+exposes both the public key and the comment for anything currently loaded, with **no passphrase
+and no decryption performed by hasp at all**.
+
+`golang.org/x/crypto/ssh/agent` was confirmed this session to exist inside the already-required
+`golang.org/x/crypto` module ([T1](#t1)), at the version already pinned (`v0.55.0`), and its
+`agent.Key` type carries a `Comment` field. **This adds no new module dependency** — the same
+module `go.mod` already requires for the entire key-parsing read path supplies the agent client
+too.
+
+### Decision
+
+Under `--investigate` ([D21](decision-log.md#d21)), hasp connects to `SSH_AUTH_SOCK` if it is set,
+lists the agent's loaded keys, and cross-references each by public key against the scanned key
+set. For every match, the agent's comment is reported for that key, **labelled `agent-sourced`**
+rather than merged into the ordinary `derived` bucket — the same treatment
+[T16](#t16) gives implicit-default bindings: a real fact, but a distinct *kind* of fact, and
+merging kinds that arrived differently is exactly the dishonesty T16 was written to avoid.
+
+**Named honestly: an agent-sourced fact is real but transient.** Unlike a fact read from a file,
+which persists until the file changes, an agent-sourced fact is only as durable as the agent's own
+running state — it can vanish the moment the agent restarts, the key is removed from it, or the
+process exits. This is a genuine wrinkle in [P1](design.md#4-principles)'s "the world is the
+truth" framing: the *agent* is part of the world at the moment hasp asks, and gone from it a
+moment later, which is precisely why the label matters more here than anywhere else P1 applies.
+
+**Declared failure stance: no agent, or `SSH_AUTH_SOCK` unset, degrades silently to what is
+derivable without it — never an error.** A read must stay safe
+([P5](design.md#4-principles)) regardless of whether the environment happens to have an agent
+running, and treating an absent agent as a failure would make `--investigate` unusable on a
+machine with no agent at all, which defeats the point of a mode meant to surface more, not less.
+
+### Rationale
+
+This closes the comment gap for OpenSSH-format encrypted keys **without ever touching a
+passphrase** — it is strictly cheaper and safer than [T39](#t39)'s prompt-based path, and is tried
+first for exactly that reason. It serves [J10](design.md#7-journeys) directly: an investigation
+needs more than a plain read, and an agent a user already has running is data hasp was leaving on
+the table. Zero new dependency keeps [T1](#t1)'s "no subprocess" boundary, and the Go-and-stdlib-
+first preference [T27](#t27) already established, both intact.
+
+### Consequence
+
+- `tdd.md` §5 gains the agent as a named derivation source, feeding the same projection step
+  [T35](#t35)'s scheme registry feeds.
+- `tdd.md` §9's `show key --investigate` and `list key --investigate` cells surface agent-sourced
+  comments, visibly labelled as such in both renderers.
+- `tdd.md` §11 gains a fail-open row: no agent / `SSH_AUTH_SOCK` unset → degrade to what is
+  derivable without it, never an error.
+- [T39](#t39)'s passphrase-gated path tries the agent first, so a key already loaded never
+  triggers a prompt for a fact this entry already supplies.
+
+---
+
+<a id="t39"></a>
+## T39 — Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6)
+
+### Context
+
+[D19](decision-log.md#d19) generalizes [D17](decision-log.md#d17)'s four constraints from `new
+key`'s write path to any read: hasp may read private key material only when the user explicitly
+asked for an operation that needs it, only for that operation's duration, held in memory and
+zeroed after, never automatically. Two concrete facts need exactly this: [T35](#t35)'s created-RSA
+scheme, which hashes the *decrypted private key* and is therefore `unknown` for every encrypted
+key regardless of format unless the user consents to unlocking it; and an OpenSSH-format
+encrypted key's comment, when [T38](#t38)'s agent path finds nothing loaded.
+
+### Decision
+
+**Prompt only under `--investigate`**, and only for a key where a passphrase would unlock
+something otherwise completely `unknown` — the created-RSA scheme is the case that matters, since
+it is `unknown` in its entirety without it; an OpenSSH-format key's comment alone is often not
+worth interrupting the user for, since the fingerprint and algorithm are already derivable without
+asking. **Try the agent first** ([T38](#t38)) — a key already loaded needs no prompt at all.
+
+**One passphrase, tried across every candidate key in the invocation** — D19's ladder, stated
+plainly: not one prompt per key, one prompt per run, held in memory and zeroed after, using the
+same `x/term.ReadPassword` path [T6](#t6) already established for `new key`. No new dependency.
+
+**Declared failure stance, and it is the important one: no TTY (for example, `--investigate
+--json` in a pipe) DEGRADES — it does not fail closed.** hasp reports what is derivable without
+the passphrase and marks the rest `unknown` with a machine-readable reason, e.g.
+`passphrase-required-no-tty`, rather than refusing to run at all.
+
+### Rationale
+
+Writes fail closed ([T6](#t6), [T22](#t22)) because a wrong write is destructive and irreversible
+in the way P4's backups do not fully undo for key material. A read has no such asymmetry — the
+worst outcome of proceeding without a passphrase is an honest `unknown`, which is exactly what
+[D12](decision-log.md#d12) already treats as the correct answer when a fact cannot be derived. A
+read that exits non-zero because nobody was present to type a passphrase would make
+`--investigate` useless in precisely the scripted, non-interactive workflows it exists to serve —
+the opposite failure from the one `new key`'s fail-closed default guards against.
+
+**This is a deliberately different stance from `new key`'s fail-closed non-interactive path
+([T6](#t6)), and the asymmetry is the point, not an inconsistency.** `new key` fails closed because
+silently generating an unprotected secret is worse than refusing. `--investigate` degrades because
+silently under-reporting a fact you already told hasp to go looking for is a worse failure than
+`new key`'s would be, in the opposite direction — a read that refuses to run at all is *less*
+honest than one that runs and says `unknown`, not more.
+
+### Consequence
+
+- [T6](#t6)'s index is annotated as amended by this entry: T6's own fail-closed default remains
+  correct and unchanged for `new key`'s **write** path; this entry is the citation that keeps a
+  future reader from assuming T6's stance generalizes to every non-interactive case, including
+  reads, which it explicitly does not.
+- `tdd.md` §9's `show key --investigate` grid cell inherits this mechanic; no new flag is needed
+  beyond `--investigate` itself — the mode's default resolves to "prompt if a TTY is attached,
+  else degrade," the mirror image of `new key`'s "prompt if a TTY is attached, else fail closed."
+- `tdd.md` §11 gains a fail-open (degrade) row for this case, stated beside T6's fail-closed row so
+  the read/write asymmetry is visible in the same table rather than scattered across two.
+- A guard test drives `--investigate --json` with stdin redirected from `/dev/null` and asserts
+  exit `0`, every derivable fact present, and the undecidable ones marked `unknown` with
+  `passphrase-required-no-tty` — never a hang, never a non-zero exit.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T34` are all accepted.
+**Nothing.** `T1` through `T39` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
@@ -2370,8 +2751,13 @@ defect in it. The first pass ran with `docs/design.md` frozen, so gaps it found 
 is also how [D16](decision-log.md#d16), [D17](decision-log.md#d17) and
 [D18](decision-log.md#d18) came to exist.
 
-**Three items in `tdd.md` §15 remain genuinely open, and each is open by choice rather than
-omission**, as of the reassessment recorded in [T31](#t31)–[T34](#t34):
+**`T35` through `T39` are the same story a second time**, for the investigation capability rather
+than the settings file or the passphrase prompt: [D19](decision-log.md#d19)–[D22](decision-log.md#d22)
+lifted the freeze `docs/design.md` had been under since the first reassessment, and these five
+entries are what a technical design does with room newly opened upstream.
+
+**Two items in `tdd.md` §15 remain genuinely open, and each is open by choice rather than
+omission**, as of the reassessment recorded in [T31](#t31)–[T39](#t39):
 
 - **Multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not
   designed here. `--key-dir` is threaded explicitly through every layer rather than defaulted
@@ -2382,9 +2768,13 @@ omission**, as of the reassessment recorded in [T31](#t31)–[T34](#t34):
   every deferred distribution channel at once. Recorded as an input-needed item in
   [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) because the answer is the user's to give, not
   this log's to assume.
-- **SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set
-  `tdd.md` §9's grid already names, awaiting the user's own specification of which candidate
-  additions matter. Also recorded as an input-needed item in
-  [`roadmap.md` §5.5](roadmap.md#55-m35--hardening); any answer is bound by P7, P1,
-  `design.md` §5.1's derivation gap, and [T31](#t31)'s compatibility surface, and will need its
-  own entry here.
+
+**A third item that stood here alongside those two is now closed, not merely narrowed.** SSH key
+inspection detail — what `list key` and `show key` should report beyond the fact set `tdd.md` §9's
+grid already named — was open because it awaited the user's own specification of which candidate
+additions mattered. The investigation capability answered it from an unexpected direction: rather
+than adding fields to the plain read, [T35](#t35)–[T39](#t39) add a confidence-graded
+`--investigate` mode that reports fingerprint scheme, origin, and agent- or passphrase-derived
+facts — a superset of every candidate the input-needed block in
+[`roadmap.md` §5.5](roadmap.md#55-m35--hardening) once named — while leaving `list key`'s plain
+output untouched, satisfying P7 exactly as the closed item's own bound required.
