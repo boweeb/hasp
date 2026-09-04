@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-04
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -17,7 +17,7 @@ Related:
 > **Scope of this document.** `docs/design.md` is upstream and says nothing about language,
 > storage, parsing, or libraries, by design — those are downstream decisions, derived from it,
 > not smuggled into it. This is that downstream document. It answers, concretely, how a Go
-> program satisfies every principle (P1–P9) and decision (D1–D18) `design.md` states, and it
+> program satisfies every principle (P1–P10) and decision (D1–D22) `design.md` states, and it
 > closes the items `design.md` §10 named as deferred and load-bearing.
 >
 > This document does not amend `docs/design.md` or `docs/decision-log.md`. Where a technical
@@ -103,12 +103,30 @@ synthesized line by line ([T10](tech-decision-log.md#t10)), never round-trip-enc
 document — and `go-toml/v2`'s decode-only-shaped API and maintenance activity fit that usage
 directly.
 
+**`--investigate`'s `ssh-agent` source (§18, [T38](tech-decision-log.md#t38)) needs no new row
+above.** `golang.org/x/crypto/ssh/agent` lives inside the `golang.org/x/crypto` module the budget
+table already requires for [T1](tech-decision-log.md#t1)'s key-parsing path, at the version
+already pinned — confirmed against `v0.55.0`. A second row would imply a second dependency to
+audit and update; there is only one, doing more of the job it was already brought in for.
+
 **Test-only, never shipped:**
 
 | Dependency | Used for |
 | --- | --- |
 | `github.com/rogpeppe/go-internal/testscript` | End-to-end `.txtar` command-line tests (§12) |
 | `testing.F` (stdlib `go test -fuzz`) | The CST round-trip fuzz test (§12); no external fuzzing library |
+
+**Build-time only, never shipped:**
+
+| Dependency | Used for |
+| --- | --- |
+| `github.com/magefile/mage` | The CI/release target set — `Build`, `Test`, `Vet`, `Lint`, `Cross`, `Fuzz`, `Fixtures`, `Docs`, `Release`, `CI` (§17, [T32](tech-decision-log.md#t32)) |
+
+`magefiles/` carries `//go:build mage` throughout, so `go build ./...` and `go vet ./...` never
+compile it, and [T13](tech-decision-log.md#t13)'s `go list -deps` layering guard extends to assert
+`github.com/magefile/mage` never appears in `cmd/hasp`'s own dependency graph — a magefile
+importing it is the point; `cmd/hasp` importing it would be a regression the same guard already
+catches for `internal/domain`.
 
 ### Explicit non-dependencies
 
@@ -542,6 +560,27 @@ sets of the keys its bindings resolve to — computed, never declared, and corre
 hosts as well as managed ones, which is what lets M1's read-only survey report it before `adopt`
 exists at all.
 
+### A second source, and a projection step, under `--investigate` (§18)
+
+The pipeline above — scan, classify, resolve, project — is unchanged for a plain read. Under
+`--investigate` it gains one additional **source** and one additional **projection**, neither of
+which the plain path ever reaches:
+
+- **Source: a running `ssh-agent`.** Full argument: [T38](tech-decision-log.md#t38). If
+  `SSH_AUTH_SOCK` is set, hasp lists the agent's loaded keys and cross-references each by public
+  key against the scanned set, supplying the comment for a match — labelled `agent-sourced`, never
+  merged into the plain-read fact set. No agent, or the socket unset, degrades silently to what is
+  derivable without it.
+- **Projection: fingerprint-scheme computation.** Full argument: [T35](tech-decision-log.md#t35).
+  Every registered scheme is computed for every key whose required material ([T35](tech-decision-log.md#t35)'s
+  public-half-only vs. private-key distinction) is already in hand, or has been explicitly unlocked
+  under [T39](tech-decision-log.md#t39)'s consent-gated path. `find key`
+  ([T36](tech-decision-log.md#t36)) consumes this projection to match a clue against every scheme
+  at once, and a matched scheme is itself the origin evidence P10's confidence status is built from.
+
+Both additions are opt-in and additive to the pipeline's shape: nothing about scan, classify, or
+resolve changes, and a plain read never invokes either.
+
 ---
 
 ## 6. Configuration parsing — a lossless CST for a file hasp does not fully own
@@ -861,6 +900,7 @@ nouns of their own.
 | `--yes` | Consent to apply a `Plan` non-interactively; see §4's inversion — there is no `--dry-run` |
 | `--verbose` | Enables `log/slog` output to stderr; off by default |
 | `--no-color` | Disables ANSI in the human renderer |
+| `--investigate` | Opt-in investigation mode (§18, D21) on `show key` and `list key`: surfaces every registered fingerprint scheme, a confidence-graded origin, and `ssh-agent`-sourced facts, at the cost of speed and possibly a passphrase prompt. Absent from every other verb×noun cell; never affects default output |
 
 ### The grid
 
@@ -870,9 +910,9 @@ raises on an unmanaged resource requires `adopt` first, exactly as J5 anticipate
 
 | Verb | key | host | profile |
 | --- | --- | --- | --- |
-| **list** | Every key found (managed + unmanaged): name, algorithm, fingerprint (or `unknown`), format, encrypted?, profiles, comment | Every host stanza across all groups, or `--group=<g>` to scope one: pattern, resolved bindings — explicit and implicit-default, labelled (§5, T16) — derived profile(s) | Every directory carrying `.hasp`, with key/host counts |
-| **show** `<handle>` | Full detail for one key: identity, every location (aliases), profiles, hosts that bind it (J8) | Full stanza detail: directives, resolved `IdentityFile` targets, derived profile(s), which host group it lives in | Keys and hosts, **aggregated across child profiles by default** ([T21](tech-decision-log.md#t21)) — `show profile work` includes `work.foobarco` and `work.acme`, per J8's own offboarding example; `--no-recurse` scopes to the profile alone |
-| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
+| **list** | Every key found (managed + unmanaged): name, algorithm, fingerprint (or `unknown`), format, encrypted?, profiles, comment. **`--investigate`** (§18, [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39)) adds every registered scheme's value, a confidence-graded origin, and any `ssh-agent`-sourced fact, per key — deliberately high-friction, and accepted as such: an investigation is purposeful, and its cost (speed, possibly a passphrase prompt) is paid knowingly, not by accident. Absent the flag, output is byte-identical to a pre-`--investigate` read (P7) | Every host stanza across all groups, or `--group=<g>` to scope one: pattern, resolved bindings — explicit and implicit-default, labelled (§5, T16) — derived profile(s) | Every directory carrying `.hasp`, with key/host counts |
+| **show** `<handle>` | Full detail for one key: identity, every location (aliases), profiles, hosts that bind it (J8). **`--investigate`** (§18) is the same surface as `list key --investigate`, scoped to one key — every scheme, confidence-graded origin, agent-sourced facts, and, if a passphrase is offered and a TTY is present, whatever it unlocks ([T39](tech-decision-log.md#t39)) | Full stanza detail: directives, resolved `IdentityFile` targets, derived profile(s), which host group it lives in | Keys and hosts, **aggregated across child profiles by default** ([T21](tech-decision-log.md#t21)) — `show profile work` includes `work.foobarco` and `work.acme`, per J8's own offboarding example; `--no-recurse` scopes to the profile alone |
+| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) — and, per D20, across every registered fingerprint **scheme** ([T35](tech-decision-log.md#t35), [T36](tech-decision-log.md#t36)): the clue's length and alphabet route it to a candidate scheme before any key is examined, and which scheme matched is itself confidence-graded origin evidence (§18) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
 | **new** | Generate a keypair (`ed25519` by default, [T1](tech-decision-log.md#t1)), optionally in a profile (`--profile`); passphrase flags below. Fails closed if the target path already exists — `new key` never overwrites ([T22](tech-decision-log.md#t22), §11) | Create a stanza (`--key=<name>`, `--group=<g>`) inside a marked region | Create the directory (`mkdir -p` semantics for intermediate segments) and, for the leaf, a `.hasp` marker with a `#` header (D15) |
 | **edit** | Rename (`--name`); `--add-alias`/`--remove-alias`; `--replace-material=<path>`; move between profiles (`--profile`) | Change directives; move between groups (`--group`); rebind (`--key`) | Rename (moves the directory, D13); nothing else — key/host membership is edited on the key/host, not here |
 | **check** | Duplicates confirmed (same fingerprint) or unconfirmed ([T12](tech-decision-log.md#t12)); missing public half; key in no profile; fingerprint `unknown` | Dangling `IdentityFile` targets; unresolvable tokens (§5); relative `IdentityFile` values, whose resolution diverges from `ssh`'s ([T28](tech-decision-log.md#t28)); unreachable stanzas shadowed by `Include` order ([T11](tech-decision-log.md#t11)); host bound to no key — fires only when **neither** an explicit **nor** a resolvable implicit-default binding exists (§5, T16); a stanza present in more than one host group, or a stanza missing from all of them, after a `Plan` that touched more than one file only partially applied ([T13](tech-decision-log.md#t13)) | Empty profile directories; a directory that looks like a profile (holds keys) but carries no `.hasp` |
@@ -916,9 +956,32 @@ ratified amendment instead of on an inference. §3.2 and P3 in `design.md` carry
 form, and D17's consequence records the precision that matters — **every existing citation of P3
 against touching an existing key still forbids exactly what it always did.**
 
+**That last clause was true of D17 and is no longer true without qualification**, which this
+document records rather than quietly leaving to a reader to notice.
+[D19](decision-log.md#d19) generalized D17's four constraints from `new key` to any operation the
+user explicitly invokes, so P3 now forbids touching an existing key **by default** rather than
+absolutely — the user can ask, and `--investigate` (§18, [T39](tech-decision-log.md#t39)) is the
+operation that does. D17's mechanics below are unchanged; what changed is the scope of the rule
+they sit inside. §3.2 and P3 carry the generalized form.
+
 **A deliberate absence, worth naming:** there is no `--profile` flag on any `host` command that
 *assigns* a profile. A host's profile membership is computed (§5, T5), not declared — the grid
 has nothing to write there because there is nothing to write.
+
+### Commands outside the grid
+
+The 3×8 grid above is the *domain* surface — D10 fixes it at 3 nouns × 8 verbs permanently — and
+three more commands exist on `hasp` without being a fourth noun, because none of them is a domain
+operation:
+
+| Command | What it does | Why it is not a grid cell |
+| --- | --- | --- |
+| `version` | Reports hasp's own release version, commit, and build date, falling back to `runtime/debug.ReadBuildInfo()` for a `go install`-built binary ([`tdd.md` §13](#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought), [T31](tech-decision-log.md#t31)) | Reports a fact about the binary, not about `key`, `host`, or `profile` |
+| `completion` | Cobra's built-in shell-completion generator ([T3](tech-decision-log.md#t3)) | Generates shell integration, touches no domain object |
+| `help` | Cobra's built-in usage text | Documents the command tree, touches no domain object |
+
+Stating this plainly is the fix: without it, §9 reads as though the grid were the whole binary,
+and it is not — these three sit beside it, not inside it.
 
 ---
 
@@ -997,6 +1060,25 @@ internal read-model value ([T13](tech-decision-log.md#t13)'s single read aggrega
 path computes an answer, two display it, so the two forms can diverge in formatting but never in
 content.
 
+### `--investigate` output: the `origins` array and its `confidence` field ([T37](tech-decision-log.md#t37))
+
+Full argument, and the closed vocabulary it draws on (P10): §18. Every fact `--investigate`
+surfaces beyond a plain read carries a **confidence status** from a closed, permanent set —
+`derived`, `confirmed`, `possible`, `unknown` — as part of the fact, not a caveat beside it:
+
+```json
+"origins": [
+  {"id": "aws-ec2-created", "confidence": "possible",
+   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+]
+```
+
+`because` is an array of **machine-readable evidence tokens**, never prose — a consumer branches
+on them directly; the human renderer is the only place a token becomes a sentence. Unlike
+`severity` above, which [T29](tech-decision-log.md#t29) makes deliberately re-tunable, the
+confidence vocabulary is **closed**: adding, removing, or redefining a value is a breaking change
+(§16), because a consumer filtering on `derived` is making a safety decision, not a display choice.
+
 `log/slog` writes to stderr, off by default, enabled by `--verbose`. Nothing else ever writes to
 stdout except the rendered answer.
 
@@ -1020,6 +1102,8 @@ fail — the default is fail-closed unless a row here says otherwise.
 | An `IdentityFile` token or target is unresolvable (§5) | **Fail-open** — reported as a `check` finding, scan continues |
 | A file changed between `Plan()` and `Apply()` ([T30](tech-decision-log.md#t30)) | **Fail-closed** — every `Change` that read a "before" state carries a `Witness` (size, mtime, SHA-256 of the bytes read); `Applier` re-verifies all of them before applying anything, and a content mismatch aborts the whole `Plan` before the first write, with nothing backed up. A file rewritten to byte-identical content is not a race and does not trip it |
 | A `Plan` touching more than one file fails partway through | **No rollback across files** ([T13](tech-decision-log.md#t13)) — each already-applied `Change` stands, exactly as `Preview()`ed; the resulting inconsistency (a stanza in two groups, or in none) is a `check` finding, never a silently hidden gap |
+| `--investigate` finds no `ssh-agent`, or `SSH_AUTH_SOCK` is unset ([T38](tech-decision-log.md#t38)) | **Fail-open** — degrade silently to what is derivable without it; never an error |
+| `--investigate` needs a passphrase and there is no TTY, e.g. `--investigate --json` in a pipe ([T39](tech-decision-log.md#t39)) | **Fail-open** — degrade, report what is derivable, mark the rest `unknown` with reason `passphrase-required-no-tty`. **Deliberately the opposite stance from `new key`'s row above** (non-interactive with no explicit passphrase-mode choice): a write fails closed because a wrong write is destructive; a read degrades because refusing to run at all is less honest than running and reporting `unknown` — the read/write asymmetry is the entire point of [T39](tech-decision-log.md#t39) |
 
 ### Write mechanics
 
@@ -1064,11 +1148,22 @@ Full argument: [T15](tech-decision-log.md#t15), [T20](tech-decision-log.md#t20),
    *before* the rename that replaces it ever runs — P4 holds for the one write that
    legitimately overwrites key material on purpose.
 
-**Passphrase handling, restated as a safety rule, not just a feature (§9, [T6](tech-decision-log.md#t6)):**
-accepted only at generation time, never to decrypt an existing key, never persisted anywhere,
-buffer zeroed immediately after use. No function in `internal/domain` or `internal/app` accepts
-a passphrase alongside an *existing* `Key` value — this absence is the enforcement mechanism, and
-it is legible in a diff (P6), not merely documented here.
+**Passphrase handling, restated as a safety rule, not just a feature (§9, §18,
+[T6](tech-decision-log.md#t6), [T39](tech-decision-log.md#t39)):** never persisted anywhere,
+never transmitted, never reused across operations, buffer zeroed immediately after use. Accepted
+in exactly two places — at generation time (`new key`, T6) and inside a user-invoked
+`--investigate` read that cannot proceed without it (T39).
+
+**The enforcement mechanism changed shape with [D19](decision-log.md#d19), and the change is worth
+stating precisely.** It used to be an *absence*: no function in `internal/domain` or `internal/app`
+accepted a passphrase alongside an existing `Key` value, so any diff introducing one was a
+violation on sight. T39 introduces exactly such a function, so absence no longer works. What
+replaces it is a *shape*, and it is what a reviewer now checks at each such call site: the read is
+**user-initiated** (reached only from an explicit `--investigate`, never from a default read
+path), **scoped to one operation**, and **zeroed after**. The guarantee is unchanged — hasp still
+never takes custody — but P6's legible-in-a-diff property now rests on three properties being
+present rather than on one call site being absent, which is a weaker guard and is named as such
+rather than glossed.
 
 ---
 
@@ -1178,6 +1273,36 @@ This is [T2](tech-decision-log.md#t2)'s contract, tested directly rather than as
   of ids `check` can emit is asserted against a committed list, the same mechanism the settings
   admission rule uses above. A new finding kind then shows up in a diff rather than in a
   consumer's `jq` filter silently failing to match.
+- **The fingerprint-scheme table is asserted against real, committed vectors, not invented ones**
+  ([T35](tech-decision-log.md#t35)). `testdata/keys/rsa-pem-plain-pub` must produce
+  `97:47:11:3c:af:56:47:b3:f9:a9:89:36:6d:ca:be:0b:33:a0:05:f7` under the created-RSA scheme and
+  `a8:e7:45:95:5f:a3:f0:b1:79:6c:c2:f1:d2:80:57:ea` under the imported-RSA scheme;
+  `testdata/keys/ed25519-openssh-plain-pub` must produce
+  `SHA256:lqTGTP6KJSQptQJQEZj7scuX7jLWFfb0qoAHTT1IpPA` under the SSH-native/ED25519 scheme — all
+  three verified against AWS's own documented algorithms during this reassessment, not asserted
+  from memory.
+- **The MD5 collision is asserted directly**, because it is the one place shape-routing can go
+  wrong ([T36](tech-decision-log.md#t36)). The same `testdata/keys/rsa-pem-plain-pub` must produce
+  `34:29:f4:da:3c:db:49:4b:35:ba:c1:c2:cd:2e:75:a8` under the legacy SSH MD5 scheme — a different
+  value from its imported-RSA fingerprint above, at identical shape. A test asserts the two differ
+  and that a 47-character clue matching **either** resolves to this key, so a future refactor that
+  "optimizes" the MD5 shape down to a single scheme fails loudly instead of silently missing every
+  legacy clue.
+- **A fake `ssh-agent`** ([T38](tech-decision-log.md#t38)), implementing the agent protocol over a
+  `net.Pipe` or a `t.TempDir()`-scoped Unix socket, with a fixture key loaded. Asserts the
+  OpenSSH-format encrypted key's comment is reported and labelled `agent-sourced` when the fixture
+  is loaded, and that unsetting `SSH_AUTH_SOCK` degrades the same command to `unknown` with exit
+  `0` rather than an error.
+- **A golden list for the closed confidence vocabulary** ([T37](tech-decision-log.md#t37)), the
+  same style as [T29](tech-decision-log.md#t29)'s finding-id golden list: the exact set —
+  `derived`, `confirmed`, `possible`, `unknown` — is asserted by name, so a fifth value anywhere in
+  the codebase shows up in a diff rather than in a consumer silently accepting a value outside the
+  set it was told was closed.
+- **No scheme performs I/O beyond reading the key file already in memory** ([T35](tech-decision-log.md#t35)).
+  A guard test runs every registered scheme's `Compute` inside a `net.Dialer` whose `Control`
+  callback fails any socket creation, and asserts no scheme ever trips it — the mechanical proof
+  behind [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in
+  prose.
 
 ---
 
@@ -1211,6 +1336,43 @@ is therefore for CI/scripted use, with the key directory bind-mounted in, and UI
 mapping across that boundary is the sharp edge: a mismatched UID inside the container silently
 produces a `~/.ssh` the host user cannot read.
 
+### Staging: what ships now, what stays deferred
+
+Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33),
+[T40](tech-decision-log.md#t40)):
+
+| Channel | Status |
+| --- | --- |
+| `tar.gz` archives, all four targets | Shipping — GitHub Releases |
+| Generated shell completions and man pages | **Stated above as shipping, currently unbuilt** — nothing in this repository generates either today, and `.goreleaser.yaml` has no handling for them |
+| `sboms` | **In M3.5's scope, currently unbuilt** — `.goreleaser.yaml` names `sboms` only in its own deferred-sections comment and has no `sboms:` block |
+| `signs` | **In M3.5's scope, currently unbuilt** — cosign keyless signing via GitHub Actions' OIDC issuer; `.goreleaser.yaml` has no `signs:` block yet |
+| `ko` | **In M3.5's scope, currently unbuilt** — publishes a container image to `ghcr.io`; `.goreleaser.yaml` has no `ko:` block yet |
+| `nfpms` (`.deb`/`.rpm`/`.apk`) | Deferred |
+| `aur` | Deferred — needs a separate AUR package repository the author must create and maintain |
+| `homebrew_casks` | Deferred — needs a separate Homebrew tap repository the author must create and maintain |
+
+The four channels [T33](tech-decision-log.md#t33) named as blocked on one shared missing fact —
+hasp having no publicly reachable origin — resolved at once when `origin` moved to
+`git@github.com:boweeb/hasp.git` ([T40](tech-decision-log.md#t40)); the same fact also governed
+the module path ([T31](tech-decision-log.md#t31)). `signs` and `ko` move into M3.5's shipping set
+as a result. `aur` and `homebrew_casks` stay deferred, but for a different reason now: each needs
+a separate repository — an AUR package repo, a Homebrew tap — that the author must create and
+maintain, a maintenance commitment rather than an unknown.
+
+**What the two newly-scoped channels require of the workflow, stated here so it is planned rather
+than discovered as a red build.** Neither is purely a `.goreleaser.yaml` change:
+
+| Channel | Beyond a config block, it needs |
+| --- | --- |
+| `signs` | Keyless cosign signs against Sigstore's Fulcio using an OIDC token the workflow must be permitted to mint: the job needs **`permissions: id-token: write`**. `cosign` is not a GoReleaser-embedded library — the binary must be installed in the job (`sigstore/cosign-installer`), unlike `ko` below |
+| `ko` | A destination repository path under `ghcr.io` and authentication to push there: the job needs **`permissions: packages: write`** and a registry login. GoReleaser embeds `ko` as a library, so no separate binary install is required |
+
+The asymmetry is worth remembering: one of the two needs a binary in the job and the other does
+not, and both need a permission that defaults to unset. `permissions:` in GitHub Actions is
+deny-by-default once any key is specified, so adding one of these silently removes the others —
+declare the full set the job needs, not just the new key.
+
 ---
 
 ## 14. Constraints M4 must not foreclose
@@ -1240,10 +1402,10 @@ What the model above must not foreclose:
 
 ## 15. Open questions
 
-Five of the six questions this section carried in its first draft are closed — each by a numbered
-entry, none by quiet reinterpretation. They are listed with their resolutions rather than deleted,
-because *"what happened to that?"* is a question this document should be able to answer about its
-own gaps.
+All six of the questions this section carried in its first draft are now closed — each by a
+numbered entry, none by quiet reinterpretation. They are listed with their resolutions rather than
+deleted, because *"what happened to that?"* is a question this document should be able to answer
+about its own gaps.
 
 | Question, as first stated | Closed by |
 | --- | --- |
@@ -1252,6 +1414,8 @@ own gaps.
 | Relative `IdentityFile` resolution being this document's own interpretation (§5) | [T28](tech-decision-log.md#t28) — resolve against the key directory **and** raise a `relative-identityfile` finding, so the divergence from `ssh` is reported rather than hidden |
 | `release host` extrapolating D15's rule to hosts (§9) | [D18](decision-log.md#d18) — `release` is content-preserving for every noun; a released stanza is re-inserted as plain text, never deleted |
 | A severity taxonomy for `check` findings (§10) | [T29](tech-decision-log.md#t29) — a permanent `id` plus a re-tunable `severity`, with severity deliberately not affecting the exit code |
+| **SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set §9's grid named (§9) | [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39) — answered from an unexpected direction: rather than adding fields to the plain read, `--investigate` (§18, D21) adds a confidence-graded superset of every candidate this question once named, while `list key`'s and `show key`'s plain output stays byte-identical to before, holding P7 exactly as this question required |
+| **The public-origin / module-path question** ([T31](tech-decision-log.md#t31), [T33](tech-decision-log.md#t33)) | [T40](tech-decision-log.md#t40) — `origin` moved to `git@github.com:boweeb/hasp.git`, which settles `go.mod`'s module path before the compatibility surface freezes it, unlocks `go install github.com/boweeb/hasp/cmd/hasp@latest`, and unblocks every deferred distribution channel §13's staging table names, all at once |
 
 **One remains genuinely open, and it is open by choice rather than omission:**
 
@@ -1267,3 +1431,227 @@ preview/apply race — a `Plan` is computed against a snapshot, and the target f
 the user is reading the preview — and nothing acted on it, while §11 presented itself as listing
 every guard in the system. [T30](tech-decision-log.md#t30) closes it with a witness re-verified
 before any write, failing closed, and §11 now carries the row.
+
+---
+
+## 16. Versioning and the compatibility surface
+
+Full argument: [T31](tech-decision-log.md#t31). hasp adopts **Semantic Versioning**. `go.mod`'s
+module path, `github.com/boweeb/hasp`, resolves against a public origin and freezes alongside the
+rest of this surface the moment v1.0.0 tags ([T40](tech-decision-log.md#t40)) — settled ahead of
+the freeze rather than an unresolved prerequisite to it.
+
+**The public contract** — breaking any of the following needs a major version bump:
+
+| # | Surface | Ratified by |
+| --- | --- | --- |
+| 1 | The four exit codes and their meanings, including that `1` stays `check`-exclusive | §10, [T14](tech-decision-log.md#t14) |
+| 2 | The `--json` envelope's shape: `version`, `kind`, `data`, `warnings` | §10, [T14](tech-decision-log.md#t14) |
+| 3 | `kind` strings (`key.list`, `host.show`, `check.report`, …) — permanent, retired rather than recycled | §10, [T14](tech-decision-log.md#t14) |
+| 4 | `check` finding `id`s | §9, [T29](tech-decision-log.md#t29) |
+| 5 | The verb×noun grid, and the global flag names and semantics — removing or renaming is breaking, adding is additive | §9, [D10](decision-log.md#d10) |
+| 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | §6, §7, [T10](tech-decision-log.md#t10), [T25](tech-decision-log.md#t25) |
+| 7 | The confidence vocabulary — `derived`, `confirmed`, `possible`, `unknown` — is closed; adding, removing, or redefining a value is breaking | §10, §18, [T37](tech-decision-log.md#t37) |
+
+Row 6 is the least obvious of the seven and the most damaging, because the artifact it governs
+outlives the binary that wrote it — a marked region written by one hasp release still has to parse
+under a much later one. Row 7 is closed for a different reason than row 4's finding `id`s are
+permanent: an `id` gains meaning by never being reused, while `confidence` is closed because a
+consumer filtering on `derived` is making a safety decision, not merely tracking identity — the
+distinction [T37](tech-decision-log.md#t37) draws against `severity`, which is deliberately in the
+non-contract below rather than in this table.
+
+**The explicit non-contract**, which matters as much as the table above: human-readable output
+(P7 governs it; §10's two renderers are permitted to diverge in *form*, never in content — a
+script needing stability uses `--json`); finding `severity` (§10, [T29](tech-decision-log.md#t29)
+makes it deliberately re-tunable); `--verbose` stderr diagnostics; and the exact filename format
+inside `~/.ssh/.hasp-backups/` (§11, [T8](tech-decision-log.md#t8) — P6 guarantees those backups
+stay legible and recoverable without hasp, not that their names never change).
+
+**The relationship between the two version numbers runs one way only.** §10's `Envelope.Version`
+is independent of hasp's own release version in the sense that it does not increment on the same
+schedule — but the inference does not run backward: **a change to `Envelope.Version` implies a
+major hasp version bump; a major hasp version bump does not imply a change to `Envelope.Version`.**
+The envelope can stay stable across several major hasp releases; it cannot change without one.
+
+`hasp version` (§9, §13) is the surface that makes this checkable at runtime: build info injected
+via `-X` ldflags, with `runtime/debug.ReadBuildInfo()` as the fallback for a `go install`-built
+binary that never went through GoReleaser.
+
+**Release notes are generated, not hand-maintained.** GoReleaser's `changelog: use: git` output is
+the changelog of record; there is no `CHANGELOG.md`.
+
+---
+
+## 17. Continuous integration and release automation
+
+Full argument: [T32](tech-decision-log.md#t32). Every build/test/lint/release action is a **Mage
+target** in `magefiles/` (`github.com/magefile/mage`); a platform workflow file's only job is
+checkout → set up Go → invoke one target.
+
+**The target set:** `Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`,
+`Fixtures`, `Docs`, `Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
+
+**The thin-shim rule.** A platform's workflow YAML (`.github/workflows/`) never encodes build
+logic directly — it invokes a Mage target and nothing else. Moving to a new platform is therefore
+a new shim file, not a rewrite.
+
+**The rule is still a design intention, not a demonstrated result, and this document should not
+imply otherwise** ([T40](tech-decision-log.md#t40)). As of this writing `magefiles/` and `mage.go`
+do not exist; the repository's only workflow, `.github/workflows/ci.yml`, hardcodes `go build`,
+`go vet`, `golangci-lint@latest` and `go test` directly in YAML — the exact shape this rule
+forbids — and there is no release workflow at all. The Gitea→GitHub migration cost one line in
+`.goreleaser.yaml` because no platform-specific build logic had been written yet, which is an
+argument for adopting the rule **now**, before the release pipeline exists, rather than evidence
+that it already worked. Everything in this section is M3.5 work
+([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
+
+**Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
+as `go run mage.go <target>`; CI needs no separately installed mage binary. This bootstrap has a
+caveat load-bearing for a project with a four-code exit contract (§10): *"because of the
+peculiarities of `go run`, if you run this way, go run will only ever exit with an error code of 0
+or 1."* Every workflow shim treats a non-zero exit from the bootstrap as a single boolean failure
+and never branches on its specific value.
+
+**Build-time-only dependency.** §2's dependency budget carries `github.com/magefile/mage` in a
+"Build-time only, never shipped" row, guarded by the same `go list -deps` mechanism §3's layering
+guard already uses: `github.com/magefile/mage` must never appear in `cmd/hasp`'s dependency graph.
+`//go:build mage` tags keep `magefiles/` out of `go build ./...` and `go vet ./...` entirely.
+
+**Pinned, not floating.** `golangci-lint` is pinned to an exact version inside the `Lint` target,
+replacing today's unpinned `@latest` invocation; `.golangci.yml` declares `version: "2"` and a real
+linter set, replacing today's bare timeout; and `mise.toml` pins the exact Go toolchain in use,
+rather than `go = "latest"`.
+
+**Darwin compiles in CI.** `Cross` runs `GOOS=darwin` builds for both `darwin/amd64` and
+`darwin/arm64` as part of `CI`, closing the gap between what §13 builds locally and what the CI
+pipeline has ever actually compiled.
+
+**The `Docs` target.** Regenerates and diff-checks everything §16's compatibility surface and §13
+depend on staying honest: the CLI reference, man pages, and shell completions (§9), plus the
+doc-verification checks this documentation set's own culture depends on — broken links and
+anchors, every `Dn`/`Tn` citation resolving to a real `<a id>`, the per-log invariants (index row
+count equals anchor count, IDs contiguous, every entry carrying a `### Consequence`), and
+verbatim-quotation checking. Two gotchas are worth stating here because they produce false results
+otherwise: GitHub anchor slugs give each space its own hyphen and do not collapse them, so an
+em-dash heading yields a double hyphen; and a quotation can wrap across source lines, so comparison
+must normalize whitespace and strip `**`, `*`, and backticks before matching.
+
+---
+
+## 18. Investigation — schemes, confidence, and gated derivation
+
+The current-truth statement of [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39):
+what `--investigate` (§9, D21) actually computes, on top of the plain read §5–§11 already
+describe. Nothing here changes a plain read's output; everything here is reachable only behind the
+flag.
+
+### The fingerprint scheme registry
+
+Full argument: [T35](tech-decision-log.md#t35). A **scheme** is a hash algorithm plus an encoding,
+applied to a specific piece of key material, that some external system (a console, another tool)
+uses to display a fingerprint. hasp's own SSH-native scheme ([T1](tech-decision-log.md#t1),
+`FingerprintSHA256`) is one entry among several; AWS alone contributes three distinct schemes to
+the registry:
+
+| Scheme | Hashed input | Hash | Needs |
+| --- | --- | --- | --- |
+| AWS created-RSA | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted |
+| AWS imported-RSA | PKIX/SPKI DER of the **public** key | MD5 | public half only |
+| AWS ED25519 (created *or* imported) | SSH wire-format public key | SHA-256 | public half only |
+| Legacy SSH MD5 | SSH wire-format public key | MD5 | public half only |
+
+Every scheme is `func(Key) (Fingerprint, error)`, computed entirely in memory from bytes hasp
+already has — stdlib (`x509.MarshalPKCS8PrivateKey` + `crypto/sha1`,
+`x509.MarshalPKIXPublicKey` + `crypto/md5`) or the already-required `x/crypto/ssh`. **No scheme
+ever opens a socket** — a scheme is an encoding of facts about the key, computed locally, never a
+network call, which keeps §3.2's "not a key distribution mechanism" boundary intact. The registry
+is **open**: GitHub's and GitLab's SHA-256 fingerprints are already covered by the SSH-native
+scheme, and a new console scheme is one new registry entry, not a new call site.
+
+Each scheme declares which key material it needs — public half only, or the decrypted private
+key — so a caller knows in advance which schemes are computable from what has already been read,
+and which remain `unknown` until the user consents to more (below).
+
+### Multi-scheme `find`
+
+Full argument: [T36](tech-decision-log.md#t36). A clue is normalized — colons and whitespace
+stripped, hex lowercased, base64 `=` padding stripped, an optional `SHA256:`/`MD5:` prefix
+tolerated — and its raw **shape narrows the search to a candidate set** before any key is
+examined: 59 characters of colon-hex (40 hex digits) narrows to SHA-1/created-RSA; base64 narrows
+to SHA-256/SSH-native/ED25519; and 47 characters of colon-hex (32 hex digits) narrows to **two**
+MD5 schemes — AWS imported-RSA and legacy SSH MD5 — which share a shape and differ in value
+because one hashes the PKIX/SPKI DER encoding and the other the SSH wire-format blob. `find`
+computes every scheme the shape admits, which is one for two of the three shapes and two for the
+MD5 shape, keeping the common case — an SSH-native clue — as cheap as it was before this section
+existed. **Shape narrows; it never uniquely determines**, and treating it as though it did would
+reintroduce precisely the silent miss [D20](decision-log.md#d20) exists to eliminate.
+
+**Which scheme matched is the origin evidence — for two of the four schemes only.** A match under
+`aws-created-rsa` or `aws-imported-rsa` is deterministic proof of provenance, because AWS computes
+exactly one of the two depending on how the key came to exist, so `find` reports origin as
+`confirmed`. A match under **SSH-native/ED25519** proves nothing, because AWS's own ED25519
+fingerprint is identical whether the key was created or imported. A match under **legacy SSH MD5**
+proves nothing either — it is only another way of naming the same public key, and carries no AWS
+signal at all. Both of those report `possible`, never `confirmed`. The asymmetry matters most in
+the MD5 shape, where the two candidate schemes land on opposite sides of it: matching
+`aws-imported-rsa` is provenance, matching legacy SSH MD5 is not, and the renderer must not
+flatten them into a single "matched" verdict.
+
+### The confidence vocabulary and the `origins` shape
+
+Full argument: [T37](tech-decision-log.md#t37). Every fact `--investigate` reports beyond a plain
+read carries a status from P10's closed set:
+
+| Status | Meaning |
+| --- | --- |
+| `derived` | Read directly from the artifact |
+| `confirmed` | Established by matching external evidence the user supplied (a matched console fingerprint) |
+| `possible` | Consistent with the evidence, not established (an ED25519 origin guess) |
+| `unknown` | Cannot be determined |
+
+```json
+"origins": [
+  {"id": "aws-ec2-created", "confidence": "possible",
+   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+]
+```
+
+`because` carries machine-readable evidence tokens, never prose — free text belongs to the human
+renderer alone. The vocabulary is **closed and permanent** (§16, row 7): unlike
+[T29](tech-decision-log.md#t29)'s deliberately re-tunable `severity`, a value here is a safety
+signal a consumer may filter on, and neither adding a fifth value nor redefining one of the four
+is compatible without a major version bump.
+
+### `ssh-agent` as a derivation source
+
+Full argument: [T38](tech-decision-log.md#t38). `golang.org/x/crypto/ssh/agent` lives inside the
+already-required `golang.org/x/crypto` module (§2) — no new dependency. If `SSH_AUTH_SOCK` is set,
+`--investigate` lists the agent's loaded keys, cross-references each by public key against the
+scanned set, and reports the **comment** for any match — the one fact an OpenSSH-format encrypted
+key's embedded, unencrypted public half cannot supply. The fact is labelled `agent-sourced`,
+never merged into the plain `derived` bucket, because it is real only for as long as the agent
+keeps running — the same labelled-not-merged treatment
+[T16](tech-decision-log.md#t16) gives implicit-default bindings. No agent, or the socket unset,
+degrades silently to what is derivable without it (§11) — never an error.
+
+### Passphrase-gated derivation
+
+Full argument: [T39](tech-decision-log.md#t39). [D19](decision-log.md#d19) generalizes D17's four
+constraints — user-initiated, scoped to one operation, held in memory, zeroed after — from `new
+key`'s write path to any read. Two facts need it: the created-RSA scheme, `unknown` in its
+entirety for any encrypted key with no agent and no passphrase; and, when
+[T38](tech-decision-log.md#t38)'s agent path finds nothing loaded, an OpenSSH-format key's
+comment.
+
+hasp tries the agent first. If a passphrase would still unlock something otherwise completely
+`unknown`, and a TTY is attached, `--investigate` prompts once (`x/term.ReadPassword`, the same
+path [T6](tech-decision-log.md#t6) established), and the one passphrase collected is tried across
+every candidate key in the invocation — never one prompt per key.
+
+**With no TTY, the read degrades rather than fails closed** (§11) — the opposite default from
+`new key`'s non-interactive path (§9, [T6](tech-decision-log.md#t6)). hasp reports whatever is
+derivable and marks the rest `unknown` with a machine-readable reason,
+e.g. `passphrase-required-no-tty`. A write fails closed because a wrong write is destructive; a
+read degrades because an honest `unknown` is a better answer than refusing to run at all — the
+asymmetry is deliberate, not an inconsistency between the two entries.

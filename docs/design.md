@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-26
 DateApproved: 2026-08-28
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-03
 Supersedes: >
   the "Primary Goals" / "Future Ideas" sections of the predecessor project's `README.rst`,
   which is not carried into this repository — see
@@ -47,6 +47,11 @@ are most concrete. Git and GPG identity are named directions, not v1 commitments
 The name fits: a hasp is the fastener a padlock passes through. It is not the lock, and it is
 not the secret behind the door. It is the piece that makes the arrangement possible.
 
+Management, in turn, is in service of something broader: **visibility**. hasp exists to make the
+machine legible, and legibility serves two different jobs — investigation and management alike.
+Knowing what you have and arranging what you have are distinct kinds of work done with the same
+true picture. (D21.)
+
 ---
 
 ## 2. The problem
@@ -67,6 +72,13 @@ The questions you cannot answer without an afternoon of `ssh-keygen -l` and squi
 - I'm leaving a job. **What do I revoke, and what breaks when I do?**
 - I want to add a host to my SSH config. **Will I lose the comments I wrote three years ago?**
 
+The first of these is also the project's origin story. The first iteration of hasp's predecessor
+was a Bash loop over `~/.ssh` running `ssh-keygen -l -f` on every key, grepping for a fingerprint
+held in hand from an AWS console. The blunt approach was never the real problem — a loop and a
+grep are fine tools for a bookkeeping problem. **The real problem is that the fingerprint you are
+handed may have been computed under a scheme your own tooling never produces**, so a naive
+comparison fails silently and looks exactly like "you don't have this key." (D20, D21.)
+
 None of these are hard problems. They are *bookkeeping* problems, and no tool does the
 bookkeeping, so it doesn't get done. The cost is not catastrophe; it is a permanent low-grade
 tax on knowing your own machine — and, occasionally, a key that should have been revoked
@@ -86,7 +98,10 @@ arrangement safe enough that you actually do it.
   grouping, deduplicating, repairing.
 - **A safe editor.** A way to change SSH configuration without fear of losing what is already
   there.
-- **A single pane of glass.** One place that answers "what is my SSH situation."
+- **A single pane of glass, serving two purposes.** One place that answers "what is my SSH
+  situation" — whether the question is **investigation** (a clue in hand, an answer whose shape
+  you don't yet know) or **operational management** (arranging what you already know you have).
+  (D21.)
 - **A personal tool.** For one human, on one machine, with tens — not thousands — of keys.
 
 ### 3.2 What hasp is not
@@ -97,10 +112,15 @@ These are hard boundaries. Each one, if crossed, turns hasp into a different and
   material lives where it already lives; hasp records facts *about* it.
 - **Not an agent.** hasp does not hold, cache, forward, or broker credentials at connection
   time. `ssh-agent` exists and is not the problem.
-- **Not a passphrase manager.** hasp never asks for, stores, or transmits a passphrase — with a
-  single exception, at the one moment hasp authors a key file itself. `new key` may prompt for the
-  passphrase it is about to write, hold it for that operation, and zero it. Never persisted, never
-  reused, never accepted alongside a key that already exists. (D17.)
+- **Not a passphrase manager.** hasp never asks for, stores, or transmits a passphrase — with two
+  exceptions, both of them *consent* rather than *management*. The first is the one moment hasp
+  authors a key file itself: `new key` may prompt for the passphrase it is about to write, hold it
+  for that operation, and zero it (D17). The second is an operation the user has explicitly
+  invoked that cannot proceed without reading an existing key's material — `--investigate` is the
+  only one today (D19, and P3's access rule states its constraints). Never persisted, never
+  reused, never held beyond the single operation it was given for. **The boundary is custody, not
+  access**: a tool that remembers your passphrase is a passphrase manager, and hasp never
+  remembers one.
 - **Not a keyring replacement.** For GPG specifically — stated in the original vision and
   reaffirmed here — hasp is an *overlay* that is aware of keys, never an authority over them.
 - **Not configuration management.** hasp manages this machine. It is not Ansible, it does not
@@ -123,7 +143,7 @@ answers "I'm setting up a new laptop" — and it is also the single fastest rout
 
 ## 4. Principles
 
-Nine invariants. Every one of them is meant to be sharp enough to settle an argument.
+Ten invariants. Every one of them is meant to be sharp enough to settle an argument.
 
 ### P1 — The world is the truth; hasp keeps nothing
 
@@ -162,14 +182,28 @@ nothing, because it can rewrite the region from scratch (§5.8).
 
 Restatement of §3.2 as an operating rule: hasp reads metadata *about* key material
 (fingerprints, algorithms, comments, formats, locations) and writes *arrangement* (names,
-aliases, membership, references). Private key bytes pass through hasp's hands only when it is
-generating a key or moving a file, never into hasp's own records.
+aliases, membership, references). Private key bytes pass through hasp's hands when it is
+generating a key, moving a file, or performing an operation the user explicitly asked for that
+needs them — never as a side effect, and never into hasp's own records.
 
-**The passphrase rule, stated exactly** (D17): hasp never asks for a passphrase to open something
-that already exists. It may ask for one only while *authoring* a new key — the same moment §5.1
-already permits hasp to write a private key file at all — and holds it for that single operation.
-Everywhere P3 is cited against touching an existing key (§5.1's derivation gap, D14's rejection
-of comment-marking), it forbids exactly what it always did.
+**The custody rule is absolute** (unchanged by D19): private key bytes never enter hasp's own
+records, no matter how or why hasp touched them. This is the data-flow half of P3, and it is what
+§3.2's "not a secret store," "not an agent," and "not a passphrase manager" boundaries all
+ultimately rest on.
+
+**The access rule is consent-gated** (D19, generalizing D17): hasp may read private key material
+only when the user has explicitly asked for an operation that requires reading it, only for that
+operation's duration, held in memory and zeroed after. Never automatically, and never as a side
+effect of a read that did not ask for it. hasp still never *writes* to a private key file it did
+not itself create (§5.1) — consent gates reading, not writing.
+
+**The passphrase rule, stated exactly, is the worked example** (D17): hasp never asks for a
+passphrase to open something that already exists *by default*. It may ask — for `new key`
+authoring a file outright, or for any other operation the user has explicitly invoked that needs
+it (D19) — and holds the passphrase for that single operation only, zeroed after. Everywhere P3
+was cited against touching an existing key (§5.1's derivation gap, D14's rejection of
+comment-marking), it still forbids exactly what it always did **by default** — the difference D19
+makes is that "by default" is now precise instead of absolute, because the user can now ask.
 
 ### P4 — Every write is reversible
 
@@ -237,6 +271,19 @@ hasp-owned registry must first show that the existing structure genuinely cannot
 P9 governs the Git and GPG expansion (J9) as much as SSH — the natural structures there are
 `gitconfig` conditional includes and repository layout, not a registry of hasp's own.
 
+### P10 — Confidence is part of the fact
+
+Every fact hasp reports carries a status from a closed set — `derived` (read directly from the
+artifact), `confirmed` (established by matching external evidence the user supplied), `possible`
+(consistent with the evidence, not established), `unknown` (cannot be determined) — and the status
+is as much a part of the fact as the value is. A weak assertion is permitted and useful, but it
+must be marked as such and must never be rendered in a way that reads as established. (D22.)
+
+*Consequence:* investigation (§6.3) needs the middle of this range in a way plain comprehension
+never has — an origin inferred from a matched console fingerprint is `confirmed` for RSA, while an
+origin guessed from the key alone can only ever be `possible`. The vocabulary is closed and
+permanent (§8, D22); it is not a place for a consumer-facing feature to invent a fifth word.
+
 ---
 
 ## 5. Domain model
@@ -278,6 +325,21 @@ the public half is stored unencrypted inside the private file, so only the comme
 hasp **reports the fact as unknown**. It does not prompt for a passphrase (P3), and it does not
 remember a value it can no longer verify — a stateful design would answer this case worse, by
 asserting a fingerprint it could not confirm.
+
+*Since D19, "does not prompt" above means **by default**, and the qualifier applies to this case
+exactly as it applies to the scheme case below.* Decrypting the private key yields the public half,
+and with it the fingerprint — so this gap, too, closes when the user explicitly asks under P3's
+access rule. It is a gap in what hasp will do **unasked**, which is what it always was; D19 only
+made the "unasked" part say so out loud.
+
+**One fingerprint scheme widens this gap for every encrypted key, regardless of format.** A
+fingerprint computed over the *private* key itself, rather than the public half, is `unknown` for
+any encrypted key hasp has not been given explicit permission to read — broader than the
+format-specific case above, which affects legacy PEM only. Under D19's access rule, such a fact is
+`unknown` **by default** and recoverable the moment the user explicitly asks for it (§6.3). A
+loaded `ssh-agent`, separately, supplies a key's public half and comment for *any* encrypted key
+with no secret handling at all — no passphrase, no prompt — because the agent already holds the
+decrypted material and offers it over its own protocol, independent of D19's gate. (D19, D22.)
 
 ### 5.2 Alias
 
@@ -417,6 +479,15 @@ regions (§5.8) would make one expressible, but `check` is deliberately advisory
 suppression mechanism is planned. That is a scope choice, not a capability limit, and it should
 be revisited only if the noise proves real in practice.
 
+**A third candidate reached this section and was rejected on exactly the standing test** (D22):
+whether a key's origin — created by hasp, or imported — should be recorded as metadata at creation
+time. Origin-at-creation is history in precisely the sense above: it does not change after the
+moment it would be recorded, the machine cannot report it later, and only a hand-written
+declaration could. It fails for a second reason too — it would help only hasp-created keys, which
+are exactly the population that never needs investigating, because their origin is already known.
+§4's confidence vocabulary (P10) answers the same need without opening this section: hasp says how
+*sure* it is of an inferred origin, instead of declaring the origin outright.
+
 ### 5.8 Marked region
 
 A **delimited span inside a configuration file that hasp owns outright.** (D7.)
@@ -555,7 +626,10 @@ Notes on the four that are new or changed relative to the original:
 
 - **find** is not a filtered `list`. Its purpose is *identification from a partial clue* —
   most importantly a fingerprint encountered somewhere else, in whatever punctuation and case
-  it happened to arrive in. Clue normalization is a requirement, not a nicety.
+  it happened to arrive in. Clue normalization is a requirement, not a nicety — and normalization
+  spans **fingerprint scheme**, not merely spelling: the same key has more than one valid
+  fingerprint depending on how it was computed, and a clue given in one scheme must still find a
+  key whose natively-computed fingerprint is in another. (D20.)
 - **check** collects the maintenance questions the original vision listed as scenarios —
   duplicate keys under different names, keys missing their public half, keys belonging to no
   profile, hosts referencing keys that don't exist, fingerprints that cannot be derived (§5.1).
@@ -596,6 +670,12 @@ material is gone and hasp next looks.
 - Every read is a **fresh scan**. Correctness therefore depends on derivation being both
   complete and cheap, which makes the derivation gap in §5.1 a permanent design fact rather
   than an edge case.
+- **Investigation is an explicit, opt-in mode** (D21): `--investigate` trades P7's one-screen
+  default for more — and slower, and possibly interactive — data, because an investigation needs
+  signals hasp cannot itself interpret and comprehension does not. It stays out of the default
+  read path entirely; a plain read is unaffected by its existence. The facts it surfaces beyond
+  a plain read carry P10's confidence status, because an investigation routinely produces a
+  `possible` or a `confirmed` origin rather than a flatly `derived` fact.
 
 ---
 
@@ -610,7 +690,9 @@ works entirely on unmanaged resources (§5.9), so the promise that nothing chang
 rather than a matter of care.*
 
 **J2 — Identify.** I have a fingerprint from somewhere else and I want to know which of my
-keys it is, if any. Punctuation and case shouldn't matter.
+keys it is, if any. Punctuation and case shouldn't matter. *Neither should the scheme it was
+computed under (D20): the same key looks different depending on where the fingerprint came from,
+and hasp must recognize its own key under a fingerprint it would never natively produce.*
 
 **J3 — Comprehend.** Show me every key I have, what kind it is, what it's called, what it's
 aliased to, which profile it belongs to, and what uses it — on one screen (P7).
@@ -639,11 +721,18 @@ identity and signing key that go with the persona, so that "who am I being" has 
 instead of three. *This is the original "Future Ideas" section, promoted from a list of
 features to the reason the domain model is shaped as it is.*
 
+**J10 — Investigate.** I have a clue — a fingerprint, a partial memory, a signal I can't fully
+interpret — and I want hasp to surface everything it can about it, including facts a plain read
+would not show and inferences a plain read would never make, clearly marked with how sure hasp
+is. *This is the project's founding journey (§2), ratified last but not decided last (D21) — the
+opposite of J3's one-screen comprehension, and it needs hasp to say not just what it knows but
+how confident it is (P10).*
+
 ---
 
 ## 8. Decisions
 
-The questions this document raised have been reviewed and **all eighteen are ratified**.
+The questions this document raised have been reviewed and **all twenty-two are ratified**.
 Settled decisions live in **`docs/decision-log.md`** — the reasoning, the alternatives rejected,
 and what each one commits the project to. That file is the permanent record and the place to
 look when asking "why is it like this?"; this document is the current truth.
@@ -660,7 +749,10 @@ prefers structures that already exist (P9) · **D14** resources are managed or u
 `adopt` / `release` move between the two · **D15** hasp reads a marker's presence, never its
 contents · **D16** a settings file exists, gated by an admission rule (P9's last rung) · **D17**
 `new key` may ask for a passphrase, at generation time only · **D18** `release` never deletes
-content, for hosts as for profiles.
+content, for hosts as for profiles · **D19** P3 splits into an absolute custody rule and a
+consent-gated access rule · **D20** J2 spans fingerprint schemes, not merely spellings ·
+**D21** investigation is ratified as J10, alongside management, under the shared purpose of
+visibility · **D22** confidence is part of the fact, and P10 is added.
 
 Their substance is folded into §3–§7 above. **No question remains open.**
 
@@ -697,8 +789,19 @@ untidiness. Every change reversible, and `release` undoes adoption itself. Cover
 Manage host entries, groups, and bindings with D7 fully honored. Covers J7, and makes J8
 answerable.
 
+**M3.5 — Hardening.** *hasp is ready to hand to a stranger, and to depend on release over
+release.* Versioning, packaging, and the documentation a new user needs are complete; the SSH
+story reaches a state worth freezing. Covers no new journey — it is the discipline milestone
+that makes the previous three trustworthy rather than merely working.
+
+**M3.6 — Investigation.** *hasp answers a fingerprint held in hand, computed under any scheme,
+and says how sure it is.* Multi-scheme identification, confidence-graded inference, and
+`--investigate` arrive. **v1.0.0 is tagged at the close of this milestone** — the point at which
+the SSH story, hardened and now honestly investigable, is worth freezing a compatibility promise
+around. Covers J2 (made honest) and J10.
+
 **M4 — Identity.** *A profile answers "who am I being" across SSH, Git, and signing.*
-Covers J9. Not before M3 is finished.
+Covers J9. Not before M3.6 is finished.
 
 The tool becomes genuinely useful to its author at **M1**, and genuinely better than the status
 quo at **M2**. M1 is therefore the only milestone whose scope should be defended aggressively.
@@ -737,6 +840,11 @@ completely hasp can read the machine (§5.1, §6.3).
   hardcodes a single directory.
 - **Cross-machine synchronization** — §3.3. Deliberately undecided rather than merely unscheduled:
   it is the single fastest route to violating §3.2.
+- **A keyring-backed passphrase cache** — considered for the encrypted-key investigation ladder
+  and rejected *for now*, not forever. It is viable on its own terms, but P6's bar for a cache is
+  measurement, not plausibility, and the two rungs ahead of it — a loaded `ssh-agent`, and an
+  explicit prompt (D19) — likely suffice without ever needing one. Revisit only if they
+  measurably don't.
 
 ---
 
@@ -764,6 +872,11 @@ completely hasp can read the machine (§5.1, §6.3).
 | **Survey** | Report on a machine without changing anything. The cold-start journey (J1). |
 | **Managed** | A resource the user has handed to hasp; hasp may write to it. |
 | **Unmanaged** | A resource hasp only reports on. The default for everything it did not create. |
+| **Investigate** | Ask hasp to surface everything derivable or inferable about a clue, confidence-graded, trading P7's one-screen default for more. The journey is J10. |
+| **Confidence** | The status attached to every reported fact: `derived`, `confirmed`, `possible`, or `unknown`. A closed, permanent vocabulary (P10). |
+| **Fingerprint scheme** | One of the distinct hash/encoding schemes under which the same key produces a different fingerprint. Which scheme a clue arrived in must not matter (J2, D20). |
+| **Origin** | Whether a key was created by hasp or imported from elsewhere. Derivable with certainty for RSA under a matched scheme; never more than a hint for ED25519. |
+| **Agent-sourced** | A fact read from a loaded `ssh-agent` rather than from a file on disk — real, but only as durable as the agent's own running state. |
 
 **Retired vocabulary:** *key group*, *profile group* (→ **profile**); *config* as an object
 (→ **host**, **host group**, or **settings**); *state*, *index*, and *sync* as concepts of any

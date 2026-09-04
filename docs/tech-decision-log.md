@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-08-29
+DateLastReviewed: 2026-09-04
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -32,7 +32,7 @@ rejected.
 - An entry needs a **Consequence** to be complete. A decision whose cost nobody wrote down is a
   decision nobody actually made — the rule `docs/decision-log.md` established, kept here without
   modification.
-- Every entry cites the principle (P1–P9), decision (D1–D15), or journey (J1–J9) it serves.
+- Every entry cites the principle (P1–P10), decision (D1–D22), or journey (J1–J10) it serves.
   This project settles arguments by appeal to `docs/design.md`; a decision with no citation is
   a decision that gets re-litigated.
 
@@ -49,15 +49,15 @@ rejected.
 | [T3](#t3) | `spf13/cobra` for the CLI, commands registered from a table | Accepted |
 | [T4](#t4) | The `Plan` type: change is represented as data before it is applied | Accepted — amended by [T20](#t20), [T22](#t22), [T26](#t26), [T30](#t30) |
 | [T5](#t5) | A host's profile membership is derived from its key bindings | Accepted — amended by [T16](#t16), [T28](#t28) |
-| [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted — ratified upstream as [D17](decision-log.md#d17) |
+| [T6](#t6) | `new key` passphrase handling: dual mode, `--passphrase-stdin`, fail-closed | Accepted — ratified upstream as [D17](decision-log.md#d17); amended by [T39](#t39) |
 | [T7](#t7) | A settings file, read-only, reaching P9's last rung | Accepted — ratified upstream as [D16](decision-log.md#d16) |
 | [T8](#t8) | Backups live in `~/.ssh/.hasp-backups/`, timestamped, never pruned by hasp | Accepted |
-| [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted |
+| [T9](#t9) | GoReleaser v2 idioms: `ko`, `nfpms`, `aur`, `homebrew_casks`, `sboms`, `signs` | Accepted — staged by [T33](#t33) |
 | [T10](#t10) | Metadata format: sentinel-prefixed TOML fragments as comments | Accepted — amended by [T25](#t25) |
 | [T11](#t11) | Host-group composition: one `Include` line per group, hasp orders them | Accepted |
 | [T12](#t12) | Key identity: fingerprint when derivable, else canonical path | Accepted |
 | [T13](#t13) | DDD adapted to Go: no Unit of Work, no message bus, split aggregate boundary | Accepted |
-| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29) |
+| [T14](#t14) | Output contract: 4 exit codes, a versioned JSON envelope, silent stdout | Accepted — amended by [T29](#t29), [T31](#t31), [T37](#t37) |
 | [T15](#t15) | Safety mechanics: atomic write, symlink-through, mode preservation, D4's move rule | Accepted — refined by [T20](#t20), [T22](#t22); amended by [T30](#t30) |
 | [T16](#t16) | Implicit default-identity probing is a distinct, labelled binding kind | Accepted — amends [T5](#t5); amended by [T28](#t28) |
 | [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
@@ -72,8 +72,18 @@ rejected.
 | [T26](#t26) | `WriteRegion` previews carry a real diff; key material is never diffed | Accepted — amends [T4](#t4); gap closed by [T30](#t30) |
 | [T27](#t27) | Go, and a fresh implementation rather than a repair of the predecessor | Accepted — closes `design.md` §10's stack item |
 | [T28](#t28) | Relative `IdentityFile` resolves against the key directory, and says so | Accepted — amends [T5](#t5), [T16](#t16) |
-| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14) |
+| [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31); amended by [T37](#t37) |
 | [T30](#t30) | The preview/apply race is detected by a witness, and fails closed | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29); amended by [T37](#t37), [T40](#t40) |
+| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted — amended by [T40](#t40) |
+| [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9); amended by [T40](#t40) |
+| [T34](#t34) | User-facing documentation is generated wherever it can drift | Accepted |
+| [T35](#t35) | The fingerprint scheme registry: open, pure-Go, no subprocess, no network | Accepted |
+| [T36](#t36) | `find` matches across every registered scheme; the clue's shape routes the search | Accepted — amends `tdd.md` §9 |
+| [T37](#t37) | Confidence is a closed, permanent vocabulary in the output contract | Accepted — amends [T14](#t14), [T29](#t29), [T31](#t31) |
+| [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
+| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
+| [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 
 ---
 
@@ -2060,9 +2070,767 @@ which is exactly the *"apology rather than a safety property"* shape
 
 ---
 
+<a id="t31"></a>
+## T31 — Semantic versioning, and the compatibility surface v1.0.0 freezes
+
+**Date:** 2026-09-02 · **Status:** Accepted · **Amends:** [T14](#t14), [T29](#t29)
+
+### Context
+
+Four tags exist — `v0.1.0` through `v0.4.0` — and none of them rests on a stated compatibility
+policy. [T14](#t14) already makes the `--json` envelope a contract, and [T29](#t29) already makes
+a `check` finding's `id` permanent; a compatibility surface is therefore *implied* by decisions
+already ratified, but it has never been written down as a surface in its own right — only as
+promises scattered across individual entries. hasp cannot promise stability it has never
+enumerated, and `design.md` §6.3 is explicit about why the promise exists at all: *"Every read has
+a **machine-readable form**. hasp lives in a terminal beside other tools; a tool whose output can
+only be looked at is half a tool."* [P6](design.md#4-principles) is the other half of the
+argument: nothing hasp knows may be trapped inside it, which is only true in practice if a
+consumer built against hasp today can trust what still holds tomorrow.
+
+### Decision
+
+hasp adopts **Semantic Versioning**. **v1.0.0 is tagged at the close of
+[M3.5](roadmap.md#55-m35--hardening)** — the milestone that closes the SSH story and is the
+natural point at which a compatibility surface can be frozen rather than merely described. M4/J9
+then lands as **v1.1.0**, additive by construction: `tdd.md` §14 already constrains `Profile` to
+stay additive across that boundary, which is precisely what a minor bump requires and a major one
+would not.
+
+The **public contract** — breaking any of the following needs a major version bump:
+
+| # | Surface | Ratified by |
+| --- | --- | --- |
+| 1 | The four exit codes and their meanings, including that `1` stays `check`-exclusive | [T14](#t14) |
+| 2 | The `--json` envelope's shape: `version`, `kind`, `data`, `warnings` | [T14](#t14) |
+| 3 | `kind` strings (`key.list`, `host.show`, `check.report`, …) — permanent, retired rather than recycled, the same guarantee a `Dn`/`Tn` ID carries | [T14](#t14) |
+| 4 | `check` finding `id`s | [T29](#t29) |
+| 5 | The verb×noun grid and the global flag names and semantics — removing or renaming is breaking, adding is additive | [D10](decision-log.md#d10), `tdd.md` §9 |
+| 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | `tdd.md` §6, §7; [T10](#t10), [T25](#t25) |
+
+Row 6 is the least obvious and the most damaging of the six, because the artifact this promise
+governs outlives the binary that wrote it: a `~/.ssh/config` marked in 2026 has to still parse
+under whatever hasp binary someone runs against it in 2030.
+
+The explicit **non-contract**, which matters as much as the contract does: human-readable output
+([P7](design.md#4-principles) governs it, and [T14](#t14) already permits the two renderers to
+diverge in *form* — a script needing stability uses `--json`); finding `severity`
+([T29](#t29) makes it deliberately re-tunable); `--verbose` stderr diagnostics; and the exact
+filename format inside `~/.ssh/.hasp-backups/` ([T8](#t8) — [P6](design.md#4-principles)
+guarantees those backups stay legible and recoverable without hasp, not that their names never
+change).
+
+**The relationship between the two version numbers runs one way only.** [T14](#t14)'s own struct
+comment describes `Envelope.Version` as "independent of hasp's own release version" — true, but a
+phrasing that invites the wrong inference. Stated exactly: **a change to `Envelope.Version`
+implies a major hasp version bump; a major hasp version bump does not imply a change to
+`Envelope.Version`.** The envelope can stay stable across several major hasp releases; it cannot
+change without one.
+
+`hasp version`
+([`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought))
+is the surface that makes all of this checkable at runtime rather than merely asserted in a
+document, so this entry is where the command is finally documented as design — [T9](#t9)
+mentioned it only as a build-info consumer.
+
+**Release notes are generated, not hand-maintained.** GoReleaser's `changelog: use: git` output is
+the changelog of record; there is no hand-maintained `CHANGELOG.md`, because a file that must be
+remembered is a file that drifts, and the git history already is the truth.
+
+**The historical tag mapping**, recorded here so it is not mysterious later: `v0.1.0` → M1,
+`v0.2.0` → M2, `v0.3.0` → M3, `v0.4.0` → the GoReleaser/Gitea release-plumbing commit that
+followed M3's merge.
+
+### Rationale
+
+A compatibility surface stated after the first breaking change is a postmortem, not a promise. Six
+of the nine principles in `design.md` are already load-bearing on this surface without saying so —
+enumerating it now, before v1.0.0, is the only order in which "breaking this needs a major bump"
+means anything.
+
+### Consequence
+
+**The Go module path problem is now load-bearing, not cosmetic.** `go.mod` declares
+`github.com/boweeb/hasp`; the only remote is a local Gitea (`git@localhost:stuff/hasp.git`), so
+`go install github.com/boweeb/hasp/cmd/hasp@latest` cannot resolve today, and Go's own module
+rules mean a future v2 requires a `/v2` path suffix regardless of what the current path resolves
+to. **v1.0.0 freezes the module path** as surely as it freezes the six rows above, so this has to
+be settled *before* the tag, not after — [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) carries
+it as a named input-needed item rather than deciding it here, which is not this entry's place to
+do.
+
+---
+
+<a id="t32"></a>
+## T32 — Mage is the build/CI contract; platform workflows are thin shims
+
+**Date:** 2026-09-02 · **Status:** Accepted
+
+### Context
+
+CI today is GitHub Actions YAML running against a Gitea remote — the near-term target — with GitHub
+or GitLab as a long-term possibility if [T31](#t31)'s public-origin question resolves that way. As
+it stands: no release workflow exists at all, so nothing triggers GoReleaser; the linter runs
+unpinned (`go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest`); `.golangci.yml`
+configures no linters, only a timeout; darwin is never compiled in CI, though GoReleaser targets
+`darwin/arm64` among four platforms; and `mise.toml` is `[tools] go = "latest"`, which
+`roadmap.md` §2 already calls "pinning the toolchain" and `tdd.md` §2 already calls "installed via
+`mise` (`go = \"latest\"`)" — neither description is true of `latest`. Encoding the actual build
+logic in any one platform's YAML makes a future move a rewrite instead of a shim.
+
+### Decision
+
+Every build/test/lint/release action becomes a **Mage target** in `magefiles/`
+(`github.com/magefile/mage`, latest **v1.17.2**, verified against the module proxy this session);
+a platform workflow file's only job is checkout → set up Go → invoke one target. The target set:
+`Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`, `Fixtures`, `Docs`,
+`Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
+
+**Zero-install bootstrap**, so CI needs no mage binary of its own: a `mage.go` carrying
+`//go:build ignore` that calls `mage.Main()`, invoked as `go run mage.go <target>`. This bootstrap
+has a caveat worth stating verbatim rather than discovering it against a red build later, from
+magefile.org: *"because of the peculiarities of `go run`, if you run this way, go run will only
+ever exit with an error code of 0 or 1."* A project with a four-code exit contract ([T14](#t14))
+must not build an exit-code-sensitive pipeline — `CI`'s own exit status — on a bootstrap that
+flattens every failure to `1`; the workflow shims (below) treat any non-zero exit from
+`go run mage.go ci` as failure and never branch on its specific value.
+
+**Dependency budget: a new row.** Mage is the first build-time-only dependency this project has
+taken on. `tdd.md` §2's "Test-only, never shipped" table gets a sibling, "Build-time only, never
+shipped," carrying `github.com/magefile/mage`. The guard is mechanical, in this project's own
+style: [T13](#t13)'s existing `go list -deps` layering guard extends to assert
+`github.com/magefile/mage` never appears in `cmd/hasp`'s dependency graph — a magefile importing
+it is fine; `cmd/hasp` importing it is a regression. `//go:build mage` tags stay on every file
+under `magefiles/`, so `go build ./...` and `go vet ./...` ignore them exactly as they do today.
+
+**Also decided here**, because each is a direct consequence of moving CI into Mage rather than an
+unrelated bundle of chores:
+
+- `golangci-lint` is pinned to an exact version inside the `Lint` target — an unpinned `@latest`
+  makes lint non-reproducible and turns an unrelated upstream release into a red build on a commit
+  that changed nothing.
+- `.golangci.yml` adopts a real linter set — noting that golangci-lint v2 requires `version: "2"`
+  in the config file, which the current file does not declare.
+- `mise.toml` is pinned to the exact Go toolchain in use, which resolves the contradiction named
+  in Context.
+
+**Gitea specifics**, named so they are not discovered the hard way: Gitea Actions consumes
+GitHub-Actions-compatible YAML but needs a registered `act_runner`, and resolves a step's `uses:`
+against its own `DEFAULT_ACTIONS_URL` rather than implicitly against github.com; the release shim
+needs a `GITEA_TOKEN`. Both `.github/workflows/` and `.gitea/workflows/` shims are kept — each is
+a handful of lines precisely because the logic lives in Mage, not in either file.
+
+**The `Docs` target is the one that protects this project's own culture**, and is worth its own
+paragraph rather than a line item. It commits the doc checkers this repository already relies on
+by hand — broken links and anchors, every `Dn`/`Tn` citation resolving to a real `<a id>`, the
+per-log invariants (index row count equals anchor count, IDs contiguous, every entry carrying a
+`### Consequence`), and verbatim-quotation checking — and runs them in CI as part of `CI`'s
+`mg.Deps` set. They are written in Go, as a Mage target, rather than adding a Python dependency:
+the toolchain is already here, and a doc-verification script that needs a second language
+installed is a script nobody runs locally. Two gotchas are recorded here because they have already
+cost real time once and would again: (a) GitHub anchor slugs give each space its own hyphen and do
+not collapse them, so an em-dash heading yields a *double* hyphen and a naive `\s+`→`-` regex
+reports a dozen false breaks; (b) a quotation can wrap across source lines, so a single-line
+`grep -F` produces false misses — normalize whitespace and strip `**`, `*`, and backticks before
+comparing.
+
+### Rationale
+
+`mg.Deps` runs its dependencies concurrently and `mg.SerialDeps` runs them in sequence, and either
+way Mage guarantees each dependency is "guaranteed to run exactly once in a single execution of
+mage" — precisely the primitive a `CI` aggregate target needs to compose `Vet`, `Lint`, `Test`,
+`Cross`, and `Docs` without hand-rolling its own dependency bookkeeping. `mage -compile <path>` can
+also emit a standalone static binary later, if the zero-install `go run` path ever proves too slow
+for local iteration — an escape hatch that costs nothing to have and nothing to use today.
+
+### Consequence
+
+- Moving to GitHub or GitLab later — the outcome [T31](#t31)'s public-origin question may
+  produce — is a new shim file, not a rewrite: the workflow file changes, `magefiles/` does not.
+- The doc-verification pass becomes mechanical, run on every push, rather than something someone
+  has to remember to run before merging — which is exactly the discipline this repository's
+  culture already claims to have and, until this entry, did not actually enforce.
+- `mage.go`'s exit-code caveat means the workflow shims must treat "CI failed" as a single boolean,
+  never inspect a specific non-zero code from the bootstrap path — a distinction any future
+  workflow author needs to know before reaching for it.
+
+---
+
+<a id="t33"></a>
+## T33 — Distribution is staged: self-hosted now, public channels blocked on one missing fact
+
+**Date:** 2026-09-02 · **Status:** Accepted · **Amends:** [T9](#t9)
+
+### Context
+
+[T9](#t9) enumerated the full GoReleaser surface — `ko`, `nfpms`, `aur`, `homebrew_casks`,
+`sboms`, `signs` — as though every section were equally reachable from where the project actually
+stands. It is not: `.goreleaser.yaml`'s own header comment still opens "M0 scope only" and still
+closes "Not releasing anything yet" — true when written, false since Gitea publishing was
+configured. [T9](#t9) also states that generated shell completions and man pages are "packaged
+into the release archives" — nothing in the repository generates either today, and
+`.goreleaser.yaml` has no handling for them. `design.md` §3.1 scopes hasp to one laptop, one
+human; the near-term distribution reality is a `localhost` Gitea remote, not a public one.
+
+### Decision
+
+**M3.5 ships**: `tar.gz` archives for all four build targets, **generated shell completions and
+man pages** — closing the gap [T9](#t9) stated but never built, which cobra already provides via
+`GenManTree` and the `completion` subcommand ([T3](#t3)) — plus `sboms`, published to the Gitea
+release. `aur`, `homebrew_casks`, `ko`, and `signs` stay deferred.
+
+**The synthesis that makes this one decision instead of four separate chores**, and the most
+useful thing this entry records: **all four deferred channels are blocked on the same missing
+fact — hasp has no publicly reachable origin.** AUR needs a fetchable source URL; Homebrew needs a
+tap repository; `ko` needs a registry to push an image to; keyless signing needs a public
+OIDC-issuing CI provider. A `localhost` Gitea satisfies none of the four. It is also, precisely,
+**the same question** [T31](#t31) already names as the module-path blocker: one answer to "does
+hasp get a publicly reachable origin" unlocks all five items — the module path and the four
+deferred channels — and no answer blocks all five. No amount of additional GoReleaser
+configuration substitutes for answering it.
+
+### Rationale
+
+Treating four TODOs as four independent chores invites solving each partway — a tap repo pointed
+at a private remote, a signing setup with no public issuer to trust — none of which actually work.
+Naming the single shared blocker converts four speculative pieces of GoReleaser configuration into
+one tracked decision with a clear unblocking condition.
+
+### Consequence
+
+The deferral is now a single named blocker — recorded as an input-needed item in
+[`roadmap.md` §5.5](roadmap.md#55-m35--hardening) — rather than four independent "later" items
+that each look individually actionable and are not. `.goreleaser.yaml`'s stale "M0 scope only"
+header becomes a tracked M3.5 doc-hygiene item rather than a comment nobody owns.
+
+---
+
+<a id="t34"></a>
+## T34 — User-facing documentation is generated wherever it can drift
+
+**Date:** 2026-09-02 · **Status:** Accepted
+
+### Context
+
+`docs/` is entirely design documentation aimed at *building* hasp. There is nothing aimed at
+*using* it — no install path, no command reference, and nothing telling a user what the files hasp
+leaves in `~/.ssh` actually are. That last gap is not a nicety: [P6](design.md#4-principles)
+promises that "If hasp breaks, or is abandoned again, the user loses a convenience and nothing
+else" — and that promise is only real if someone who has never run hasp can read those artifacts
+without it.
+
+### Decision
+
+Split user-facing documentation by whether it can drift out of step with the binary.
+
+**Generated, regenerated by a Mage target ([T32](#t32)'s `Docs`), CI fails if stale** — diff-check
+regenerated output against the committed copy, the same mechanism [T29](#t29) and [T7](#t7)
+already rely on for their own golden-list guard tests, so a gap becomes visible in a diff rather
+than in a consumer's `jq` filter silently failing to match: man pages, shell completions, and a
+CLI reference under `docs/cli/` generated from cobra's markdown generator. A hand-written flag
+table is a table that will be wrong by v1.1.0.
+
+**Hand-written narrative**, because it carries argument rather than syntax:
+
+- A real root `README.md` — orientation, install, a sixty-second demo, license.
+- A user guide organized around **J1–J8** ([`design.md` §7](design.md#7-journeys)), since the
+  journeys are already the project's success stories and give the guide a table of contents that
+  `design.md` itself keeps honest.
+- A page on what hasp leaves on disk — the one this project specifically owes its user: `.hasp`
+  markers, in-file region markers, the settings file, and `~/.ssh/.hasp-backups/`, **which
+  [T8](#t8) states hasp never prunes**, so the user must be told plainly that it grows without
+  bound and that pruning is theirs to do. Paired with the full withdrawal path — release every
+  adopted resource, delete the markers — which is what makes [D14](decision-log.md#d14)'s two-way
+  door and P6 literal instead of aspirational.
+- A `SECURITY.md` that restates guarantees which already exist rather than inventing new ones:
+  [P3](design.md#4-principles) and `design.md` §3.2's position that hasp never takes custody of
+  private key material, and [D17](decision-log.md#d17)'s four constraints on the single passphrase
+  prompt — generation only, never persisted, never transmitted, buffer zeroed.
+
+### Rationale
+
+A generated reference and a hand-rolled one fail differently, and the split follows that fault
+line rather than a topic boundary. Anything that is really a restatement of the command surface —
+flags, subcommands, man pages — is wrong the moment the code changes under it unless something
+regenerates and checks it; anything that carries *why* — a journey, a threat model, a promise about
+what happens if hasp is abandoned — has no source of truth to regenerate from and has to be
+written and kept honest by hand, the same way `design.md` itself is.
+
+### Consequence
+
+`docs/README.md` now indexes two audiences instead of one — documentation aimed at *building*
+hasp, and documentation aimed at *using* it — and the generated half of the second audience cannot
+silently disagree with the binary, because [T32](#t32)'s `Docs` target fails the build when it
+does.
+
+---
+
+<a id="t35"></a>
+## T35 — The fingerprint scheme registry: open, pure-Go, no subprocess, no network
+
+**Date:** 2026-09-03 · **Status:** Accepted
+
+### Context
+
+[D20](decision-log.md#d20) widens [J2](design.md#7-journeys) from matching spellings to matching
+**schemes** — the same key produces a different fingerprint depending on how it was computed, and
+AWS alone uses three: SHA-1 over the PKCS#8 DER of the *private* key for an AWS-created RSA key,
+MD5 over the PKIX/SPKI DER of the *public* key for an imported RSA key, and SHA-256 over the SSH
+wire-format public key for ED25519 (created or imported — identical either way). This session
+verified all three against `https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/verify-keys.html`
+and confirmed them on the repository's own fixtures:
+
+| Scheme | Hashed input | Hash | Needs | Verified value (`testdata/keys/rsa-pem-plain-pub`) |
+| --- | --- | --- | --- | --- |
+| AWS created-RSA | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted | `97:47:11:3c:af:56:47:b3:f9:a9:89:36:6d:ca:be:0b:33:a0:05:f7` |
+| AWS imported-RSA | PKIX/SPKI DER of the **public** key | MD5 | public half only | `a8:e7:45:95:5f:a3:f0:b1:79:6c:c2:f1:d2:80:57:ea` |
+| AWS ED25519 (created *or* imported) | SSH wire-format public key | SHA-256 | public half only | `SHA256:lqTGTP6KJSQptQJQEZj7scuX7jLWFfb0qoAHTT1IpPA` (`testdata/keys/ed25519-openssh-plain-pub`) |
+| Legacy SSH MD5 | SSH wire-format public key | MD5 | public half only | `34:29:f4:da:3c:db:49:4b:35:ba:c1:c2:cd:2e:75:a8` |
+
+**The fourth row is the one a reader should not skip.** Legacy SSH MD5 — what `ssh-keygen -E md5`
+prints, what OpenSSH printed by default before 6.8, and what a great deal of surviving
+documentation shows — has **exactly the same shape** as AWS imported-RSA (16 bytes, colon-hex, 47
+characters) and a **completely different value**, because one hashes the SSH wire-format blob and
+the other hashes the PKIX/SPKI DER encoding. The two rows above prove it on the same key:
+`34:29:f4:…` versus `a8:e7:45:…`. [T1](#t1) anticipated exactly this, noting that
+`FingerprintLegacyMD5` *"exists if a future `find key` clue needs to match one"*. Registering it
+here, rather than leaving it to be discovered by a user whose correct clue silently failed to
+match, is the difference between an open registry and an AWS-shaped one.
+[T36](#t36) carries the consequence: a 47-character clue is ambiguous and both schemes are
+computed.
+
+**Six shell "strategies" collapse to three values.** Proven on the repository's own fixtures:
+`openssl rsa -pubout -outform DER | openssl md5` and
+`ssh-keygen -e -m PEM | openssl rsa -RSAPublicKey_in -outform DER | openssl md5` both produce the
+imported-RSA value above, on the same input. The second pipeline exists only because `openssl rsa
+-in` cannot read an OpenSSH-format private key — verified this session: exit 1, `"Could not find
+private key"`. hasp parses both formats natively ([T1](#t1)), so it needs **one code path per
+scheme**, never one per shell incantation that happens to produce that scheme.
+
+**A shell pipeline that loses its input silently emits a hash of nothing**, and that hash is
+shaped exactly like a real fingerprint: `d41d8c…` is MD5 of the empty string, `da39a3…` is SHA-1
+of the empty string. Either one slots into a fingerprint-shaped field without complaint. A native
+Go implementation that reads the key bytes it already parsed cannot make that mistake — there is
+no pipe stage for the input to fall out of.
+
+### Decision
+
+A **registry** of scheme definitions, each declaring: a stable `id`, the hash function, the
+encoding it renders as, and — the load-bearing field — **which key material it needs**: public
+half only, or the decrypted private key. A scheme is `func(Key) (Fingerprint, error)`, computed
+entirely from bytes hasp already has in memory; nothing in the registry ever opens a socket. This
+is the boundary the user ratified explicitly: **a scheme is an encoding of facts about the key,
+computed locally — never a network call** — which keeps §3.2's *"Not a key distribution
+mechanism."* intact even though this feature is, on its face, about matching a value from an
+external console.
+
+Every scheme is stdlib or already-required: `x509.MarshalPKCS8PrivateKey` +
+`crypto/sha1` for created-RSA; `x509.MarshalPKIXPublicKey` + `crypto/md5` for imported-RSA; the
+existing `x/crypto/ssh` wire-format marshaling + `FingerprintSHA256` ([T1](#t1)) for the
+SSH-native/ED25519 scheme. **Zero new modules.**
+
+**The registry is open from the start, not closed at three.** GitHub and GitLab both display
+SHA-256 fingerprints — already covered by the SSH-native scheme — and other consoles will surface
+their own schemes over time. Each scheme's declared input requirement is what lets a caller (§9's
+`find`, [T36](#t36)) know in advance whether a given key can even be evaluated against it without
+asking the user for anything.
+
+### Rationale
+
+The three-scheme table is not incidental complexity — it is the literal shape of the problem
+[J10](design.md#7-journeys) exists to answer, and D20's own rationale is that a false negative here
+reads as *"you don't have this key,"* which is worse than an honest miss. The empty-digest hazard
+is the strongest available argument for computing every scheme natively rather than shelling out
+to whichever `openssl`/`ssh-keygen` pipeline happens to exist on the caller's `PATH`: a broken
+pipe silently produces a value indistinguishable from a real one, and [T1](#t1)'s "no subprocess"
+rule already forecloses that failure class for the read path generally — this is one more scheme
+falling under a rule already in force, not a new exception to it.
+
+### Consequence
+
+- [T36](#t36)'s `find` and any future `--investigate` surface consume the registry as a single
+  dependency; adding a fourth scheme is one new entry, not a new call site scattered through the
+  command surface.
+- Each scheme's declared input requirement (public half vs. private key) is exactly what
+  [D19](decision-log.md#d19)'s consent gate keys off of: a caller can enumerate every scheme
+  computable from what has already been read, and knows in advance which remaining ones would
+  require asking the user for something.
+- `tdd.md` §5 gains scheme computation as a projection step in the derivation pipeline, and §12
+  gains a fixture-backed test asserting the AWS vectors above by name, plus a guard that no scheme
+  performs I/O beyond reading the key file already in memory.
+
+---
+
+<a id="t36"></a>
+## T36 — `find` matches across every registered scheme; the clue's shape routes the search
+
+**Date:** 2026-09-03 · **Status:** Accepted — amends `tdd.md` §9's `find` cell
+
+### Context
+
+[D20](decision-log.md#d20) requires `find key` to match a clue given in *any* scheme hasp knows,
+not only the SSH-native one `tdd.md` §9 originally described ("identify a key from a fingerprint
+fragment... normalizing punctuation and case"). [T35](#t35) supplies the schemes; this entry
+supplies the matching algorithm — including how a bare clue, with no metadata attached, is routed
+to a candidate scheme before any key is even examined.
+
+### Decision
+
+**Normalization**, applied to the clue before routing: strip colons and internal whitespace,
+lowercase hex digits, strip base64 `=` padding (AWS emits it, `ssh-keygen` omits it — D20 names
+this explicitly), and tolerate an optional `SHA256:`/`MD5:` prefix.
+
+**The clue's raw shape NARROWS the search; it does not uniquely determine it.** That distinction
+is the whole of this decision, and getting it wrong would reintroduce the silent miss
+[D20](decision-log.md#d20) exists to eliminate.
+
+| Clue shape | Candidate schemes |
+| --- | --- |
+| 59-character colon-hex (40 hex digits) | SHA-1 — [T35](#t35)'s created-RSA scheme. One candidate |
+| 47-character colon-hex (32 hex digits) | MD5 — **two** candidates: AWS imported-RSA (MD5 over PKIX/SPKI DER) **and** legacy SSH MD5 (MD5 over the SSH wire-format blob) |
+| base64, with or without a `SHA256:` prefix | SHA-256 — the SSH-native/ED25519 scheme. One candidate |
+
+**The MD5 collision is real and was anticipated by this log.** [T1](#t1) already noted that hasp
+reports SHA-256 and *"never the legacy MD5 colon-hex form, though `FingerprintLegacyMD5` exists if
+a future `find key` clue needs to match one"* — this entry is that future. Legacy SSH MD5 and AWS
+imported-RSA are **different hashes over different byte sequences of the same key**: the former
+over the SSH wire-format public blob, the latter over the PKIX/SPKI DER encoding. They produce
+different digests and identical shapes. A 47-character clue is therefore ambiguous by
+construction, and `find` **computes both and compares both** rather than guessing one. Legacy MD5
+clues are not exotic — they are what `ssh-keygen -E md5` prints, what OpenSSH printed by default
+before 6.8, and what a great deal of still-circulating documentation shows.
+
+`find` computes only the schemes a clue's shape admits, not every registered scheme for every key,
+so the common case (an SSH-native clue) stays exactly as cheap as it is today. What the shape
+buys is a smaller candidate set, never a single answer.
+
+**Which scheme matched is the origin evidence — but only for the AWS schemes.** Per
+[P10](design.md#4-principles): a match under created-RSA or imported-RSA is deterministic proof of
+provenance, because AWS computes one or the other depending on exactly how the key came to exist,
+so `find` reports origin as `confirmed`. A match under **legacy SSH MD5** proves nothing about AWS
+provenance — it is simply another way of naming the same public key — so origin stays `possible`.
+The same holds for the SSH-native/ED25519 scheme, because AWS's ED25519 fingerprint is identical
+whether the key was created or imported (Background, verified against AWS's documentation). Only
+two of the four registered schemes carry provenance, and conflating "the clue matched" with "the
+origin is proven" is exactly the error P10's vocabulary exists to prevent.
+
+### Rationale
+
+D20's own rationale carries this entry: a silent miss on a clue given in a scheme hasp did not
+think to try reads as "you don't have this key," which is a confidently wrong answer, not a
+missing one — precisely the question §2 opens the whole document with. Routing by shape rather
+than computing every scheme against every key keeps the common path — an SSH-native fingerprint,
+the overwhelming majority of clues in practice — exactly as cheap as it was before this entry.
+
+### Consequence
+
+- `tdd.md` §9's `find` cell for **key** is amended to describe multi-scheme matching; the **host**
+  and **profile** `find` cells are unaffected, since neither is fingerprint-shaped.
+- A clue that matches under the created-RSA scheme is proof hasp read the *private* key
+  ([T35](#t35)) — which only happens under [D19](decision-log.md#d19)'s consent gate — so a
+  successful created-RSA match is also, incidentally, evidence the gate fired correctly for that
+  key during this invocation.
+- `check`'s existing duplicate-detection vocabulary ([T12](#t12)) already distinguishes confirmed
+  from unconfirmed; `find`'s confirmed/possible split is the same distinction applied to a
+  different question, which is part of the evidence [D22](decision-log.md#d22) cites for P10's
+  taxonomy being right-sized rather than newly invented.
+
+---
+
+<a id="t37"></a>
+## T37 — Confidence is a closed, permanent vocabulary in the output contract
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T14](#t14), [T29](#t29), [T31](#t31)
+
+### Context
+
+[D22](decision-log.md#d22) ratified [P10](design.md#4-principles): every reported fact carries a
+status from a closed set — `derived`, `confirmed`, `possible`, `unknown`. [T14](#t14) already makes the `--json` envelope a
+public contract, [T29](#t29) already makes a `check` finding's `id` permanent, and [T31](#t31)
+already enumerates the compatibility surface those two entries imply. Confidence has to land in
+exactly that surface, not beside it, or it is a promise nobody actually made.
+
+### Decision
+
+An `--investigate` response carries an `origins` array (and, more generally, any reported fact
+carries the same shape wherever P10 applies):
+
+```json
+"origins": [
+  {"id": "aws-ec2-created", "confidence": "possible",
+   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+]
+```
+
+`because` carries **machine-readable evidence tokens, never prose** — a fixed vocabulary of short,
+`key=value`-shaped strings a consumer can branch on without parsing English. Free text belongs in
+the human renderer only, which is free to turn the same tokens into a sentence.
+
+**Contrast with [T29](#t29)'s `severity` explicitly, because the two look alike and are not.**
+`severity` is deliberately re-tunable — hasp may decide next year that a finding deserves a
+different severity without breaking anything, because [T29](#t29) says so outright. `confidence`
+is **closed and permanent**: a consumer filtering on `derived` to decide whether to *trust* a
+value is making a safety decision, and a vocabulary a producer can silently expand out from under
+that filter would be a contract violation dressed as a feature. Nothing about the confidence
+vocabulary is subject to future re-tuning the way `severity` is.
+
+[T31](#t31)'s compatibility-surface table gains a seventh row: **the confidence
+vocabulary — `derived`, `confirmed`, `possible`, `unknown` — is closed; adding, removing, or
+redefining a value is a breaking change**, exactly like [T29](#t29)'s finding `id`s (row 4) and
+unlike its `severity` (explicitly named in the non-contract).
+
+**A correction to [T31](#t31)'s own body, recorded here since this is the entry that amends it.**
+T31's Decision section states *"v1.0.0 is tagged at the close of
+[M3.5](roadmap.md#55-m35--hardening)"* — true when T31 was written, on 2026-09-02, against the
+milestone structure that existed then. [D21](decision-log.md#d21) and [D22](decision-log.md#d22)
+split that milestone: `roadmap.md` §5.5 (M3.5 — Hardening) now closes without tagging anything, and
+a new §5.6 (M3.6 — Investigation) closes with the tag instead, per `design.md` §9. T31's sentence
+is **pre-amendment text** — the same treatment [T27](#t27) and [T29](#t29) give an earlier draft's
+superseded claim — and the current truth is `roadmap.md` §5.6, not §5.5.
+
+### Rationale
+
+[D22](decision-log.md#d22)'s own rationale is the evidence this taxonomy is right-sized: this one
+feature genuinely needs all four statuses at once — a matched RSA console fingerprint is
+`confirmed` ([T36](#t36)); an ED25519 guess is `possible`; a value read straight off an artifact
+(most of what `list key` already reports) is `derived`; an underivable value stays `unknown`,
+exactly as §5.1 already uses the word. Landing it in the same three entries that already govern
+the output contract, rather than inventing a fourth place for stability promises to live, is what
+keeps [T31](#t31)'s enumeration actually complete.
+
+### Consequence
+
+- `Envelope` itself ([T14](#t14)) is unchanged in shape — `version`, `kind`, `data`, `warnings` —
+  because confidence lives inside `data`, not the envelope wrapper. T14 is amended in the sense
+  that its `data` payloads for investigation-bearing kinds now carry a new, contract-bound shape,
+  not in the sense that the struct above changes.
+- [T29](#t29)'s own text is unchanged and remains correct; this entry's contrast with it is worth
+  reading alongside T29 for any future reader deciding whether a new field belongs in the
+  `severity` camp (re-tunable) or the `confidence` camp (closed).
+- `tdd.md` §16's compatibility-surface table gains the row described above, citing this entry.
+
+---
+
+<a id="t38"></a>
+## T38 — `ssh-agent` is a derivation source for public facts, and its contribution is labelled
+
+**Date:** 2026-09-03 · **Status:** Accepted
+
+### Context
+
+§5.1's derivation gap is total for an OpenSSH-format encrypted key's **comment** — the public half
+is embedded unencrypted in the private file, so the fingerprint and algorithm are derivable, but
+the comment lives inside the encrypted blob and is not. A loaded `ssh-agent` already holds the
+decrypted key in memory for exactly this reason — it has to, to sign challenges — and its protocol
+exposes both the public key and the comment for anything currently loaded, with **no passphrase
+and no decryption performed by hasp at all**.
+
+`golang.org/x/crypto/ssh/agent` was confirmed this session to exist inside the already-required
+`golang.org/x/crypto` module ([T1](#t1)), at the version already pinned (`v0.55.0`), and its
+`agent.Key` type carries a `Comment` field. **This adds no new module dependency** — the same
+module `go.mod` already requires for the entire key-parsing read path supplies the agent client
+too.
+
+### Decision
+
+Under `--investigate` ([D21](decision-log.md#d21)), hasp connects to `SSH_AUTH_SOCK` if it is set,
+lists the agent's loaded keys, and cross-references each by public key against the scanned key
+set. For every match, the agent's comment is reported for that key, **labelled `agent-sourced`**
+rather than merged into the ordinary `derived` bucket — the same treatment
+[T16](#t16) gives implicit-default bindings: a real fact, but a distinct *kind* of fact, and
+merging kinds that arrived differently is exactly the dishonesty T16 was written to avoid.
+
+**Named honestly: an agent-sourced fact is real but transient.** Unlike a fact read from a file,
+which persists until the file changes, an agent-sourced fact is only as durable as the agent's own
+running state — it can vanish the moment the agent restarts, the key is removed from it, or the
+process exits. This is a genuine wrinkle in [P1](design.md#4-principles)'s "the world is the
+truth" framing: the *agent* is part of the world at the moment hasp asks, and gone from it a
+moment later, which is precisely why the label matters more here than anywhere else P1 applies.
+
+**Declared failure stance: no agent, or `SSH_AUTH_SOCK` unset, degrades silently to what is
+derivable without it — never an error.** A read must stay safe
+([P5](design.md#4-principles)) regardless of whether the environment happens to have an agent
+running, and treating an absent agent as a failure would make `--investigate` unusable on a
+machine with no agent at all, which defeats the point of a mode meant to surface more, not less.
+
+### Rationale
+
+This closes the comment gap for OpenSSH-format encrypted keys **without ever touching a
+passphrase** — it is strictly cheaper and safer than [T39](#t39)'s prompt-based path, and is tried
+first for exactly that reason. It serves [J10](design.md#7-journeys) directly: an investigation
+needs more than a plain read, and an agent a user already has running is data hasp was leaving on
+the table. Zero new dependency keeps [T1](#t1)'s "no subprocess" boundary, and the Go-and-stdlib-
+first preference [T27](#t27) already established, both intact.
+
+### Consequence
+
+- `tdd.md` §5 gains the agent as a named derivation source, feeding the same projection step
+  [T35](#t35)'s scheme registry feeds.
+- `tdd.md` §9's `show key --investigate` and `list key --investigate` cells surface agent-sourced
+  comments, visibly labelled as such in both renderers.
+- `tdd.md` §11 gains a fail-open row: no agent / `SSH_AUTH_SOCK` unset → degrade to what is
+  derivable without it, never an error.
+- [T39](#t39)'s passphrase-gated path tries the agent first, so a key already loaded never
+  triggers a prompt for a fact this entry already supplies.
+
+---
+
+<a id="t39"></a>
+## T39 — Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY
+
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6)
+
+### Context
+
+[D19](decision-log.md#d19) generalizes [D17](decision-log.md#d17)'s four constraints from `new
+key`'s write path to any read: hasp may read private key material only when the user explicitly
+asked for an operation that needs it, only for that operation's duration, held in memory and
+zeroed after, never automatically. Two concrete facts need exactly this: [T35](#t35)'s created-RSA
+scheme, which hashes the *decrypted private key* and is therefore `unknown` for every encrypted
+key regardless of format unless the user consents to unlocking it; and an OpenSSH-format
+encrypted key's comment, when [T38](#t38)'s agent path finds nothing loaded.
+
+### Decision
+
+**Prompt only under `--investigate`**, and only for a key where a passphrase would unlock
+something otherwise completely `unknown` — the created-RSA scheme is the case that matters, since
+it is `unknown` in its entirety without it; an OpenSSH-format key's comment alone is often not
+worth interrupting the user for, since the fingerprint and algorithm are already derivable without
+asking. **Try the agent first** ([T38](#t38)) — a key already loaded needs no prompt at all.
+
+**One passphrase, tried across every candidate key in the invocation** — D19's ladder, stated
+plainly: not one prompt per key, one prompt per run, held in memory and zeroed after, using the
+same `x/term.ReadPassword` path [T6](#t6) already established for `new key`. No new dependency.
+
+**Declared failure stance, and it is the important one: no TTY (for example, `--investigate
+--json` in a pipe) DEGRADES — it does not fail closed.** hasp reports what is derivable without
+the passphrase and marks the rest `unknown` with a machine-readable reason, e.g.
+`passphrase-required-no-tty`, rather than refusing to run at all.
+
+### Rationale
+
+Writes fail closed ([T6](#t6), [T22](#t22)) because a wrong write is destructive and irreversible
+in the way P4's backups do not fully undo for key material. A read has no such asymmetry — the
+worst outcome of proceeding without a passphrase is an honest `unknown`, which is exactly what
+[D12](decision-log.md#d12) already treats as the correct answer when a fact cannot be derived. A
+read that exits non-zero because nobody was present to type a passphrase would make
+`--investigate` useless in precisely the scripted, non-interactive workflows it exists to serve —
+the opposite failure from the one `new key`'s fail-closed default guards against.
+
+**This is a deliberately different stance from `new key`'s fail-closed non-interactive path
+([T6](#t6)), and the asymmetry is the point, not an inconsistency.** `new key` fails closed because
+silently generating an unprotected secret is worse than refusing. `--investigate` degrades because
+silently under-reporting a fact you already told hasp to go looking for is a worse failure than
+`new key`'s would be, in the opposite direction — a read that refuses to run at all is *less*
+honest than one that runs and says `unknown`, not more.
+
+### Consequence
+
+- [T6](#t6)'s index is annotated as amended by this entry: T6's own fail-closed default remains
+  correct and unchanged for `new key`'s **write** path; this entry is the citation that keeps a
+  future reader from assuming T6's stance generalizes to every non-interactive case, including
+  reads, which it explicitly does not.
+- `tdd.md` §9's `show key --investigate` grid cell inherits this mechanic; no new flag is needed
+  beyond `--investigate` itself — the mode's default resolves to "prompt if a TTY is attached,
+  else degrade," the mirror image of `new key`'s "prompt if a TTY is attached, else fail closed."
+- `tdd.md` §11 gains a fail-open (degrade) row for this case, stated beside T6's fail-closed row so
+  the read/write asymmetry is visible in the same table rather than scattered across two.
+- A guard test drives `--investigate --json` with stdin redirected from `/dev/null` and asserts
+  exit `0`, every derivable fact present, and the undecidable ones marked `unknown` with
+  `passphrase-required-no-tty` — never a hang, never a non-zero exit.
+
+---
+
+<a id="t40"></a>
+## T40 — The public origin is GitHub; T33's shared blocker resolves and distribution restages
+
+**Date:** 2026-09-04 · **Status:** Accepted · **Amends:** [T31](#t31), [T32](#t32), [T33](#t33)
+
+### Context
+
+[T33](#t33) named one missing fact behind four deferred distribution channels — `aur`,
+`homebrew_casks`, `ko`, and `signs` — and predicted that a single answer would unlock all four at
+once. [T31](#t31) already made the same fact load-bearing for the Go module path, because v1.0.0
+freezes it before the tag rather than after. [T32](#t32) took a local Gitea as the near-term CI
+target, naming GitHub or GitLab only as a long-term possibility "if [T31](#t31)'s public-origin
+question resolves that way." It has resolved: the author dropped Gitea — a temporary local service
+that had become more trouble to run than it was worth — and moved `origin` to
+`git@github.com:boweeb/hasp.git`. (The reason is recorded as the author's, given when the change
+was made; it is deliberately not set in quotation marks, because a quotation this log cannot
+resolve against a file in the repository would be a permanent false positive for the
+verbatim-quotation check [T32](#t32)'s `Docs` target specifies.)
+
+`main` is the repository's default branch, per the author. The Python predecessor's history is
+temporarily co-located at the same remote on `master`, bound for cold storage and deletion.
+`git merge-base main origin/master` reports no common ancestor, so the two histories are unrelated
+— which keeps `docs/README.md`'s and `design.md`'s existing statements that the predecessor's
+`README.rst` is not carried into this repository literally true of this history. Branch layout on
+the remote beyond that single fact is not verified here: SSH access to GitHub is unavailable from
+this session.
+
+### Decision
+
+Three consequences follow, stated plainly:
+
+1. **The module path is now honest.** `github.com/boweeb/hasp` resolves;
+   `go install github.com/boweeb/hasp/cmd/hasp@latest` works; [T31](#t31)'s freeze-before-tag
+   requirement is met before v1.0.0 is tagged, not discovered after.
+2. **GitHub Actions is the CI platform.** The `.gitea/workflows/` shim [T32](#t32) planned as a
+   deliverable is not built — Mage remains the contract; only the platform invoking it changed.
+3. **Distribution restages.** `signs` (cosign keyless signing via GitHub Actions' OIDC issuer) and
+   `ko` (publishing a container image to `ghcr.io`) join M3.5's shipping set alongside archives,
+   generated completions, man pages, and `sboms`. `aur` and `homebrew_casks` remain deferred.
+
+### Rationale
+
+Two points are worth making, and the second is the more useful one.
+
+**[T32](#t32)'s thin-shim rule is not validated by this migration, and claiming otherwise would be
+the wrong lesson to draw.** An earlier draft of this entry said the rule "paid off"; it did not,
+because there was nothing yet for it to pay off *on*. The honest state of the repository is that
+`magefiles/` and `mage.go` **do not exist**, the only workflow — `.github/workflows/ci.yml`, from
+M0 — hardcodes `go build`, `go vet`, `golangci-lint@latest` and `go test` directly in YAML, which
+is precisely the shape T32's rule exists to prevent, and there is no release workflow at all. The
+migration cost exactly one thing: a `release.gitea` → `release.github` change in
+`.goreleaser.yaml`.
+
+What this *does* establish is narrower and still worth acting on: **the platform moved before any
+platform-specific build logic was written, which is the cheapest moment such a move can happen and
+the strongest argument for adopting T32's rule now rather than after the release pipeline is
+built.** The rule remains untested. T32's own Context already names this gap, and nothing here
+closes it — `magefiles/`, the zero-install `mage.go` bootstrap, a GitHub Actions shim that actually
+invokes a Mage target, and a tag-triggered release workflow are all still outstanding M3.5 work.
+
+**The two remaining deferrals are qualitatively different from the four [T33](#t33) named, and
+collapsing them would be a mistake.** Origin was *a fact hasp lacked*; a Homebrew tap and an AUR
+package repository are *work the author must choose to take on* — each a separate repository the
+author must create and maintain. The first kind of deferral ends when someone answers a question;
+the second ends when someone commits to maintenance. Naming the difference keeps `aur` and
+`homebrew_casks` honest deferrals rather than ones inherited unexamined from [T33](#t33).
+
+This entry serves `design.md` §3.1's one-laptop scope and [P6](design.md#4-principles): nothing
+hasp knows may be trapped inside it, and a publicly resolvable module path plus a real release is
+what makes that promise reachable by someone who is not the author.
+
+### Consequence
+
+- [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) loses its last `INPUT NEEDED` block — M3.5 now
+  has no open questions.
+- [`tdd.md` §15](tdd.md#15-open-questions) drops from two open items to **one** (multi-directory
+  key locations), and the T-log's own `## Still open` roll-up below is updated in the same pass —
+  a count that has drifted before.
+- `.goreleaser.yaml`'s `gitea_urls` and `release.gitea` became dead config pointing at `localhost`
+  the moment origin moved; corrected in this pass to `release.github`.
+- The predecessor's Python history is temporarily co-located at the same remote on `master`, bound
+  for cold storage and deletion. `git merge-base` confirms the two histories share no ancestor, so
+  the documentation set's existing claim that the predecessor's `README.rst` is not carried into
+  this repository stays literally true.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T30` are all accepted.
+**Nothing.** `T1` through `T40` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
@@ -2071,8 +2839,31 @@ defect in it. The first pass ran with `docs/design.md` frozen, so gaps it found 
 is also how [D16](decision-log.md#d16), [D17](decision-log.md#d17) and
 [D18](decision-log.md#d18) came to exist.
 
-One item in `tdd.md` §15 remains genuinely open, and it is open by choice rather than omission:
-**multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not designed
-here. `--key-dir` is threaded explicitly through every layer rather than defaulted anywhere inside
-`internal/app` or `internal/domain`, so supporting more than one is additive whenever a case for
-it actually arrives.
+**`T35` through `T39` are the same story a second time**, for the investigation capability rather
+than the settings file or the passphrase prompt: [D19](decision-log.md#d19)–[D22](decision-log.md#d22)
+lifted the freeze `docs/design.md` had been under since the first reassessment, and these five
+entries are what a technical design does with room newly opened upstream.
+
+**One item in `tdd.md` §15 remains genuinely open, and it is open by choice rather than
+omission**, as of the reassessment recorded in [T31](#t31)–[T40](#t40):
+
+- **Multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not
+  designed here. `--key-dir` is threaded explicitly through every layer rather than defaulted
+  anywhere inside `internal/app` or `internal/domain`, so supporting more than one is additive
+  whenever a case for it actually arrives.
+
+**Two items that stood here alongside it are now closed, not merely narrowed.**
+
+**The public-origin / module-path question** ([T31](#t31), [T33](#t33)) is closed by
+[T40](#t40): the author moved `origin` to `git@github.com:boweeb/hasp.git`, which settles
+`go.mod`'s path before v1.0.0 freezes it and unblocks every deferred distribution channel at
+once — exactly as [T33](#t33) predicted a single answer would.
+
+**SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set
+`tdd.md` §9's grid already named — was open because it awaited the user's own specification of
+which candidate additions mattered. The investigation capability answered it from an unexpected
+direction: rather than adding fields to the plain read, [T35](#t35)–[T39](#t39) add a
+confidence-graded `--investigate` mode that reports fingerprint scheme, origin, and agent- or
+passphrase-derived facts — a superset of every candidate the input-needed block in
+[`roadmap.md` §5.5](roadmap.md#55-m35--hardening) once named — while leaving `list key`'s plain
+output untouched, satisfying P7 exactly as the closed item's own bound required.
