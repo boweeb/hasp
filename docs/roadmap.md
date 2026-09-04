@@ -287,6 +287,21 @@ reason, and §6 through §8 keep the numbers they already had.
   [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39)) answers a superset of the
   candidate additions this bullet used to carry, behind a flag rather than in the default read.
 
+**Chunks**
+
+Sequenced by dependency. **Status** carries the landing commit once a chunk lands — anchored like
+§1's table, so this stays a completion record and not the task tracker §8 rules out.
+
+| # | Chunk | After | Status |
+| --- | --- | --- | --- |
+| M3.5.1 | Build contract — `magefiles/`, the `mage.go` bootstrap, the target set, pinned `golangci-lint` and Go toolchain | — | Not started |
+| M3.5.2 | CI shim — the workflow invokes one Mage target and nothing else; darwin targets compile | 1 | Not started |
+| M3.5.3 | Doc verification — the `Docs` target: links, anchors, `Dn`/`Tn` citations, log invariants, verbatim quotations | 1 | Not started |
+| M3.5.4 | Generated reference — man pages, shell completions, CLI markdown, and the staleness check that keeps them honest | 1 | Not started |
+| M3.5.5 | Release pipeline — tag-triggered; archives, completions, man pages, `sboms`, `signs`, `ko`; build info stamped so `hasp version` reports it | 1, 4 | Not started |
+| M3.5.6 | Narrative docs — root `README.md`, the usage guide by journey, what hasp leaves on disk, `SECURITY.md` | — | Not started |
+| M3.5.7 | Close-out — stale claims; the default branch (independent of everything, and needed *before* criterion 6's clean-room run); the SemVer policy honoured at this milestone's own tag (`v1.0.0` and the surface freeze are [§5.6](#56-m36--investigation)'s) | all | Not started |
+
 **Explicitly out of scope**
 
 Anything touching J9 or M4. `aur` and `homebrew_casks` — [T33](tech-decision-log.md#t33),
@@ -303,7 +318,8 @@ extend the read surface.
    here** — it is reserved for [M3.6](#56-m36--investigation)'s close, per `design.md` §9, once
    the investigation surface is frozen alongside everything this milestone hardens.
 2. A clean checkout passes `go run mage.go ci` with no platform-specific step, and that same
-   target is what both workflow shims invoke.
+   target is what the workflow shim invokes — there is one shim, GitHub Actions, since
+   [T40](tech-decision-log.md#t40) dropped Gitea.
 3. The darwin targets compile in CI.
 4. The doc-verification target passes with zero broken links, zero unresolved `Dn`/`Tn`
    citations, and matching log index/anchor counts — and fails the build when it does not.
