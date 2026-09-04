@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-09-03
+DateLastReviewed: 2026-09-04
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -1336,24 +1336,42 @@ is therefore for CI/scripted use, with the key directory bind-mounted in, and UI
 mapping across that boundary is the sharp edge: a mismatched UID inside the container silently
 produces a `~/.ssh` the host user cannot read.
 
-### Staging: what ships now, what waits on one fact
+### Staging: what ships now, what stays deferred
 
-Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33)):
+Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33),
+[T40](tech-decision-log.md#t40)):
 
 | Channel | Status |
 | --- | --- |
-| `tar.gz` archives, all four targets | Shipping — the Gitea release |
+| `tar.gz` archives, all four targets | Shipping — GitHub Releases |
 | Generated shell completions and man pages | **Stated above as shipping, currently unbuilt** — nothing in this repository generates either today, and `.goreleaser.yaml` has no handling for them |
 | `sboms` | **In M3.5's scope, currently unbuilt** — `.goreleaser.yaml` names `sboms` only in its own deferred-sections comment and has no `sboms:` block |
+| `signs` | **In M3.5's scope, currently unbuilt** — cosign keyless signing via GitHub Actions' OIDC issuer; `.goreleaser.yaml` has no `signs:` block yet |
+| `ko` | **In M3.5's scope, currently unbuilt** — publishes a container image to `ghcr.io`; `.goreleaser.yaml` has no `ko:` block yet |
 | `nfpms` (`.deb`/`.rpm`/`.apk`) | Deferred |
-| `aur` | Deferred — blocked on a publicly reachable origin |
-| `homebrew_casks` | Deferred — blocked on a publicly reachable origin |
-| `ko` | Deferred — blocked on a publicly reachable origin |
-| `signs` | Deferred — blocked on a publicly reachable origin |
+| `aur` | Deferred — needs a separate AUR package repository the author must create and maintain |
+| `homebrew_casks` | Deferred — needs a separate Homebrew tap repository the author must create and maintain |
 
-The four deferred channels share one blocker, not four independent ones: none of AUR, Homebrew,
-`ko`, or keyless signing can be satisfied by a `localhost` Gitea remote, and the same fact also
-governs the module path ([T31](tech-decision-log.md#t31)).
+The four channels [T33](tech-decision-log.md#t33) named as blocked on one shared missing fact —
+hasp having no publicly reachable origin — resolved at once when `origin` moved to
+`git@github.com:boweeb/hasp.git` ([T40](tech-decision-log.md#t40)); the same fact also governed
+the module path ([T31](tech-decision-log.md#t31)). `signs` and `ko` move into M3.5's shipping set
+as a result. `aur` and `homebrew_casks` stay deferred, but for a different reason now: each needs
+a separate repository — an AUR package repo, a Homebrew tap — that the author must create and
+maintain, a maintenance commitment rather than an unknown.
+
+**What the two newly-scoped channels require of the workflow, stated here so it is planned rather
+than discovered as a red build.** Neither is purely a `.goreleaser.yaml` change:
+
+| Channel | Beyond a config block, it needs |
+| --- | --- |
+| `signs` | Keyless cosign signs against Sigstore's Fulcio using an OIDC token the workflow must be permitted to mint: the job needs **`permissions: id-token: write`**. `cosign` is not a GoReleaser-embedded library — the binary must be installed in the job (`sigstore/cosign-installer`), unlike `ko` below |
+| `ko` | A destination repository path under `ghcr.io` and authentication to push there: the job needs **`permissions: packages: write`** and a registry login. GoReleaser embeds `ko` as a library, so no separate binary install is required |
+
+The asymmetry is worth remembering: one of the two needs a binary in the job and the other does
+not, and both need a permission that defaults to unset. `permissions:` in GitHub Actions is
+deny-by-default once any key is specified, so adding one of these silently removes the others —
+declare the full set the job needs, not just the new key.
 
 ---
 
@@ -1397,20 +1415,15 @@ about its own gaps.
 | `release host` extrapolating D15's rule to hosts (§9) | [D18](decision-log.md#d18) — `release` is content-preserving for every noun; a released stanza is re-inserted as plain text, never deleted |
 | A severity taxonomy for `check` findings (§10) | [T29](tech-decision-log.md#t29) — a permanent `id` plus a re-tunable `severity`, with severity deliberately not affecting the exit code |
 | **SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set §9's grid named (§9) | [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39) — answered from an unexpected direction: rather than adding fields to the plain read, `--investigate` (§18, D21) adds a confidence-graded superset of every candidate this question once named, while `list key`'s and `show key`'s plain output stays byte-identical to before, holding P7 exactly as this question required |
+| **The public-origin / module-path question** ([T31](tech-decision-log.md#t31), [T33](tech-decision-log.md#t33)) | [T40](tech-decision-log.md#t40) — `origin` moved to `git@github.com:boweeb/hasp.git`, which settles `go.mod`'s module path before the compatibility surface freezes it, unlocks `go install github.com/boweeb/hasp/cmd/hasp@latest`, and unblocks every deferred distribution channel §13's staging table names, all at once |
 
-**Two remain genuinely open, and each is open by choice rather than omission:**
+**One remains genuinely open, and it is open by choice rather than omission:**
 
 1. **Multi-directory / non-default key locations**, exactly as `design.md` §10 leaves them.
    Nothing in §3's domain types or §5's derivation pipeline hardcodes a single directory —
    `--key-dir` is a value threaded explicitly through every layer (§12) rather than a global — so
    multi-directory support is additive whenever a case for it actually arrives. It is not designed
    here, and no part of this document assumes it never will be.
-2. **The public-origin / module-path question** ([T31](tech-decision-log.md#t31),
-   [T33](tech-decision-log.md#t33)): whether hasp gets a publicly reachable remote — a GitHub or
-   GitLab mirror, or a public Gitea. One answer settles `go.mod`'s module path before the
-   compatibility surface freezes it, unlocks `go install github.com/boweeb/hasp/cmd/hasp@latest`,
-   and unblocks every deferred distribution channel §13's staging table names, all at once. Not
-   designed here, because the answer is the user's to give, not this document's to assume.
 
 **One further gap was found during the same review and closed rather than added to this list**,
 recorded here for the same reason the table is: [T26](tech-decision-log.md#t26) named a
@@ -1423,7 +1436,10 @@ before any write, failing closed, and §11 now carries the row.
 
 ## 16. Versioning and the compatibility surface
 
-Full argument: [T31](tech-decision-log.md#t31). hasp adopts **Semantic Versioning**.
+Full argument: [T31](tech-decision-log.md#t31). hasp adopts **Semantic Versioning**. `go.mod`'s
+module path, `github.com/boweeb/hasp`, resolves against a public origin and freezes alongside the
+rest of this surface the moment v1.0.0 tags ([T40](tech-decision-log.md#t40)) — settled ahead of
+the freeze rather than an unresolved prerequisite to it.
 
 **The public contract** — breaking any of the following needs a major version bump:
 
@@ -1476,9 +1492,19 @@ checkout → set up Go → invoke one target.
 **The target set:** `Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`,
 `Fixtures`, `Docs`, `Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
 
-**The thin-shim rule.** A platform's workflow YAML (`.github/workflows/`, `.gitea/workflows/`)
-never encodes build logic directly — it invokes a Mage target and nothing else. Moving to a new
-platform is therefore a new shim file, not a rewrite.
+**The thin-shim rule.** A platform's workflow YAML (`.github/workflows/`) never encodes build
+logic directly — it invokes a Mage target and nothing else. Moving to a new platform is therefore
+a new shim file, not a rewrite.
+
+**The rule is still a design intention, not a demonstrated result, and this document should not
+imply otherwise** ([T40](tech-decision-log.md#t40)). As of this writing `magefiles/` and `mage.go`
+do not exist; the repository's only workflow, `.github/workflows/ci.yml`, hardcodes `go build`,
+`go vet`, `golangci-lint@latest` and `go test` directly in YAML — the exact shape this rule
+forbids — and there is no release workflow at all. The Gitea→GitHub migration cost one line in
+`.goreleaser.yaml` because no platform-specific build logic had been written yet, which is an
+argument for adopting the rule **now**, before the release pipeline exists, rather than evidence
+that it already worked. Everything in this section is M3.5 work
+([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
 
 **Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
 as `go run mage.go <target>`; CI needs no separately installed mage binary. This bootstrap has a

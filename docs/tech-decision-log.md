@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-28
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-09-03
+DateLastReviewed: 2026-09-04
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -74,15 +74,16 @@ rejected.
 | [T28](#t28) | Relative `IdentityFile` resolves against the key directory, and says so | Accepted — amends [T5](#t5), [T16](#t16) |
 | [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31); amended by [T37](#t37) |
 | [T30](#t30) | The preview/apply race is detected by a witness, and fails closed | Accepted — amends [T4](#t4), [T15](#t15) |
-| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29); amended by [T37](#t37) |
-| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted |
-| [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9) |
+| [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29); amended by [T37](#t37), [T40](#t40) |
+| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted — amended by [T40](#t40) |
+| [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9); amended by [T40](#t40) |
 | [T34](#t34) | User-facing documentation is generated wherever it can drift | Accepted |
 | [T35](#t35) | The fingerprint scheme registry: open, pure-Go, no subprocess, no network | Accepted |
 | [T36](#t36) | `find` matches across every registered scheme; the clue's shape routes the search | Accepted — amends `tdd.md` §9 |
 | [T37](#t37) | Confidence is a closed, permanent vocabulary in the output contract | Accepted — amends [T14](#t14), [T29](#t29), [T31](#t31) |
 | [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
 | [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
+| [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 
 ---
 
@@ -2740,9 +2741,96 @@ honest than one that runs and says `unknown`, not more.
 
 ---
 
+<a id="t40"></a>
+## T40 — The public origin is GitHub; T33's shared blocker resolves and distribution restages
+
+**Date:** 2026-09-04 · **Status:** Accepted · **Amends:** [T31](#t31), [T32](#t32), [T33](#t33)
+
+### Context
+
+[T33](#t33) named one missing fact behind four deferred distribution channels — `aur`,
+`homebrew_casks`, `ko`, and `signs` — and predicted that a single answer would unlock all four at
+once. [T31](#t31) already made the same fact load-bearing for the Go module path, because v1.0.0
+freezes it before the tag rather than after. [T32](#t32) took a local Gitea as the near-term CI
+target, naming GitHub or GitLab only as a long-term possibility "if [T31](#t31)'s public-origin
+question resolves that way." It has resolved: the author dropped Gitea — a temporary local service
+that had become more trouble to run than it was worth — and moved `origin` to
+`git@github.com:boweeb/hasp.git`. (The reason is recorded as the author's, given when the change
+was made; it is deliberately not set in quotation marks, because a quotation this log cannot
+resolve against a file in the repository would be a permanent false positive for the
+verbatim-quotation check [T32](#t32)'s `Docs` target specifies.)
+
+`main` is the repository's default branch, per the author. The Python predecessor's history is
+temporarily co-located at the same remote on `master`, bound for cold storage and deletion.
+`git merge-base main origin/master` reports no common ancestor, so the two histories are unrelated
+— which keeps `docs/README.md`'s and `design.md`'s existing statements that the predecessor's
+`README.rst` is not carried into this repository literally true of this history. Branch layout on
+the remote beyond that single fact is not verified here: SSH access to GitHub is unavailable from
+this session.
+
+### Decision
+
+Three consequences follow, stated plainly:
+
+1. **The module path is now honest.** `github.com/boweeb/hasp` resolves;
+   `go install github.com/boweeb/hasp/cmd/hasp@latest` works; [T31](#t31)'s freeze-before-tag
+   requirement is met before v1.0.0 is tagged, not discovered after.
+2. **GitHub Actions is the CI platform.** The `.gitea/workflows/` shim [T32](#t32) planned as a
+   deliverable is not built — Mage remains the contract; only the platform invoking it changed.
+3. **Distribution restages.** `signs` (cosign keyless signing via GitHub Actions' OIDC issuer) and
+   `ko` (publishing a container image to `ghcr.io`) join M3.5's shipping set alongside archives,
+   generated completions, man pages, and `sboms`. `aur` and `homebrew_casks` remain deferred.
+
+### Rationale
+
+Two points are worth making, and the second is the more useful one.
+
+**[T32](#t32)'s thin-shim rule is not validated by this migration, and claiming otherwise would be
+the wrong lesson to draw.** An earlier draft of this entry said the rule "paid off"; it did not,
+because there was nothing yet for it to pay off *on*. The honest state of the repository is that
+`magefiles/` and `mage.go` **do not exist**, the only workflow — `.github/workflows/ci.yml`, from
+M0 — hardcodes `go build`, `go vet`, `golangci-lint@latest` and `go test` directly in YAML, which
+is precisely the shape T32's rule exists to prevent, and there is no release workflow at all. The
+migration cost exactly one thing: a `release.gitea` → `release.github` change in
+`.goreleaser.yaml`.
+
+What this *does* establish is narrower and still worth acting on: **the platform moved before any
+platform-specific build logic was written, which is the cheapest moment such a move can happen and
+the strongest argument for adopting T32's rule now rather than after the release pipeline is
+built.** The rule remains untested. T32's own Context already names this gap, and nothing here
+closes it — `magefiles/`, the zero-install `mage.go` bootstrap, a GitHub Actions shim that actually
+invokes a Mage target, and a tag-triggered release workflow are all still outstanding M3.5 work.
+
+**The two remaining deferrals are qualitatively different from the four [T33](#t33) named, and
+collapsing them would be a mistake.** Origin was *a fact hasp lacked*; a Homebrew tap and an AUR
+package repository are *work the author must choose to take on* — each a separate repository the
+author must create and maintain. The first kind of deferral ends when someone answers a question;
+the second ends when someone commits to maintenance. Naming the difference keeps `aur` and
+`homebrew_casks` honest deferrals rather than ones inherited unexamined from [T33](#t33).
+
+This entry serves `design.md` §3.1's one-laptop scope and [P6](design.md#4-principles): nothing
+hasp knows may be trapped inside it, and a publicly resolvable module path plus a real release is
+what makes that promise reachable by someone who is not the author.
+
+### Consequence
+
+- [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) loses its last `INPUT NEEDED` block — M3.5 now
+  has no open questions.
+- [`tdd.md` §15](tdd.md#15-open-questions) drops from two open items to **one** (multi-directory
+  key locations), and the T-log's own `## Still open` roll-up below is updated in the same pass —
+  a count that has drifted before.
+- `.goreleaser.yaml`'s `gitea_urls` and `release.gitea` became dead config pointing at `localhost`
+  the moment origin moved; corrected in this pass to `release.github`.
+- The predecessor's Python history is temporarily co-located at the same remote on `master`, bound
+  for cold storage and deletion. `git merge-base` confirms the two histories share no ancestor, so
+  the documentation set's existing claim that the predecessor's `README.rst` is not carried into
+  this repository stays literally true.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T39` are all accepted.
+**Nothing.** `T1` through `T40` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
@@ -2756,25 +2844,26 @@ than the settings file or the passphrase prompt: [D19](decision-log.md#d19)–[D
 lifted the freeze `docs/design.md` had been under since the first reassessment, and these five
 entries are what a technical design does with room newly opened upstream.
 
-**Two items in `tdd.md` §15 remain genuinely open, and each is open by choice rather than
-omission**, as of the reassessment recorded in [T31](#t31)–[T39](#t39):
+**One item in `tdd.md` §15 remains genuinely open, and it is open by choice rather than
+omission**, as of the reassessment recorded in [T31](#t31)–[T40](#t40):
 
 - **Multi-directory / non-default key locations**, deferred by `docs/design.md` §10 and not
   designed here. `--key-dir` is threaded explicitly through every layer rather than defaulted
   anywhere inside `internal/app` or `internal/domain`, so supporting more than one is additive
   whenever a case for it actually arrives.
-- **The public-origin / module-path question** ([T31](#t31), [T33](#t33)): whether hasp gets a
-  publicly reachable remote, which settles `go.mod`'s path before v1.0.0 freezes it and unblocks
-  every deferred distribution channel at once. Recorded as an input-needed item in
-  [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) because the answer is the user's to give, not
-  this log's to assume.
 
-**A third item that stood here alongside those two is now closed, not merely narrowed.** SSH key
-inspection detail — what `list key` and `show key` should report beyond the fact set `tdd.md` §9's
-grid already named — was open because it awaited the user's own specification of which candidate
-additions mattered. The investigation capability answered it from an unexpected direction: rather
-than adding fields to the plain read, [T35](#t35)–[T39](#t39) add a confidence-graded
-`--investigate` mode that reports fingerprint scheme, origin, and agent- or passphrase-derived
-facts — a superset of every candidate the input-needed block in
+**Two items that stood here alongside it are now closed, not merely narrowed.**
+
+**The public-origin / module-path question** ([T31](#t31), [T33](#t33)) is closed by
+[T40](#t40): the author moved `origin` to `git@github.com:boweeb/hasp.git`, which settles
+`go.mod`'s path before v1.0.0 freezes it and unblocks every deferred distribution channel at
+once — exactly as [T33](#t33) predicted a single answer would.
+
+**SSH key inspection detail** — what `list key` and `show key` should report beyond the fact set
+`tdd.md` §9's grid already named — was open because it awaited the user's own specification of
+which candidate additions mattered. The investigation capability answered it from an unexpected
+direction: rather than adding fields to the plain read, [T35](#t35)–[T39](#t39) add a
+confidence-graded `--investigate` mode that reports fingerprint scheme, origin, and agent- or
+passphrase-derived facts — a superset of every candidate the input-needed block in
 [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) once named — while leaving `list key`'s plain
 output untouched, satisfying P7 exactly as the closed item's own bound required.

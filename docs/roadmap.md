@@ -2,7 +2,7 @@
 Status: APPROVED
 DateCreated: 2026-08-29
 DateApproved: 2026-08-29
-DateLastReviewed: 2026-09-03
+DateLastReviewed: 2026-09-04
 Related:
   - "[`docs/README.md`](README.md)"
   - "[`docs/design.md`](design.md)"
@@ -40,7 +40,7 @@ boundary here is a point where the tool works and could be abandoned without los
 **M1 is the milestone to defend.** `design.md` §9: *"M1 is therefore the only milestone whose
 scope should be defended aggressively."* Anything that can be argued into M2 should be.
 
-### Status — where the project actually is (2026-09-03)
+### Status — where the project actually is (2026-09-04)
 
 This document has sequenced work since it was written, but never once recorded which of that work
 actually finished — a roadmap with no completion record is only half a roadmap. This reassessment
@@ -60,9 +60,12 @@ document's own §8 already forbids.
 
 `v0.4.0` tags the commit that configured GoReleaser's Gitea publishing and added the repository's
 `LICENSE` — release plumbing that followed M3's merge, not a milestone of its own, listed here
-because it is the tag sitting immediately behind M3.5's own work. This reassessment split what had
-been a single M3.5 into [§5.5](#55-m35--hardening) and [§5.6](#56-m36--investigation) — see the
-new milestone's own opening note for why the split, and why the section number it landed on.
+because it is the tag sitting immediately behind M3.5's own work. That Gitea publishing target was
+since dropped in favour of GitHub — `origin` is now `git@github.com:boweeb/hasp.git`
+([T40](tech-decision-log.md#t40)) — so a reader should not take this note as meaning Gitea is
+still live. This reassessment split what had been a single M3.5 into [§5.5](#55-m35--hardening)
+and [§5.6](#56-m36--investigation) — see the new milestone's own opening note for why the split,
+and why the section number it landed on.
 
 ---
 
@@ -258,10 +261,11 @@ reason, and §6 through §8 keep the numbers they already had.
 - **CI/CD** — the Mage target set and the thin-shim rule
   ([`tdd.md` §17](tdd.md#17-continuous-integration-and-release-automation),
   [T32](tech-decision-log.md#t32)).
-- **Distribution** — archives, generated completions and man pages, and an SBOM shipping now; the
-  four publicly-origin-blocked channels staying deferred
+- **Distribution** — archives, generated completions and man pages, an SBOM, cosign keyless
+  signing (`signs`), and a `ko`-published container image all shipping now
   ([`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought),
-  [T33](tech-decision-log.md#t33)).
+  [T33](tech-decision-log.md#t33), [T40](tech-decision-log.md#t40)); `aur` and `homebrew_casks`
+  staying deferred, each pending a separate repository the author must create and maintain.
 - **User-facing documentation** — the generated/hand-written split
   ([T34](tech-decision-log.md#t34)).
 - **Doc hygiene** — the stale claims a new reader trips over first: the root `README.md`'s
@@ -285,17 +289,19 @@ reason, and §6 through §8 keep the numbers they already had.
 
 **Explicitly out of scope**
 
-Anything touching J9 or M4. The four distribution channels [T33](tech-decision-log.md#t33)
-defers. Multi-directory / non-default key locations — `design.md` §10 leaves them deferred and
-this milestone does not reopen them. **Investigation** ([§5.6](#56-m36--investigation)) — this
-milestone hardens what M1–M3 already built; it does not extend the read surface.
+Anything touching J9 or M4. `aur` and `homebrew_casks` — [T33](tech-decision-log.md#t33),
+[T40](tech-decision-log.md#t40) — deferred pending repositories the author has not yet chosen to
+create and maintain. Multi-directory / non-default key locations — `design.md` §10 leaves them
+deferred and this milestone does not reopen them. **Investigation**
+([§5.6](#56-m36--investigation)) — this milestone hardens what M1–M3 already built; it does not
+extend the read surface.
 
 **Exit criteria**
 
 1. A release is tagged, and it carries archives for all four targets plus generated completions,
-   man pages, and an SBOM. **`v1.0.0` itself is not claimed here** — it is reserved for
-   [M3.6](#56-m36--investigation)'s close, per `design.md` §9, once the investigation surface is
-   frozen alongside everything this milestone hardens.
+   man pages, an SBOM, a signature, and a container image. **`v1.0.0` itself is not claimed
+   here** — it is reserved for [M3.6](#56-m36--investigation)'s close, per `design.md` §9, once
+   the investigation surface is frozen alongside everything this milestone hardens.
 2. A clean checkout passes `go run mage.go ci` with no platform-specific step, and that same
    target is what both workflow shims invoke.
 3. The darwin targets compile in CI.
@@ -311,19 +317,18 @@ milestone hardens what M1–M3 already built; it does not extend the read surfac
    away from it" — the milestone's own one-line claim — and it is deliberately a script rather
    than a judgement, because every other exit criterion in this document is.
 7. `golangci-lint` and the Go toolchain are both pinned to exact versions.
-8. **The input-needed item below is closed** — answered and recorded in its own `Tn` entry, or
-   explicitly deferred by a recorded decision. It may not close by being forgotten. Settling it
-   here, ahead of [M3.6](#56-m36--investigation), is what lets that milestone's `v1.0.0` tag
-   freeze the module path without a last-minute scramble ([T31](tech-decision-log.md#t31)).
+8. **The repository a stranger actually lands on is this project.** GitHub's default branch is
+   `main`, and the archived Python predecessor's `master` history has been moved to cold storage
+   and removed. This is criterion 6's hidden precondition rather than a cosmetic tidy: a clean-room
+   run that clones the default branch gets the predecessor, not hasp, and criterion 6 would fail
+   for a reason no amount of `README.md` work could fix
+   ([T40](tech-decision-log.md#t40)).
 
-> **⚠ INPUT NEEDED — a publicly reachable origin.**
->
-> Whether hasp gets one — a GitHub or GitLab mirror, or a public Gitea — settles the Go module
-> path (frozen the moment v1.0.0 tags, [T31](tech-decision-log.md#t31)), `go install`, and all
-> four distribution channels [T33](tech-decision-log.md#t33) defers, all at once.
-> **Recommendation, offered rather than decided:** if the long-term CI target is GitHub or GitLab
-> anyway, a mirror is what makes the existing `github.com/boweeb/hasp` module path honest rather
-> than aspirational.
+> **Settled.** `origin` is `git@github.com:boweeb/hasp.git` ([T40](tech-decision-log.md#t40)) —
+> the Go module path, `go install`, and all four distribution channels
+> [T33](tech-decision-log.md#t33) named unblocked at once, exactly as predicted. `signs` and `ko`
+> join this milestone's shipping set; `aur` and `homebrew_casks` stay deferred for a different
+> reason — see **Explicitly out of scope** above. M3.5 carries no open input-needed item.
 
 ---
 
@@ -423,7 +428,7 @@ now would be the failure mode this gate exists to prevent.
 | **Scope creep toward J9** — the documented, already-experienced failure mode | Any | `D8`, and M4's hard gate above |
 | **`settings.toml` grows into the old state file** — it has exactly that shape | M2 onward | `D16`'s admission rule, enforced by the field-set test rather than by review discipline |
 | **The docs and the code drift apart** — the thing that killed the predecessor's design | Any | Every `Dn`/`Tn` ID is stable and citable from code comments and commit messages; a change contradicting one is supposed to be caught by that citation failing to make sense |
-| **The compatibility surface freezes at v1.0.0 while the module path is still unsettled** — a problem that becomes unfixable-after-the-fact the moment the tag is cut | The v1.0.0 tag ([M3.6](#56-m36--investigation)) | [T31](tech-decision-log.md#t31) makes it a named prerequisite, tracked as an input-needed item in §5.5 rather than left implicit — settled a milestone ahead of the tag it gates, not at the last moment |
+| **The compatibility surface freezes at v1.0.0 while the module path was still unsettled** — a problem that would have become unfixable-after-the-fact the moment the tag was cut | The v1.0.0 tag ([M3.6](#56-m36--investigation)) | Resolved. [T31](tech-decision-log.md#t31) named it a prerequisite instead of leaving it implicit; [T40](tech-decision-log.md#t40) settled it — `origin` moved to `git@github.com:boweeb/hasp.git`, a milestone ahead of the tag it gated, not at the last moment |
 | **CI logic drifts back into a platform's YAML** — the failure mode the Mage shim exists to prevent | Whenever a new platform is added | [T32](tech-decision-log.md#t32)'s thin-shim rule and the single `CI` aggregate target |
 | **Generated documentation goes stale** — a CLI reference, man pages, or completions that silently disagree with the binary | Continuously, every time a flag or command changes | [T34](tech-decision-log.md#t34)'s CI staleness check |
 | **Investigation scope grows past what J10 actually needs** — an open-ended registry and an opt-in mode are both natural places for "just one more candidate field" to accrete | [M3.6](#56-m36--investigation) | Held by that milestone's own exit criteria (a fixed set of fixture-backed assertions, not a growing wishlist) and by the keyring rung staying explicitly deferred (`design.md` §10) |
