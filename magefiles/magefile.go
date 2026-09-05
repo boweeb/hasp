@@ -68,6 +68,13 @@ func Fixtures() error {
 	return sh.RunV("go", "run", "./tools/genfixtures")
 }
 
+// Docs runs the documentation-verification checks (docs/tdd.md §17, docs/roadmap.md §5.5): broken
+// links and anchors, every Dn/Tn citation resolving to a real entry, the D-log/T-log per-log
+// invariants, and citation-anchored verbatim-quotation checking.
+func Docs() error {
+	return sh.RunV("go", "run", "./tools/docscheck")
+}
+
 // CI is the aggregate target a workflow shim invokes (T32's thin-shim rule). It deliberately
 // excludes Fuzz (a smoke/optional target, not blocking on every CI run) and Fixtures
 // (testdata/keys/ fixtures are checked-in, hand-committed content regenerated via crypto/rand —
@@ -76,5 +83,5 @@ func Fixtures() error {
 // currently-committed fixtures; Fixtures stays a standalone dev-time "regenerate and commit"
 // target, run manually via `go run mage.go fixtures`).
 func CI() {
-	mg.Deps(Build, Vet, Lint, Test, Cross)
+	mg.Deps(Build, Vet, Lint, Test, Cross, Docs)
 }

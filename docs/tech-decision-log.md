@@ -856,7 +856,7 @@ new field.
 ### Context
 
 [D9](decision-log.md#d9) makes host groups real files (`~/.ssh/<group>.sshconfig`), but
-`design.md` §10 leaves *"the composition mechanism that makes host groups (§5.5) real"* explicitly
+`design.md` §10 leaves *"the composition mechanism behind host groups (§5.5)"* explicitly
 deferred. OpenSSH's own `ssh_config(5)` semantics are **first-obtained-value-wins** per
 parameter — the first matching value for a given keyword wins, later ones are ignored — which
 makes the *order* group files are pulled into `~/.ssh/config` a fact with real behavioral
@@ -1739,7 +1739,8 @@ looked hard. The assessment says the opposite: *"the blockers are small and well
 *"A focused day gets you back to a working single-store tool."*
 
 It was not taken because **[D12](decision-log.md#d12) deleted most of the work the repair
-consisted of.** The assessment's Phase 1 is *"Decide the store, then converge on it."* Phase 2 is
+consisted of.** `project-assessment-2026-08.md` §6's Phase 1 is *"Decide the store, then converge
+on it."* Phase 2 is
 *"Finish `sync key`"*, labelled *"this is the MVP."* D12 answers Phase 1 with *neither store*,
 and dissolves Phase 2 outright in its own words: *"**`sync` dissolves.** The verb exists only to
 reconcile an index against reality. With no index there is nothing to reconcile."*
@@ -2052,7 +2053,7 @@ pressed `y` should not be shown a *different* diff and asked again in the same b
 is explicit, and costs one keystroke.
 
 **Backups do not make this safe on their own.** P4 would let the user recover the clobbered file,
-which is exactly the *"apology rather than a safety property"* shape
+which is exactly the *apology rather than a safety property* shape
 [D18](decision-log.md#d18) rejects for `release host`. The same reasoning applies here.
 
 ### Consequence

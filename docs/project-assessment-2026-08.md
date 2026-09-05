@@ -28,8 +28,8 @@ Related:
 > re-implemented in Go, in this repository, per
 > [`T27`](tech-decision-log.md#t27) — which cites this document as its own evidence and records
 > why the repair roadmap in §6 below was not taken. In short: `D12` removed persisted state
-> entirely, which dissolved Phase 1's *"decide the store"* and Phase 2's *"finish `sync key`"* —
-> the two phases §6 identifies as the bulk of the work and the MVP.
+> entirely, which dissolved Phase 1's plan to decide the store and Phase 2's goal to finish
+> `sync key` — the two phases §6 identifies as the bulk of the work and the MVP.
 >
 > **Nothing below is a live plan.** §6's Phase 0–5 roadmap describes repairs to files that do not
 > exist in this repository. It is preserved because the *findings* it records are the evidence
