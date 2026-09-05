@@ -116,9 +116,13 @@ func renderFindingsTable(cmd *cobra.Command, findings []app.Finding) error {
 		}
 		return w.Flush()
 	}
-	fmt.Fprintln(w, "SEVERITY\tID\tSUBJECT\tMESSAGE")
+	if _, err := fmt.Fprintln(w, "SEVERITY\tID\tSUBJECT\tMESSAGE"); err != nil {
+		return err
+	}
 	for _, f := range findings {
-		fmt.Fprintf(w, "%s\t%s\t%s %s\t%s\n", f.Severity, f.ID, f.Subject.Kind, f.Subject.Name, f.Message)
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s %s\t%s\n", f.Severity, f.ID, f.Subject.Kind, f.Subject.Name, f.Message); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
@@ -130,10 +134,14 @@ func renderFindingsTable(cmd *cobra.Command, findings []app.Finding) error {
 // one-screen answer (P7) even at a dozen-plus keys.
 func renderKeyTable(cmd *cobra.Command, keys []domain.Key) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "NAME\tALGORITHM\tFORMAT\tENCRYPTED\tPROFILES\tCOMMENT\tFINGERPRINT")
+	if _, err := fmt.Fprintln(w, "NAME\tALGORITHM\tFORMAT\tENCRYPTED\tPROFILES\tCOMMENT\tFINGERPRINT"); err != nil {
+		return err
+	}
 	for _, k := range keys {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
-			k.Name, orDash(k.Algorithm), k.Format, k.Encrypted, profilesCell(k.Profiles), orDash(k.Comment), truncatedFingerprintCell(k))
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\t%s\t%s\n",
+			k.Name, orDash(k.Algorithm), k.Format, k.Encrypted, profilesCell(k.Profiles), orDash(k.Comment), truncatedFingerprintCell(k)); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
@@ -141,29 +149,55 @@ func renderKeyTable(cmd *cobra.Command, keys []domain.Key) error {
 func renderKeyDetail(cmd *cobra.Command, d app.KeyDetail) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
 	k := d.Key
-	fmt.Fprintf(w, "Name:\t%s\n", k.Name)
-	fmt.Fprintf(w, "Identity:\t%s (%s)\n", k.Identity.Value(), k.Identity.Kind())
-	fmt.Fprintf(w, "Algorithm:\t%s\n", orDash(k.Algorithm))
-	fmt.Fprintf(w, "Format:\t%s\n", k.Format)
-	fmt.Fprintf(w, "Encrypted:\t%v\n", k.Encrypted)
-	fmt.Fprintf(w, "Public half:\t%v\n", k.HasPublicHalf)
-	fmt.Fprintf(w, "Comment:\t%s\n", orDash(k.Comment))
-	fmt.Fprintf(w, "Profiles:\t%s\n", profilesCell(k.Profiles))
-	fmt.Fprintln(w, "Locations:")
+	if _, err := fmt.Fprintf(w, "Name:\t%s\n", k.Name); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Identity:\t%s (%s)\n", k.Identity.Value(), k.Identity.Kind()); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Algorithm:\t%s\n", orDash(k.Algorithm)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Format:\t%s\n", k.Format); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Encrypted:\t%v\n", k.Encrypted); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Public half:\t%v\n", k.HasPublicHalf); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Comment:\t%s\n", orDash(k.Comment)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Profiles:\t%s\n", profilesCell(k.Profiles)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "Locations:"); err != nil {
+		return err
+	}
 	for _, loc := range k.Locations {
 		kind := "file"
 		if loc.IsAlias {
 			kind = "alias"
 		}
-		fmt.Fprintf(w, "  %s\t(%s)\n", loc.Path, kind)
+		if _, err := fmt.Fprintf(w, "  %s\t(%s)\n", loc.Path, kind); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w, "Hosts:")
+	if _, err := fmt.Fprintln(w, "Hosts:"); err != nil {
+		return err
+	}
 	if len(d.Hosts) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		if _, err := fmt.Fprintln(w, "  (none)"); err != nil {
+			return err
+		}
 	}
 	for _, h := range d.Hosts {
 		kind := bindingKindFor(h, k.Identity)
-		fmt.Fprintf(w, "  %s\t(%s)\n", hostPatternName(h.Patterns), kind)
+		if _, err := fmt.Fprintf(w, "  %s\t(%s)\n", hostPatternName(h.Patterns), kind); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }

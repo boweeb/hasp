@@ -69,7 +69,12 @@ func Fixtures() error {
 }
 
 // CI is the aggregate target a workflow shim invokes (T32's thin-shim rule). It deliberately
-// excludes Fuzz — fuzzing is a smoke/optional target, not blocking on every CI run.
+// excludes Fuzz (a smoke/optional target, not blocking on every CI run) and Fixtures
+// (testdata/keys/ fixtures are checked-in, hand-committed content regenerated via crypto/rand —
+// re-running Fixtures on every CI invocation would nondeterministically rewrite tracked files and
+// break tests like TestFullInventory that hardcode fingerprint-derived values against the
+// currently-committed fixtures; Fixtures stays a standalone dev-time "regenerate and commit"
+// target, run manually via `go run mage.go fixtures`).
 func CI() {
-	mg.Deps(Build, Vet, Lint, Test, Cross, Fixtures)
+	mg.Deps(Build, Vet, Lint, Test, Cross)
 }

@@ -294,7 +294,7 @@ Sequenced by dependency. **Status** carries the landing commit once a chunk land
 
 | # | Chunk | After | Status |
 | --- | --- | --- | --- |
-| M3.5.1 | Build contract — `magefiles/`, the `mage.go` bootstrap, the target set, pinned `golangci-lint` and Go toolchain | — | Not started |
+| M3.5.1 | Build contract — `magefiles/`, the `mage.go` bootstrap, the target set, pinned `golangci-lint` and Go toolchain | — | Landed — `957ce9b` |
 | M3.5.2 | CI shim — the workflow invokes one Mage target and nothing else; darwin targets compile | 1 | Not started |
 | M3.5.3 | Doc verification — the `Docs` target: links, anchors, `Dn`/`Tn` citations, log invariants, verbatim quotations | 1 | Not started |
 | M3.5.4 | Generated reference — man pages, shell completions, CLI markdown, and the staleness check that keeps them honest | 1 | Not started |

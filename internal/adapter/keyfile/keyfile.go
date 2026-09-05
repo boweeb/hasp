@@ -60,8 +60,8 @@ func Inspect(path string) (Info, error) {
 	}
 
 	key, err := ssh.ParseRawPrivateKey(raw)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		info.Encrypted = false
 		info.Algorithm, info.Bits = classify(key)
 		if signer, sErr := ssh.NewSignerFromKey(key); sErr == nil {

@@ -80,7 +80,9 @@ func newNewKeyCmd() *cobra.Command {
 			// confirmation line never follows it on the same stream.
 			return nil
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "created key %q\n", args[0])
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "created key %q\n", args[0]); err != nil {
+			return err
+		}
 		return nil
 	}
 	return cmd
@@ -145,7 +147,9 @@ func newNewHostCmd() *cobra.Command {
 			// runWritePlan already rendered is the entire machine-readable answer.
 			return nil
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "created host %q\n", hostPatternName(args))
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "created host %q\n", hostPatternName(args)); err != nil {
+			return err
+		}
 		return nil
 	}
 	return cmd

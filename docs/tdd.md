@@ -1496,19 +1496,22 @@ checkout → set up Go → invoke one target.
 logic directly — it invokes a Mage target and nothing else. Moving to a new platform is therefore
 a new shim file, not a rewrite.
 
-**The target set now exists and is runnable; the thin-shim rule is still unproven.** As of this
-writing (M3.5.1), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
+**The target set exists and the thin-shim rule is now exercised by a real workflow.** As of this
+writing (M3.5.2), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
 `Cross`, `Fuzz`, `Fixtures`, and `CI` — `Docs` and `Release` are not yet added, since neither has
-real logic to run until their own chunks land. What has *not* yet happened is the workflow
-rewiring: the repository's only workflow, `.github/workflows/ci.yml`, still hardcodes `go build`,
-`go vet`, `golangci-lint@latest` and `go test` directly in YAML — the exact shape this rule
-forbids — and there is no release workflow at all. Pointing that workflow at `go run mage.go ci`
-instead is M3.5.2, still pending, so the thin-shim rule itself remains a design intention, not a
-demonstrated result, until then ([T40](tech-decision-log.md#t40)). The Gitea→GitHub migration cost
-one line in `.goreleaser.yaml` because no platform-specific build logic had been written yet, which
-is an argument for adopting the rule **now**, before the release pipeline exists, rather than
-evidence that it already worked. Everything in this section is M3.5 work
-([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
+real logic to run until their own chunks land. The repository's only workflow,
+`.github/workflows/ci.yml`, now invokes `go run mage.go ci` as its sole step, rather than
+hardcoding `go build`/`go vet`/`golangci-lint`/`go test` directly in YAML — the shape this rule
+forbids. `CI`'s own `mg.Deps` set is `Build, Vet, Lint, Test, Cross` — explicitly **not** `Fuzz` or
+`Fixtures`: `Fuzz` is a smoke/optional target, and `Fixtures` regenerates checked-in
+`testdata/keys/` fixtures via `crypto/rand` on every run, which races `Test` under `mg.Deps`'s
+concurrent execution and breaks tests (`TestFullInventory`) that hardcode fingerprint-derived
+values against the currently-committed fixtures — see
+[T41](tech-decision-log.md#t41) for the full account. The Gitea→GitHub migration cost one line in
+`.goreleaser.yaml` because no platform-specific build logic had been written yet, which was the
+argument for adopting the rule before the release pipeline existed
+([T40](tech-decision-log.md#t40)); there is still no release workflow. Everything in this section
+is M3.5 work ([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
 
 **Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
 as `go run mage.go <target>`; CI needs no separately installed mage binary. This bootstrap has a

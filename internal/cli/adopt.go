@@ -67,7 +67,9 @@ func newAdoptKeyCmd() *cobra.Command {
 			// runWritePlan already rendered is the entire machine-readable answer.
 			return nil
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "adopted key %q into profile %q\n", key.Name, *profileFlag)
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "adopted key %q into profile %q\n", key.Name, *profileFlag); err != nil {
+			return err
+		}
 		return nil
 	}
 	return cmd
@@ -106,7 +108,9 @@ func newAdoptProfileCmd() *cobra.Command {
 			if !applied || flags.JSON {
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "adopted profile %q\n", args[0])
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "adopted profile %q\n", args[0]); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -144,7 +148,9 @@ func newAdoptHostCmd() *cobra.Command {
 			if !applied || flags.JSON {
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "adopted host %q\n", args[0])
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "adopted host %q\n", args[0]); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

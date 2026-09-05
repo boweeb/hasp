@@ -97,9 +97,13 @@ func newCheckProfileCmd() *cobra.Command {
 // --help text already promised.
 func renderProfileSummaryTable(cmd *cobra.Command, summaries []app.ProfileSummary) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "PROFILE\tMANAGED\tKEYS\tHOSTS\tDIR")
+	if _, err := fmt.Fprintln(w, "PROFILE\tMANAGED\tKEYS\tHOSTS\tDIR"); err != nil {
+		return err
+	}
 	for _, s := range summaries {
-		fmt.Fprintf(w, "%s\t%v\t%d\t%d\t%s\n", s.Profile.Path, s.Profile.Managed, s.KeyCount, s.HostCount, s.Profile.Dir)
+		if _, err := fmt.Fprintf(w, "%s\t%v\t%d\t%d\t%s\n", s.Profile.Path, s.Profile.Managed, s.KeyCount, s.HostCount, s.Profile.Dir); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
@@ -108,30 +112,50 @@ func renderProfileSummaryTable(cmd *cobra.Command, summaries []app.ProfileSummar
 // name fragment," nothing about counts for find).
 func renderProfileTable(cmd *cobra.Command, profiles []domain.Profile) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "PROFILE\tMANAGED\tDIR")
+	if _, err := fmt.Fprintln(w, "PROFILE\tMANAGED\tDIR"); err != nil {
+		return err
+	}
 	for _, p := range profiles {
-		fmt.Fprintf(w, "%s\t%v\t%s\n", p.Path, p.Managed, p.Dir)
+		if _, err := fmt.Fprintf(w, "%s\t%v\t%s\n", p.Path, p.Managed, p.Dir); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
 
 func renderProfileDetail(cmd *cobra.Command, d app.ProfileDetail) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintf(w, "Profile:\t%s\n", d.Profile.Path)
-	fmt.Fprintf(w, "Dir:\t%s\n", d.Profile.Dir)
-	fmt.Fprintln(w, "Keys:")
+	if _, err := fmt.Fprintf(w, "Profile:\t%s\n", d.Profile.Path); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Dir:\t%s\n", d.Profile.Dir); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "Keys:"); err != nil {
+		return err
+	}
 	if len(d.Keys) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		if _, err := fmt.Fprintln(w, "  (none)"); err != nil {
+			return err
+		}
 	}
 	for _, kr := range d.Keys {
-		fmt.Fprintf(w, "  %s\t(from %s)\n", kr.Key.Name, kr.FromProfile)
+		if _, err := fmt.Fprintf(w, "  %s\t(from %s)\n", kr.Key.Name, kr.FromProfile); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w, "Hosts:")
+	if _, err := fmt.Fprintln(w, "Hosts:"); err != nil {
+		return err
+	}
 	if len(d.Hosts) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		if _, err := fmt.Fprintln(w, "  (none)"); err != nil {
+			return err
+		}
 	}
 	for _, hr := range d.Hosts {
-		fmt.Fprintf(w, "  %s\t(from %s)\n", hostPatternName(hr.Host.Patterns), hr.FromProfile)
+		if _, err := fmt.Fprintf(w, "  %s\t(from %s)\n", hostPatternName(hr.Host.Patterns), hr.FromProfile); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }

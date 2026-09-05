@@ -83,7 +83,9 @@ func newEditKeyCmd() *cobra.Command {
 			// --json's stdout is data only (tdd.md §10, T14), mirroring adopt/release's own RunE.
 			return nil
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "edited key %q\n", key.Name)
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "edited key %q\n", key.Name); err != nil {
+			return err
+		}
 		return nil
 	}
 	return cmd
@@ -192,7 +194,9 @@ func newEditHostCmd() *cobra.Command {
 			// runWritePlan already rendered is the entire machine-readable answer.
 			return nil
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "edited host %q\n", args[0])
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "edited host %q\n", args[0]); err != nil {
+			return err
+		}
 		return nil
 	}
 	return cmd
