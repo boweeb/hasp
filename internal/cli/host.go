@@ -111,26 +111,44 @@ func findingsForSubjectKinds(findings []app.Finding, kinds ...string) []app.Find
 // several implicit-default keys at once must not turn one row into a wall of fingerprints.
 func renderHostTable(cmd *cobra.Command, hosts []domain.Host) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintln(w, "PATTERN\tGROUP\tPROFILES\tMANAGED\tBINDINGS")
+	if _, err := fmt.Fprintln(w, "PATTERN\tGROUP\tPROFILES\tMANAGED\tBINDINGS"); err != nil {
+		return err
+	}
 	for _, h := range hosts {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\n",
-			hostPatternName(h.Patterns), hostGroupName(h.HostGroup), profilesCell(h.Profiles), h.Managed, bindingsCell(h.Bindings))
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%v\t%s\n",
+			hostPatternName(h.Patterns), hostGroupName(h.HostGroup), profilesCell(h.Profiles), h.Managed, bindingsCell(h.Bindings)); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }
 
 func renderHostDetail(cmd *cobra.Command, h domain.Host) error {
 	w := render.NewTabWriter(cmd.OutOrStdout())
-	fmt.Fprintf(w, "Pattern:\t%s\n", hostPatternName(h.Patterns))
-	fmt.Fprintf(w, "Group:\t%s\n", hostGroupName(h.HostGroup))
-	fmt.Fprintf(w, "Managed:\t%v\n", h.Managed)
-	fmt.Fprintf(w, "Profiles:\t%s\n", profilesCell(h.Profiles))
-	fmt.Fprintln(w, "Bindings:")
+	if _, err := fmt.Fprintf(w, "Pattern:\t%s\n", hostPatternName(h.Patterns)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Group:\t%s\n", hostGroupName(h.HostGroup)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Managed:\t%v\n", h.Managed); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Profiles:\t%s\n", profilesCell(h.Profiles)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "Bindings:"); err != nil {
+		return err
+	}
 	if len(h.Bindings) == 0 {
-		fmt.Fprintln(w, "  (none)")
+		if _, err := fmt.Fprintln(w, "  (none)"); err != nil {
+			return err
+		}
 	}
 	for _, b := range h.Bindings {
-		fmt.Fprintf(w, "  %s\t(%s)\n", b.Key.Value(), b.Kind)
+		if _, err := fmt.Fprintf(w, "  %s\t(%s)\n", b.Key.Value(), b.Kind); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }

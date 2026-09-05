@@ -59,7 +59,9 @@ func newReleaseKeyCmd() *cobra.Command {
 			if !applied || flags.JSON {
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "released key %q\n", key.Name)
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "released key %q\n", key.Name); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -97,7 +99,9 @@ func newReleaseProfileCmd() *cobra.Command {
 			if !applied || flags.JSON {
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "released profile %q\n", args[0])
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "released profile %q\n", args[0]); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -131,7 +135,9 @@ func newReleaseHostCmd() *cobra.Command {
 			if !applied || flags.JSON {
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "released host %q\n", args[0])
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "released host %q\n", args[0]); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

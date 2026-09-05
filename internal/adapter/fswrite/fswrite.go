@@ -133,12 +133,16 @@ func preserveOwnership(target, tmpPath string) {
 
 // fsyncDir fsyncs dir's own directory entry so a preceding os.Rename into it is durable across a
 // crash on Linux (§11 point 1) — easy to skip, easy to regret.
-func fsyncDir(dir string) error {
+func fsyncDir(dir string) (err error) {
 	d, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() {
+		if cerr := d.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 	return d.Sync()
 }
 

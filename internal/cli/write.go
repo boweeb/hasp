@@ -76,12 +76,16 @@ func confirmApply(cmd *cobra.Command) (bool, error) {
 		return false, fmt.Errorf("%w: refusing to apply without a confirmation: stdin is not a terminal and --yes was not given", app.ErrUsage)
 	}
 
-	fmt.Fprint(cmd.OutOrStdout(), "Apply these changes? [y/N] ")
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), "Apply these changes? [y/N] "); err != nil {
+		return false, err
+	}
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	line = strings.TrimSpace(line)
 	if strings.EqualFold(line, "y") || strings.EqualFold(line, "yes") {
 		return true, nil
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), "not confirmed; nothing applied")
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "not confirmed; nothing applied"); err != nil {
+		return false, err
+	}
 	return false, nil
 }

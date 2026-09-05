@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  build-test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -18,14 +18,5 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: go build
-        run: go build ./...
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: golangci-lint
-        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run ./...
-
-      - name: go test
-        run: go test ./...
+      - name: mage ci
+        run: go run mage.go ci

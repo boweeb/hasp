@@ -140,7 +140,11 @@ func (g guardEnv) mkGuardBareHostStanza(t *testing.T, pattern string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if _, err := fmt.Fprintf(f, "Host %s\n    HostName %s.example.com\n", pattern, pattern); err != nil {
 		t.Fatal(err)
 	}

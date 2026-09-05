@@ -75,7 +75,7 @@ rejected.
 | [T29](#t29) | `check` findings carry a stable `id` and a re-tunable `severity` | Accepted — amends [T14](#t14); extended by [T31](#t31); amended by [T37](#t37) |
 | [T30](#t30) | The preview/apply race is detected by a witness, and fails closed | Accepted — amends [T4](#t4), [T15](#t15) |
 | [T31](#t31) | Semantic versioning, and the compatibility surface v1.0.0 freezes | Accepted — amends [T14](#t14), [T29](#t29); amended by [T37](#t37), [T40](#t40) |
-| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted — amended by [T40](#t40) |
+| [T32](#t32) | Mage is the build/CI contract; platform workflows are thin shims | Accepted — amended by [T40](#t40), [T41](#t41) |
 | [T33](#t33) | Distribution is staged: self-hosted now, public channels blocked on one missing fact | Accepted — amends [T9](#t9); amended by [T40](#t40) |
 | [T34](#t34) | User-facing documentation is generated wherever it can drift | Accepted |
 | [T35](#t35) | The fingerprint scheme registry: open, pure-Go, no subprocess, no network | Accepted |
@@ -84,6 +84,7 @@ rejected.
 | [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
 | [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
+| [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
 
 ---
 
@@ -2828,9 +2829,81 @@ what makes that promise reachable by someone who is not the author.
 
 ---
 
+<a id="t41"></a>
+## T41 — `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory`
+
+**Date:** 2026-09-04 · **Status:** Accepted · **Amends:** [T32](#t32)
+
+### Context
+
+M3.5.2 (`roadmap.md`'s CI-shim chunk) rewired `.github/workflows/ci.yml` to invoke exactly one
+step, `go run mage.go ci`, in place of the hardcoded `go build`/`go vet`/`golangci-lint`/`go test`
+steps [T40](#t40) found still in place — the first time anyone actually ran `go run mage.go ci`
+against the real workflow. [T32](#t32)'s original target set for `CI`'s `mg.Deps` aggregate was
+`Build, Vet, Lint, Test, Cross, Fixtures`. Running it surfaced two real bugs, not one:
+
+1. **A race.** `mg.Deps` runs its dependencies concurrently ([T32](#t32)'s own Rationale cites
+   this). `Fixtures` shells out to `go run ./tools/genfixtures`, which rewrites all 28 files under
+   `testdata/keys/` using `crypto/rand`, while `Test` reads those same files — `Test` can start
+   reading a fixture directory `Fixtures` is still mid-write, producing spurious failures like "got
+   27 private-key fixtures, want 28".
+2. **A correctness bug, worse than the race.** Serializing `Fixtures` before `Test` does not fix
+   this: `tools/genfixtures` regenerates fresh, random key material on every run, and
+   `internal/cli/fullinventory_test.go`'s `TestFullInventory` hardcodes a fingerprint-derived
+   assertion against the *currently-committed* fixture content — `run("find", "key",
+   "T4RN-6go9")` is a mangled fragment of the real SSH fingerprint of the committed
+   `testdata/keys/ed25519-openssh-plain-nopub` file, asserted to resolve to `id_ed25519_foobarco`.
+   Regenerating that file with a fresh random keypair changes its fingerprint and breaks the
+   assertion deterministically, every time — not flakily, and not fixable by reordering.
+
+Direct experiment during this chunk confirmed both: `go run mage.go ci` as [T32](#t32) specified it
+fails with the race symptom and, after serializing, with the `TestFullInventory` fingerprint
+mismatch; `go build ./... && go vet ./... && go test ./...` run without touching `Fixtures` at all
+— i.e. against `testdata/keys/` exactly as committed — passes clean, including
+`TestFullInventory`. `tools/genfixtures`'s own package doc already calls it "a development-time
+convenience, run via `go run ./tools/genfixtures` from the repo root": a manual
+regenerate-then-commit step, not something CI should re-run and discard on every invocation.
+
+### Decision
+
+`CI`'s `mg.Deps` aggregate drops `Fixtures`, leaving `Build, Vet, Lint, Test, Cross` — the same set
+[T32](#t32) already excluded `Fuzz` from, for the same reason: `Fixtures` is a standalone,
+manually-invoked dev-time target (`go run mage.go fixtures`), not part of the blocking set every
+`CI` run executes. `Fixtures` itself is unchanged as a target; only its membership in `CI`'s
+dependency list is removed. `Test` does **not** gain an `mg.Deps(Fixtures)` call either — that
+ordering was tried and rejected for the same correctness reason: any run that touches
+`testdata/keys/` invalidates `TestFullInventory`'s hardcoded fingerprint fragment regardless of
+race conditions.
+
+### Rationale
+
+`testdata/keys/` as checked into git is hand-committed, checked-in content that other tests
+already depend on by fingerprint value, not a build artifact `CI` is entitled to regenerate and
+discard. Treating `Fixtures` as part of the blocking aggregate conflated two different kinds of
+target: things that verify the tree as committed (`Build`, `Vet`, `Lint`, `Test`, `Cross`) and a
+thing that mutates the tree (`Fixtures`). Mixing a mutator into a concurrent `mg.Deps` set with the
+tests that read its output was the root mistake — `mg.Deps`'s concurrency guarantee ("exactly once
+per execution," cited in [T32](#t32)'s Rationale) says nothing about ordering between
+non-dependent targets, so `Fixtures` and `Test` were always racing once both were listed together.
+
+### Consequence
+
+- [`tdd.md` §17](tdd.md#17-continuous-integration-and-release-automation)'s statement of `CI`'s
+  actual `mg.Deps` set is corrected to `Build, Vet, Lint, Test, Cross` and now says the thin-shim
+  rule is exercised by a real workflow, not still unproven.
+- Anyone regenerating fixtures locally must still run `go run mage.go fixtures` by hand and commit
+  the result — `CI` will never do this silently, and a future fixture regeneration that changes
+  `TestFullInventory`'s fingerprint assumptions must update that test in the same commit.
+- The general lesson generalizes beyond this one target: no future Mage target that mutates
+  checked-in files under `testdata/` (or anywhere else `git status` would show as dirty) should be
+  added to `CI`'s `mg.Deps` set without checking whether another target in that same concurrent set
+  reads what it writes.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T40` are all accepted.
+**Nothing.** `T1` through `T41` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
