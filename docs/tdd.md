@@ -1344,10 +1344,10 @@ Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33
 | Channel | Status |
 | --- | --- |
 | `tar.gz` archives, all four targets | Shipping — GitHub Releases |
-| Generated shell completions and man pages | **Partially shipping** — generated and committed via `tools/gendocs`/the `Docs` Mage target, but `.goreleaser.yaml` still has no handling to package them into the release archives |
-| `sboms` | **In M3.5's scope, currently unbuilt** — `.goreleaser.yaml` names `sboms` only in its own deferred-sections comment and has no `sboms:` block |
-| `signs` | **In M3.5's scope, currently unbuilt** — cosign keyless signing via GitHub Actions' OIDC issuer; `.goreleaser.yaml` has no `signs:` block yet |
-| `ko` | **In M3.5's scope, currently unbuilt** — publishes a container image to `ghcr.io`; `.goreleaser.yaml` has no `ko:` block yet |
+| Generated shell completions and man pages | Shipping — packaged into the release archives via `.goreleaser.yaml`'s `archives.files` |
+| `sboms` | Shipping — an SPDX-JSON SBOM per archive, via `.goreleaser.yaml`'s `sboms:` block |
+| `signs` | Shipping — cosign keyless signing via GitHub Actions' OIDC issuer, covering both the release checksum (`signs:`) and the `kos`-built container image (`docker_signs:`) ([T42](tech-decision-log.md#t42)) |
+| `ko` | Shipping — publishes a container image to `ghcr.io` via `.goreleaser.yaml`'s `kos:` block |
 | `nfpms` (`.deb`/`.rpm`/`.apk`) | Deferred |
 | `aur` | Deferred — needs a separate AUR package repository the author must create and maintain |
 | `homebrew_casks` | Deferred — needs a separate Homebrew tap repository the author must create and maintain |
@@ -1497,9 +1497,11 @@ logic directly — it invokes a Mage target and nothing else. Moving to a new pl
 a new shim file, not a rewrite.
 
 **The target set exists and the thin-shim rule is now exercised by a real workflow.** As of this
-writing (M3.5.4), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
-`Cross`, `Fuzz`, `Fixtures`, `GenDocs`, `Docs`, and `CI` — `Release` is not yet added, since it has
-no real logic to run until its own chunk lands. `Docs` now runs both halves of [T34](tech-decision-log.md#t34)'s
+writing (M3.5.5), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
+`Cross`, `Fuzz`, `Fixtures`, `GenDocs`, `Docs`, `Release`, and `CI` — `Release` runs `go run`'s
+pinned GoReleaser (T32's zero-install pattern, same as `Lint`'s pinned golangci-lint) and is
+invoked only by the tag-triggered `.github/workflows/release.yml` shim, never part of `CI`'s
+`mg.Deps` set. `Docs` now runs both halves of [T34](tech-decision-log.md#t34)'s
 requirement: the doc-verification checks (M3.5.3) and a `-check` diff of `tools/gendocs`'s
 generated reference (man pages, shell completions, and the `docs/cli/` CLI reference) against its
 committed copy, failing CI if either check fails. `GenDocs` is a new dev-time regenerate target
@@ -1516,8 +1518,11 @@ values against the currently-committed fixtures — see
 [T41](tech-decision-log.md#t41) for the full account. The Gitea→GitHub migration cost one line in
 `.goreleaser.yaml` because no platform-specific build logic had been written yet, which was the
 argument for adopting the rule before the release pipeline existed
-([T40](tech-decision-log.md#t40)); there is still no release workflow. Everything in this section
-is M3.5 work ([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
+([T40](tech-decision-log.md#t40)); `.github/workflows/release.yml` now exists, triggered on a `v*`
+tag push, installing `cosign` and `syft` and logging in to `ghcr.io` before invoking `go run
+mage.go release` — setup steps for tools and credentials the target itself needs, not build logic,
+so the thin-shim rule still holds. Everything in this section is M3.5 work
+([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
 
 **Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
 as `go run mage.go <target>`; CI needs no separately installed mage binary. This bootstrap has a

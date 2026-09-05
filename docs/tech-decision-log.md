@@ -85,6 +85,7 @@ rejected.
 | [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 | [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
+| [T42](#t42) | Signing covers both the release checksum and the `kos`-built container image, via two GoReleaser sections | Accepted — amends [T9](#t9) |
 
 ---
 
@@ -2902,9 +2903,53 @@ non-dependent targets, so `Fixtures` and `Test` were always racing once both wer
 
 ---
 
+<a id="t42"></a>
+## T42 — Signing the release covers both the checksum and the `kos`-built container image, via two GoReleaser sections
+
+**Date:** 2026-09-05 · **Status:** Accepted · **Amends:** [T9](#t9)
+
+### Context
+
+[T9](#t9) named `signs` as one of the GoReleaser v2 idioms this project embraces;
+[`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought)
+repeats it without saying which artifact gets signed. Implementing the `signs:` block for M3.5.5
+([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)) first assumed GoReleaser had no signing hook
+for `kos:`-built images, since the top-level signing documentation lists archives, installers,
+packages, checksums, and `dockers:`-built manifests, with no direct mention of `kos:`. That
+assumption was wrong: GoReleaser's own `kos:` documentation states that a ko-built manifest is
+added to the same artifact list `dockers:`-built images use, and it is `docker_signs:` — not
+`signs:` — that signs artifacts from that list via `artifacts: manifests`.
+
+### Decision
+
+Both artifact classes carry a keyless cosign signature, via two separate `.goreleaser.yaml`
+sections because each artifact lands in a different GoReleaser artifact list: `signs:` signs the
+release checksum (`sign-blob --bundle`, `artifacts: checksum`); `docker_signs:` signs the
+`ghcr.io/boweeb/hasp` image manifest `kos:` pushes (`sign`, `artifacts: manifests`). Both use the
+same OIDC/Fulcio/Rekor keyless flow — no private key, no separate credential to manage.
+
+### Rationale
+
+The checksum file covers every archive and SBOM this release produces, but it says nothing about
+the container image's integrity — a signed checksum and an unsigned image would have left exactly
+the gap `signs`'s stated purpose (supply-chain attestation, [`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought))
+exists to close. Once GoReleaser's actual capability was confirmed rather than assumed, shipping
+both signatures cost one more config block, not a deferred chunk.
+
+### Consequence
+
+- [`tdd.md` §13](tdd.md#13-build--distribution--goreleaser-as-a-constraint-not-an-afterthought)'s
+  staging table now says `signs` ships covering both the checksum and the container image, citing
+  this entry.
+- A future reader reaching for `signs:` to cover a `kos:`-built artifact should reach for
+  `docker_signs:` instead — GoReleaser's own section split, not a hasp-specific quirk, but easy to
+  miss since `kos:` and `docker_signs:` don't sit next to each other in the config file.
+
+---
+
 ## Still open
 
-**Nothing.** `T1` through `T41` are all accepted.
+**Nothing.** `T1` through `T42` are all accepted.
 
 `T27` through `T30` came out of the second review pass rather than the first drafting of
 [`docs/tdd.md`](tdd.md), and that is worth recording as a fact about the process rather than a
