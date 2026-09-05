@@ -1,0 +1,47 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-show-profile - Show a profile's keys and hosts, aggregated across child profiles by default
+
+
+.SH SYNOPSIS
+\fBhasp show profile  [flags]\fP
+
+
+.SH DESCRIPTION
+Show a profile's keys and hosts, aggregated across child profiles by default
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for profile
+
+.PP
+\fB--no-recurse\fP[=false]
+	scope to the named profile alone, without descendants
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-show(1)\fP

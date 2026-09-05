@@ -1344,7 +1344,7 @@ Not every section above is equally reachable yet ([T33](tech-decision-log.md#t33
 | Channel | Status |
 | --- | --- |
 | `tar.gz` archives, all four targets | Shipping — GitHub Releases |
-| Generated shell completions and man pages | **Stated above as shipping, currently unbuilt** — nothing in this repository generates either today, and `.goreleaser.yaml` has no handling for them |
+| Generated shell completions and man pages | **Partially shipping** — generated and committed via `tools/gendocs`/the `Docs` Mage target, but `.goreleaser.yaml` still has no handling to package them into the release archives |
 | `sboms` | **In M3.5's scope, currently unbuilt** — `.goreleaser.yaml` names `sboms` only in its own deferred-sections comment and has no `sboms:` block |
 | `signs` | **In M3.5's scope, currently unbuilt** — cosign keyless signing via GitHub Actions' OIDC issuer; `.goreleaser.yaml` has no `signs:` block yet |
 | `ko` | **In M3.5's scope, currently unbuilt** — publishes a container image to `ghcr.io`; `.goreleaser.yaml` has no `ko:` block yet |
@@ -1497,12 +1497,18 @@ logic directly — it invokes a Mage target and nothing else. Moving to a new pl
 a new shim file, not a rewrite.
 
 **The target set exists and the thin-shim rule is now exercised by a real workflow.** As of this
-writing (M3.5.2), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
-`Cross`, `Fuzz`, `Fixtures`, and `CI` — `Docs` and `Release` are not yet added, since neither has
-real logic to run until their own chunks land. The repository's only workflow,
+writing (M3.5.4), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
+`Cross`, `Fuzz`, `Fixtures`, `GenDocs`, `Docs`, and `CI` — `Release` is not yet added, since it has
+no real logic to run until its own chunk lands. `Docs` now runs both halves of [T34](tech-decision-log.md#t34)'s
+requirement: the doc-verification checks (M3.5.3) and a `-check` diff of `tools/gendocs`'s
+generated reference (man pages, shell completions, and the `docs/cli/` CLI reference) against its
+committed copy, failing CI if either check fails. `GenDocs` is a new dev-time regenerate target
+alongside `Fixtures`, run manually via `go run mage.go gendocs` to write fresh output for a human
+to review and commit — deliberately excluded from `CI`'s `mg.Deps`, the same "regenerate is dev-
+time, `-check` is CI-time" split `Fixtures` already established. The repository's only workflow,
 `.github/workflows/ci.yml`, now invokes `go run mage.go ci` as its sole step, rather than
 hardcoding `go build`/`go vet`/`golangci-lint`/`go test` directly in YAML — the shape this rule
-forbids. `CI`'s own `mg.Deps` set is `Build, Vet, Lint, Test, Cross` — explicitly **not** `Fuzz` or
+forbids. `CI`'s own `mg.Deps` set is `Build, Vet, Lint, Test, Cross, Docs` — explicitly **not** `Fuzz` or
 `Fixtures`: `Fuzz` is a smoke/optional target, and `Fixtures` regenerates checked-in
 `testdata/keys/` fixtures via `crypto/rand` on every run, which races `Test` under `mg.Deps`'s
 concurrent execution and breaks tests (`TestFullInventory`) that hardcode fingerprint-derived

@@ -1,0 +1,47 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-adopt-key - Move an unmanaged key into a managed profile directory, leaving a top-level alias (D13)
+
+
+.SH SYNOPSIS
+\fBhasp adopt key  [flags]\fP
+
+
+.SH DESCRIPTION
+Move an unmanaged key into a managed profile directory, leaving a top-level alias (D13)
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for key
+
+.PP
+\fB--profile\fP=""
+	the managed profile to adopt the key into (dotted path, e.g. work.foobarco)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-adopt(1)\fP
