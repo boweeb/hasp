@@ -953,7 +953,7 @@ present — in a script, in CI — which means the question *"does the generated
 passphrase?"* must be answerable without a prompt. That answer is a **preference**. It is not a
 fact about a key, a host, or a profile, so P9's first two rungs have nowhere to put it: no
 filesystem layout expresses it, and no `ssh_config` directive carries it. A flag answers it for
-one invocation. Nothing answers it for *"always, on this machine."*
+one invocation. Nothing answers it for *always, on this machine.*
 
 This entry exists because the alternative is worse. The predecessor's TOML file arrived as an
 implementation detail — [D12](#d12) records it as *"a debug and development aid, for visibility
