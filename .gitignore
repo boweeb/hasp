@@ -312,3 +312,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,linux,macos,vim,emacs,intellij+all,visualstudiocode,sublimetext,go,direnv
+
+# Mage's Build target output (docs/tdd.md §17, T32)
+/bin/

@@ -1,2 +1,12 @@
+version: "2"
+
 run:
   timeout: 5m
+
+linters:
+  # The default linter set (T32): golangci-lint v2's built-in default enable list — errcheck,
+  # govet, ineffassign, staticcheck, unused. staticcheck must stay enabled: tools/genfixtures and
+  # internal/adapter/keyfile carry deliberate `//nolint:staticcheck` directives for legacy
+  # DSA/PEM usage (T23), and those directives only mean something if the linter they suppress is
+  # actually running.
+  default: standard

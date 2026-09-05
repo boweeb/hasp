@@ -1496,14 +1496,18 @@ checkout → set up Go → invoke one target.
 logic directly — it invokes a Mage target and nothing else. Moving to a new platform is therefore
 a new shim file, not a rewrite.
 
-**The rule is still a design intention, not a demonstrated result, and this document should not
-imply otherwise** ([T40](tech-decision-log.md#t40)). As of this writing `magefiles/` and `mage.go`
-do not exist; the repository's only workflow, `.github/workflows/ci.yml`, hardcodes `go build`,
+**The target set now exists and is runnable; the thin-shim rule is still unproven.** As of this
+writing (M3.5.1), `magefiles/` and `mage.go` exist and implement `Build`, `Test`, `Vet`, `Lint`,
+`Cross`, `Fuzz`, `Fixtures`, and `CI` — `Docs` and `Release` are not yet added, since neither has
+real logic to run until their own chunks land. What has *not* yet happened is the workflow
+rewiring: the repository's only workflow, `.github/workflows/ci.yml`, still hardcodes `go build`,
 `go vet`, `golangci-lint@latest` and `go test` directly in YAML — the exact shape this rule
-forbids — and there is no release workflow at all. The Gitea→GitHub migration cost one line in
-`.goreleaser.yaml` because no platform-specific build logic had been written yet, which is an
-argument for adopting the rule **now**, before the release pipeline exists, rather than evidence
-that it already worked. Everything in this section is M3.5 work
+forbids — and there is no release workflow at all. Pointing that workflow at `go run mage.go ci`
+instead is M3.5.2, still pending, so the thin-shim rule itself remains a design intention, not a
+demonstrated result, until then ([T40](tech-decision-log.md#t40)). The Gitea→GitHub migration cost
+one line in `.goreleaser.yaml` because no platform-specific build logic had been written yet, which
+is an argument for adopting the rule **now**, before the release pipeline exists, rather than
+evidence that it already worked. Everything in this section is M3.5 work
 ([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)).
 
 **Zero-install bootstrap.** A `mage.go` carrying `//go:build ignore` calls `mage.Main()`, invoked
