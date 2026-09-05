@@ -15,6 +15,10 @@ import (
 // verified against the module proxy as the latest v2 release at the time this was written.
 const golangciLintVersion = "v2.13.2"
 
+// goreleaserVersion pins GoReleaser to an exact version (T32: "pinned, not floating"), verified
+// against the module proxy as the latest v2 release at the time this was written.
+const goreleaserVersion = "v2.18.0"
+
 // Build compiles the real hasp binary.
 func Build() error {
 	return sh.RunV("go", "build", "-o", "bin/hasp", "./cmd/hasp")
@@ -88,6 +92,18 @@ func Docs() error {
 		return err
 	}
 	return sh.RunV("go", "run", "./tools/gendocs", "-check")
+}
+
+// Release runs the tag-triggered release pipeline (docs/roadmap.md §5.5, T33, T40): archives for
+// all four build targets, generated completions and man pages packaged in, an SBOM per archive, a
+// cosign keyless signature over the checksum file, and a ko-published container image at
+// ghcr.io/boweeb/hasp. It is invoked only by .github/workflows/release.yml on a `v*` tag push —
+// never part of CI's mg.Deps set, the same way Fuzz and Fixtures stay standalone (T41) — and
+// depends on tools and credentials the workflow shim sets up beforehand (cosign, syft,
+// GITHUB_TOKEN, a ghcr.io login) that a bare local invocation does not have.
+func Release() error {
+	return sh.RunV("go", "run", "github.com/goreleaser/goreleaser/v2@"+goreleaserVersion,
+		"release", "--clean")
 }
 
 // CI is the aggregate target a workflow shim invokes (T32's thin-shim rule). It deliberately
