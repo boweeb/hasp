@@ -1,0 +1,79 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-edit-host - Change directives, move between host groups, or rebind a managed Host stanza
+
+
+.SH SYNOPSIS
+\fBhasp edit host  [flags]\fP
+
+
+.SH DESCRIPTION
+Change directives, move between host groups, or rebind a managed Host stanza
+
+
+.SH OPTIONS
+\fB--group\fP=""
+	move the stanza to this host group (an explicitly passed empty string moves it to the default group, ~/.ssh/config itself)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for host
+
+.PP
+\fB--hostname\fP=""
+	set the HostName directive's value
+
+.PP
+\fB--key\fP=""
+	rebind: point IdentityFile at this key (name or clue)
+
+.PP
+\fB--port\fP=""
+	set the Port directive's value
+
+.PP
+\fB--remove-hostname\fP[=false]
+	remove the HostName directive if present
+
+.PP
+\fB--remove-port\fP[=false]
+	remove the Port directive if present
+
+.PP
+\fB--remove-user\fP[=false]
+	remove the User directive if present
+
+.PP
+\fB--unbind\fP[=false]
+	rebind: remove the IdentityFile directive if present
+
+.PP
+\fB--user\fP=""
+	set the User directive's value
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-edit(1)\fP

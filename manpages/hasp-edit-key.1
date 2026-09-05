@@ -1,0 +1,63 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-edit-key - Rename, alias, replace material, or move a key between profiles
+
+
+.SH SYNOPSIS
+\fBhasp edit key  [flags]\fP
+
+
+.SH DESCRIPTION
+Rename, alias, replace material, or move a key between profiles
+
+
+.SH OPTIONS
+\fB--add-alias\fP=""
+	create an alias for the key at / (bare  for a top-level alias) — D2's write path (T19)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for key
+
+.PP
+\fB--name\fP=""
+	rename the key's real file in place (new basename)
+
+.PP
+\fB--profile\fP=""
+	move the key's real file into a different, already-existing profile directory (dotted path)
+
+.PP
+\fB--remove-alias\fP=""
+	remove an existing alias at / (bare  for a top-level alias); never removes the real key file
+
+.PP
+\fB--replace-material\fP=""
+	replace the key's private key bytes with the contents of  (T22)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-edit(1)\fP

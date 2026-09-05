@@ -1,0 +1,59 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-new-key - Generate a new ed25519 keypair (never overwrites an existing file)
+
+
+.SH SYNOPSIS
+\fBhasp new key  [flags]\fP
+
+
+.SH DESCRIPTION
+Generate a new ed25519 keypair (never overwrites an existing file)
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for key
+
+.PP
+\fB--no-passphrase\fP[=false]
+	generate without a passphrase, explicitly
+
+.PP
+\fB--passphrase\fP[=false]
+	prompt interactively for a passphrase (no local echo)
+
+.PP
+\fB--passphrase-stdin\fP[=false]
+	read the passphrase from one line of stdin
+
+.PP
+\fB--profile\fP=""
+	place the key in this profile (dotted path, e.g. work.foobarco)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-new(1)\fP

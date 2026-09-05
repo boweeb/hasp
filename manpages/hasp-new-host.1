@@ -1,0 +1,63 @@
+.nh
+.TH "HASP" "1" "Sep 2026" "hasp" "hasp Manual"
+
+.SH NAME
+hasp-new-host - Create a new Host stanza
+
+
+.SH SYNOPSIS
+\fBhasp new host  [flags]\fP
+
+
+.SH DESCRIPTION
+Create a new Host stanza
+
+
+.SH OPTIONS
+\fB--group\fP=""
+	the host group to create this stanza in (default: ~/.ssh/config itself)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for host
+
+.PP
+\fB--hostname\fP=""
+	the HostName directive's value
+
+.PP
+\fB--key\fP=""
+	bind this host to a key (name or clue); omit for no explicit binding
+
+.PP
+\fB--port\fP=""
+	the Port directive's value
+
+.PP
+\fB--user\fP=""
+	the User directive's value
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--json\fP[=false]
+	machine-readable output
+
+.PP
+\fB--key-dir\fP="~/.ssh"
+	key directory (default ~/.ssh)
+
+.PP
+\fB--no-color\fP[=false]
+	disable ANSI color in human output
+
+.PP
+\fB--verbose\fP[=false]
+	enable diagnostic logging to stderr
+
+.PP
+\fB--yes\fP[=false]
+	consent to apply a write non-interactively
+
+
+.SH SEE ALSO
+\fBhasp-new(1)\fP
