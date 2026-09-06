@@ -27,6 +27,8 @@ and the whole point of this set is that a settled argument stays settled.
 | [`tech-decision-log.md`](tech-decision-log.md) | **Why the technical design says that.** `T1`–`T39`, same rules as the D-log, separate namespace | Approved |
 | [`roadmap.md`](roadmap.md) | **What gets built in what order, and how you know a milestone is done.** Sequencing and exit criteria; deliberately no dates or estimates | Approved |
 | [`project-assessment-2026-08.md`](project-assessment-2026-08.md) | **The Python predecessor, as found in August 2026.** Evidence, not a plan — its roadmap is superseded | Historical |
+| [`user-guide.md`](user-guide.md) | **How to use hasp, by journey (J1–J8).** Real commands and example invocations for each journey `design.md` §7 defines, pointing at the generated CLI reference for exhaustive flag syntax | New |
+| [`on-disk.md`](on-disk.md) | **What hasp actually leaves on disk.** `.hasp` markers, in-file marked regions, the settings file, `~/.ssh/.hasp-backups/`, and the full withdrawal path | New |
 
 ## Reading order
 
@@ -38,10 +40,14 @@ anything that looks arbitrary. It usually is not. `tdd.md` §16–§17 (versioni
 same way as every earlier section — implementation detail, not a plan — even though they arrived
 later than the rest.
 
-**A second audience is coming.** M3.5 ([`roadmap.md` §5.5](roadmap.md#55-m35--hardening)) adds
-documentation aimed at *using* hasp, not building it — a root `README.md`, a user guide, and a
-page on what hasp leaves on disk ([T34](tech-decision-log.md#t34)). It will be indexed here,
-alongside the document table above, once it lands.
+**A second audience now has documentation.** M3.5 ([`roadmap.md`
+§5.5](roadmap.md#55-m35--hardening)) added the hand-written half of that split
+([T34](tech-decision-log.md#t34)): a root `README.md` aimed at orientation and install, a
+[`user-guide.md`](user-guide.md) organized around J1–J8, an [`on-disk.md`](on-disk.md) on what
+hasp actually leaves behind, and a root `SECURITY.md` restating the project's existing custody and
+access guarantees. Both new documents under `docs/` are indexed in the table above, alongside the
+generated reference under `docs/cli/` that this second audience also relies on for exact flag
+syntax.
 
 **To argue with it:** find the `Dn` or `Tn` that settled the question. If none did, the design has
 a gap and it gets amended rather than reinterpreted — which is how `D16`, `D17` and `D18` came to
@@ -82,11 +88,14 @@ starts carrying deadlines stops being a technical document.
 ## A note on this repository
 
 A repository-root `README.md` exists — it arrived with M0 ([`roadmap.md`](roadmap.md) §2), along
-with the first Go code — but it is now stale: its "Status" section still describes M1, two
-milestones behind where the project actually stands (see the Status table in
-[`roadmap.md` §1](roadmap.md#1-how-this-document-sequences-work)). Rewriting it into an actual
-orientation document — install, a sixty-second demo, license — is owned by M3.5
-([`roadmap.md` §5.5](roadmap.md#55-m35--hardening), [T34](tech-decision-log.md#t34)), not by this
-pass. The predecessor's `README.rst` is not carried into this repository — `design.md` supersedes
-its "Primary Goals" and "Future Ideas" sections, and
+with the first Go code, and was rewritten as an actual orientation document (install, a
+sixty-second demo, license) as part of M3.5 ([`roadmap.md`
+§5.5](roadmap.md#55-m35--hardening), [T34](tech-decision-log.md#t34)). It deliberately does not
+restate milestone status as prose — that lives in exactly one place, the Status table in
+[`roadmap.md` §1](roadmap.md#1-how-this-document-sequences-work) — so a reader of the root
+`README.md` is pointed there rather than handed a copy that can go stale on its own. A root
+`SECURITY.md` arrived alongside it, restating (not inventing) the custody and access guarantees
+`design.md` §3.2 and [D17](decision-log.md#d17)/[D19](decision-log.md#d19) already state. The
+predecessor's `README.rst` is not carried into this repository — `design.md` supersedes its
+"Primary Goals" and "Future Ideas" sections, and
 [`project-assessment-2026-08.md`](project-assessment-2026-08.md) records what was there.
