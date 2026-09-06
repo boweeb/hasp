@@ -76,6 +76,12 @@ kos:
     base_image: cgr.dev/chainguard/static:latest
     repositories:
       - ghcr.io/boweeb/hasp
+    # ko's default naming appends the import-path base name plus an MD5 hash of the full import
+    # path (collision avoidance for repos that build multiple binaries) — e.g. the real M3.5.5
+    # release published as ghcr.io/boweeb/hasp/hasp-d5fbbc4f5b1acdd77c3cef4c7e734ce8 instead of
+    # ghcr.io/boweeb/hasp. hasp only ever builds one image, so bare: true publishes straight to
+    # the repositories: value with no extra path segment.
+    bare: true
     platforms:
       - linux/amd64
       - linux/arm64
