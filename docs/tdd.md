@@ -73,7 +73,7 @@ derivation pipeline, config parsing, safety model — assumes `Plan` exists.
 
 ## 2. Stack — Go, stdlib-first, and a dependency budget
 
-**Go 1.26.6, `linux/amd64`**, installed via `mise` (`go = "latest"`). Dev host is x86 Arch Linux;
+**Go 1.27.1, `linux/amd64`**, installed via `mise` (`go = "latest"`). Dev host is x86 Arch Linux;
 targets are Linux and macOS, per `design.md` §3.1's "one laptop" scope (P8) extended to the two
 platforms the author actually uses.
 

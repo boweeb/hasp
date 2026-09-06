@@ -738,7 +738,7 @@ Verified against the installed `2.14.0` this session, with docs current at v2.18
 
 Four OS/arch build targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` —
 matching the "macOS + Linux long-term" scope, dev host x86 Arch Linux via `mise` (`go = "latest"`,
-currently `go1.26.6`).
+currently `go1.27.1`).
 
 Generated shell completions and the man tree (from [T3](#t3)'s cobra, via
 `cobra.Command.GenManTree` and the built-in `completion` subcommand) are packaged into the
@@ -1723,7 +1723,7 @@ summary names the path, algorithm and passphrase mode, which is the whole decisi
 
 `design.md` §10 deferred the stack completely. Before this entry closed it, the item read:
 *"**Implementation stack** — language, runtime, distribution, dependencies. Nothing in this
-document assumes any of them."* [`docs/tdd.md`](tdd.md) §2 then opens with **Go 1.26.6** as a
+document assumes any of them."* [`docs/tdd.md`](tdd.md) §2 then opens with **Go 1.27.1** as a
 given.
 
 No entry in this log recorded how it got there. That is a gap of exactly the kind this project's
@@ -1788,7 +1788,7 @@ vendored, and not referenced by the new code. It survives as the subject of
 `docs/project-assessment-2026-08.md`: a record of what was learned, including the specific failure
 this entire documentation set exists to avoid repeating.
 
-Go 1.26.6 via `mise`; targets `linux/{amd64,arm64}` and `darwin/{amd64,arm64}` ([T9](#t9)).
+Go 1.27.1 via `mise`; targets `linux/{amd64,arm64}` and `darwin/{amd64,arm64}` ([T9](#t9)).
 
 ### Rationale
 
