@@ -36,7 +36,12 @@ rejected.
   This project settles arguments by appeal to `docs/design.md`; a decision with no citation is
   a decision that gets re-litigated.
 
-**Status values:** `Accepted` · `Open` · `Amended by Tn` · `Superseded by Tn` · `Rejected`
+**Status values:** `Accepted` · `Open` · `Rejected` — optionally followed by one or more
+relation clauses naming another entry: `amends`/`amended by`, `extends`/`extended by`,
+`refines`/`refined by`, `supersedes`/`superseded by`, `ratified upstream as` (a `D`-log entry),
+`staged by`, `gap closed by`. The three base values are closed; relation clauses are open-ended
+and grow as entries need them — the Index table below is the authoritative list of which ones
+are actually in use, not this line.
 
 ---
 
@@ -63,9 +68,9 @@ rejected.
 | [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
 | [T18](#t18) | CST marker defects are represented as data, not parse errors | Accepted — amends [T2](#t2) |
 | [T19](#t19) | Alias location is the mechanism for cross-profile key membership — D2's write path | Accepted |
-| [T20](#t20) | Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T20](#t20) | Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move | Accepted — amends [T4](#t4), [T15](#t15); amended by [T43](#t43) |
 | [T21](#t21) | `show profile` aggregates descendants by default, `--no-recurse` escape | Accepted |
-| [T22](#t22) | `WriteKeyFile` fails closed on an existing target; a `Remove` change kind | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T22](#t22) | `WriteKeyFile` fails closed on an existing target; a `Remove` change kind | Accepted — amends [T4](#t4), [T15](#t15); amended by [T44](#t44) |
 | [T23](#t23) | DSA is in scope for the read path; fixtures are PEM-only, hand-constructed | Accepted — extends [T1](#t1) |
 | [T24](#t24) | Line-terminator handling in the CST: preserved as trivia, excluded from `Args` | Accepted — amends [T2](#t2) |
 | [T25](#t25) | `MetadataLine` is its own CST node type for `#:hasp` lines | Accepted — amends [T2](#t2), [T10](#t10) |
@@ -86,6 +91,8 @@ rejected.
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 | [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
 | [T42](#t42) | Signing covers both the release checksum and the `kos`-built container image, via two GoReleaser sections | Accepted — amends [T9](#t9) |
+| [T43](#t43) | `adopt key`'s alias-preserving move is one atomic `Change`, not an ordered two-`Change` pair | Accepted — amends [T20](#t20) |
+| [T44](#t44) | `edit key --replace-material` routes through `WriteKeyFile{AllowOverwrite: true}`, not a separate move rule | Accepted — amends [T22](#t22) |
 
 ---
 
@@ -1379,7 +1386,8 @@ metadata channel must not.
 <a id="t20"></a>
 ## T20 — Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move
 
-**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15); amended by
+[T43](#t43)
 
 ### Context
 
@@ -1478,7 +1486,8 @@ Aggregating without attribution would produce a correct list that supports an in
 <a id="t22"></a>
 ## T22 — `WriteKeyFile` fails closed on an existing target; a `Remove` change kind
 
-**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15); amended by
+[T44](#t44)
 
 ### Context
 
@@ -2986,3 +2995,111 @@ confidence-graded `--investigate` mode that reports fingerprint scheme, origin, 
 passphrase-derived facts — a superset of every candidate the input-needed block in
 [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) once named — while leaving `list key`'s plain
 output untouched, satisfying P7 exactly as the closed item's own bound required.
+
+---
+
+<a id="t43"></a>
+## T43 — `adopt key`'s alias-preserving move is one atomic `Change`, not an ordered two-`Change` pair
+
+**Date:** 2026-09-08 · **Status:** Accepted · **Amends:** [T20](#t20)
+
+### Context
+
+[T20](#t20) is correct about the ordering *rule* — a `Plan`'s `Changes` are ordered so any prefix
+leaves a working state — but its own worked example has drifted from what shipped. T20 describes
+`adopt key` inverting `[MoveFile, CreateSymlink]` into `[CreateSymlink, MoveFile]`, two ordered
+`Change`s. That is not the mechanism in the codebase.
+
+What actually ships: `AdoptKeyUseCase.Plan` (`internal/app/adoptkey.go`) builds a single
+`ReplaceWithSymlink{From, To}` `Change` per file — one for the key, and a second, independent one
+for its `.pub` sidecar when present, because the two paths never interact and there is no ordering
+question between them. `ReplaceWithSymlink.Apply` (`internal/app/change_replacewithsymlink.go`)
+delegates to `WriteFS.ReplaceWithSymlink` (`internal/app/plan.go`), whose documented contract is
+copy the source's bytes to the destination, verify byte-for-byte, then atomically `os.Rename` a
+freshly created symlink onto the source — one rename, one primitive, never a bare unlink of the
+source.
+
+### Decision
+
+T20's ordering rule is unchanged and still governs any future `Change` kind that genuinely needs
+two ordered steps. What is corrected here is the record of `adopt key`'s own mechanism: it is one
+atomic `Change`, not two `Change`s kept in a careful order. There is no reachable intermediate
+state at all — not even the "dangling symlink is inert" state T20's worked example relied on —
+which is a strictly stronger guarantee than an ordered two-`Change` pair provides.
+
+### Rationale
+
+The two-`Change` shape was not merely reordered, it was rejected outright, in either direction.
+`[MoveFile, CreateSymlink]` leaves the key briefly undiscoverable if the symlink step fails.
+`[CreateSymlink, MoveFile]` — T20's own described order — is not equivalently safe, either:
+`os.Rename`'s replace-on-conflict semantics mean a move landing on an existing path can destroy
+the very file the symlink was standing in for, which is worse than the original problem, not a
+fix for it. `docs/tdd.md` §4 ("Change ordering") and §11 (`Write mechanics`, point 4) already
+carry this exact reasoning against the single atomic primitive that shipped instead. T20's worked
+example simply predates that primitive landing; the append-only convention means the fix is a new
+entry naming T20, not an edit to it.
+
+### Consequence
+
+- `docs/tdd.md` §4 and §11 already state the current mechanism correctly, so no `tdd.md` change
+  and no code change accompanies this entry — it corrects `tech-decision-log.md` alone.
+- `release`'s mirror operation, `WriteFS.ReplaceSymlinkWithFile` (`internal/app/plan.go`), follows
+  the identical one-`Change` shape for the identical reason: a single atomic replace has no
+  ordering problem to guard against in the first place.
+- The general lesson for future write use cases: collapse a move-plus-alias operation into one
+  atomic `Change` wherever the underlying filesystem primitive supports it, and reach for T20's
+  ordered-multi-`Change` case only when it genuinely does not.
+
+---
+
+<a id="t44"></a>
+## T44 — `edit key --replace-material` routes through `WriteKeyFile{AllowOverwrite: true}`, not a separate move rule
+
+**Date:** 2026-09-08 · **Status:** Accepted · **Amends:** [T22](#t22)
+
+### Context
+
+[T22](#t22)'s Consequence section claims `edit key --replace-material` "deliberately does not
+route through `WriteKeyFile`" and instead uses T15's copy → verify → unlink move rule. That is not
+what shipped. `WriteKeyFile` (`internal/app/change_writekeyfile.go`) gained an `AllowOverwrite`
+field — `false` for `new key`, always; `true` only for `--replace-material` — and
+`EditKeyUseCase.planReplaceMaterial` (`internal/app/editkey.go`) builds `WriteKeyFile{...,
+AllowOverwrite: true}` `Change`s directly against the key's existing real path.
+
+### Decision
+
+`--replace-material`'s `Plan` is: a `WriteKeyFile{AllowOverwrite: true}` `Change` against the
+key's current path, plus a matched `.pub` sidecar `Change` — `WriteKeyFile{AllowOverwrite: true}`
+if the incoming material has its own `.pub`, `Remove` if it doesn't but the old key did, and no
+sidecar `Change` at all if neither has one. `RequiresBackup()` mirrors `AllowOverwrite` exactly, so
+T22's safety property — the one legitimate overwrite is unconditionally backed up first — still
+holds; only the mechanism changed.
+
+Ordering matters here too: the `.pub` `Change` is planned *before* the private-key `WriteKeyFile`,
+per T20's "any prefix leaves a working state" rule. A partial apply that stops after the `.pub`
+step leaves the old, still-matching private key on disk — self-consistent either way. The reverse
+order is worse: a successful private-key swap followed by a failed `.pub` cleanup would leave new
+key bytes on disk with a stale `.pub` silently misreporting the old fingerprint, a P1 violation
+with no `Preview` to have caught it first, since a partial-apply failure happens after `Preview`
+already showed both changes as a pair. This reasoning lives in `planReplaceMaterial`'s own comment
+in `internal/app/editkey.go`.
+
+### Rationale
+
+T22's stated reason for wanting a *separate* mechanism — this is the one path allowed to overwrite
+key material, and it must be unconditionally backed up first — is satisfied directly by
+`AllowOverwrite` and `RequiresBackup()`'s coupling on `WriteKeyFile` itself. There is no need for a
+second `Change` kind that duplicates `WriteKeyFile`'s own write mechanics for the sake of one
+caller. This keeps [D4](decision-log.md#d4)'s no-operation-destroys-an-irreplaceable-secret
+guarantee, backup-first included, expressed in one place instead of two.
+
+### Consequence
+
+- `docs/tdd.md` §4's `WriteKeyFile` type sketch already documents `AllowOverwrite` and cites T22
+  for it, so no `tdd.md` change and no code change accompanies this entry — it corrects
+  `tech-decision-log.md` alone.
+- T22's fail-closed default (`AllowOverwrite: false`) for `new key` is unaffected; only
+  `--replace-material`'s own record is corrected.
+- The `.pub`-before-private-key ordering is specific to `--replace-material`'s own two-`Change`
+  shape, not a restatement of T20's general rule — it exists because this particular pair of
+  `Change`s has a genuine ordering question, unlike [T43](#t43)'s single-`Change` case.
