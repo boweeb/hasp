@@ -40,6 +40,7 @@ func main() {
 func run() error {
 	haspBinFlag := flag.String("hasp-bin", "", "path to the hasp binary under test (default: resolve \"hasp\" via PATH)")
 	homeFlag := flag.String("home", "", "fixture directory to build and test against (default: a fresh temp directory)")
+	keepFlag := flag.Bool("keep", false, "don't remove a self-created fixture temp directory on exit (for post-mortem inspection); has no effect with -home, which is always the caller's to clean up")
 	flag.Parse()
 
 	bin, err := resolveHaspBin(*haspBinFlag)
@@ -50,6 +51,17 @@ func run() error {
 	root, err := resolveHome(*homeFlag)
 	if err != nil {
 		return err
+	}
+	// A self-created fixture directory holds generated private key material (buildFixture,
+	// below) and must not be left behind indefinitely across repeated local `go run mage.go
+	// cleanroom` invocations — -home is the one case where root belongs to the caller, not us, so
+	// it's left untouched regardless of -keep.
+	if *homeFlag == "" && !*keepFlag {
+		defer func() {
+			if rmErr := os.RemoveAll(root); rmErr != nil {
+				fmt.Fprintf(os.Stderr, "cleanroom: remove fixture temp dir %s: %v\n", root, rmErr)
+			}
+		}()
 	}
 
 	fx, err := buildFixture(root)

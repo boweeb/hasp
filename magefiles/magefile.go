@@ -132,6 +132,7 @@ func CleanRoom() error {
 		if err != nil {
 			return err
 		}
+		defer os.RemoveAll(tmp)
 		bin = tmp + "/hasp"
 		if err := sh.RunV("go", "build", "-o", bin, "./cmd/hasp"); err != nil {
 			return err
