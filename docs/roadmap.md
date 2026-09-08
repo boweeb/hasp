@@ -298,7 +298,7 @@ Sequenced by dependency. **Status** carries the landing commit once a chunk land
 | M3.5.2 | CI shim — the workflow invokes one Mage target and nothing else; darwin targets compile | 1 | `c61de03` |
 | M3.5.3 | Doc verification — the `Docs` target: links, anchors, `Dn`/`Tn` citations, log invariants, verbatim quotations | 1 | `572d97f` |
 | M3.5.4 | Generated reference — man pages, shell completions, CLI markdown, and the staleness check that keeps them honest | 1 | — |
-| M3.5.5 | Release pipeline — tag-triggered; archives, completions, man pages, `sboms`, `signs`, `ko`; build info stamped so `hasp version` reports it | 1, 4 | — |
+| M3.5.5 | Release pipeline — tag-triggered; archives, completions, man pages, `sboms`, `signs`, `ko`; build info stamped so `hasp version` reports it | 1, 4 | `6679a8c` |
 | M3.5.6 | Narrative docs — root `README.md`, the usage guide by journey, what hasp leaves on disk, `SECURITY.md` | — | — |
 | M3.5.7 | Close-out — stale claims; the default branch (independent of everything, and needed *before* criterion 6's clean-room run); the SemVer policy honoured at this milestone's own tag (`v1.0.0` and the surface freeze are [§5.6](#56-m36--investigation)'s) | all | — |
 
