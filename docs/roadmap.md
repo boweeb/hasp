@@ -54,7 +54,7 @@ document's own §8 already forbids.
 | §4 M2 — Curation | Complete | `v0.2.0` | `d009473` |
 | §5 M3 — Configuration | Complete | `v0.3.0` | `4577e17` |
 | *(release plumbing, not a milestone)* | — | `v0.4.0` | `d7699c6` |
-| §5.5 M3.5 — Hardening | Current | — | — |
+| §5.5 M3.5 — Hardening | Current | `v0.6.0` | `9243f1a` |
 | §5.6 M3.6 — Investigation | Next | — | — |
 | §6 M4 — Identity | Gated | — | — |
 
@@ -300,7 +300,7 @@ Sequenced by dependency. **Status** carries the landing commit once a chunk land
 | M3.5.4 | Generated reference — man pages, shell completions, CLI markdown, and the staleness check that keeps them honest | 1 | `1bfff84` |
 | M3.5.5 | Release pipeline — tag-triggered; archives, completions, man pages, `sboms`, `signs`, `ko`; build info stamped so `hasp version` reports it | 1, 4 | `b3b4ce6` |
 | M3.5.6 | Narrative docs — root `README.md`, the usage guide by journey, what hasp leaves on disk, `SECURITY.md` | — | `93d1f8a` |
-| M3.5.7 | Close-out — stale claims; the default branch (independent of everything, and needed *before* criterion 6's clean-room run); the SemVer policy honoured at this milestone's own tag (`v1.0.0` and the surface freeze are [§5.6](#56-m36--investigation)'s) | all | — |
+| M3.5.7 | Close-out — stale claims; the default branch (independent of everything, and needed *before* criterion 6's clean-room run); the SemVer policy honoured at this milestone's own tag (`v1.0.0` and the surface freeze are [§5.6](#56-m36--investigation)'s) | all | `9243f1a` |
 
 **Explicitly out of scope**
 
