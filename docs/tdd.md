@@ -1490,7 +1490,8 @@ target** in `magefiles/` (`github.com/magefile/mage`); a platform workflow file'
 checkout → set up Go → invoke one target.
 
 **The target set:** `Build`, `Test`, `Vet`, `Lint`, `Cross` (`GOOS=darwin` compile), `Fuzz`,
-`Fixtures`, `Docs`, `Release`, and `CI` as the `mg.Deps` aggregate that runs the others.
+`Fixtures`, `Docs`, `Release`, `CleanRoom`, and `CI` as the `mg.Deps` aggregate that runs the
+others.
 
 **The thin-shim rule.** A platform's workflow YAML (`.github/workflows/`) never encodes build
 logic directly — it invokes a Mage target and nothing else. Moving to a new platform is therefore
@@ -1501,7 +1502,16 @@ writing (M3.5.5), `magefiles/` and `mage.go` exist and implement `Build`, `Test`
 `Cross`, `Fuzz`, `Fixtures`, `GenDocs`, `Docs`, `Release`, and `CI` — `Release` runs `go run`'s
 pinned GoReleaser (T32's zero-install pattern, same as `Lint`'s pinned golangci-lint) and is
 invoked only by the tag-triggered `.github/workflows/release.yml` shim, never part of `CI`'s
-`mg.Deps` set. `Docs` now runs both halves of [T34](tech-decision-log.md#t34)'s
+`mg.Deps` set. `CleanRoom` is the same kind of standalone, non-`mg.Deps` target for a different
+reason — [T45](tech-decision-log.md#t45): it runs `tools/cleanroom`, which builds a synthetic
+`~/.ssh` fixture and drives a real `hasp` binary through `list key`, `adopt key`, and
+`release key` against it, asserting the fixture comes back byte-identical via the new
+`internal/snapshot` package — roadmap.md §5.5 exit criterion 6's own mechanical proof. Left with
+`HASP_CLEANROOM_BIN` unset, it builds the current tree first, making `go run mage.go cleanroom` a
+fast local dev-loop smoke test; `.github/workflows/release.yml`'s `clean-room` job instead sets
+`HASP_CLEANROOM_BIN` to a binary it `go install`s straight from the public module proxy at the tag
+just pushed, so that run proves the actually-installed artifact, not a local rebuild. `Docs` now
+runs both halves of [T34](tech-decision-log.md#t34)'s
 requirement: the doc-verification checks (M3.5.3) and a `-check` diff of `tools/gendocs`'s
 generated reference (man pages, shell completions, and the `docs/cli/` CLI reference) against its
 committed copy, failing CI if either check fails. `GenDocs` is a new dev-time regenerate target
