@@ -1,9 +1,6 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,53 +8,17 @@ import (
 	"github.com/boweeb/hasp/internal/adapter/backup"
 	"github.com/boweeb/hasp/internal/adapter/fswrite"
 	"github.com/boweeb/hasp/internal/domain"
+	"github.com/boweeb/hasp/internal/snapshot"
 )
 
-// snapshotDir returns path -> content digest for every entry under root, structural changes
-// (added/removed entries, symlink-vs-file) included — the mechanical proof behind roadmap.md §4
-// exit criterion 1: "adopt a key, then release it, and the key directory is byte-identical to
-// where it started." Mirrors internal/cli/writeguard_test.go's snapshotTree, reimplemented here
-// (not imported: internal/cli imports internal/app, so the dependency can't run the other way)
-// for internal/app-level testing exactly as this phase's own instructions call for.
+// snapshotDir is a thin t.Helper() wrapper over internal/snapshot.Snapshot — the mechanical proof
+// behind roadmap.md §4 exit criterion 1: "adopt a key, then release it, and the key directory is
+// byte-identical to where it started." internal/cli/writeguard_test.go's own snapshotTree wraps
+// the same shared package (not imported directly here: internal/cli imports internal/app, so the
+// dependency can't run the other way), rather than each reimplementing the digest logic.
 func snapshotDir(t *testing.T, root string) map[string]string {
 	t.Helper()
-	snap := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if rel == "." {
-			return nil
-		}
-
-		info, lstatErr := os.Lstat(path)
-		if lstatErr != nil {
-			return lstatErr
-		}
-		if info.Mode()&fs.ModeSymlink != 0 {
-			target, linkErr := os.Readlink(path)
-			if linkErr != nil {
-				return linkErr
-			}
-			snap[rel] = "symlink:" + target
-			return nil
-		}
-		if d.IsDir() {
-			snap[rel] = "dir:" + info.Mode().Perm().String()
-			return nil
-		}
-		b, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		sum := sha256.Sum256(b)
-		snap[rel] = "file:" + info.Mode().Perm().String() + ":" + hex.EncodeToString(sum[:])
-		return nil
-	})
+	snap, err := snapshot.Snapshot(root)
 	if err != nil {
 		t.Fatalf("snapshotDir(%s): %v", root, err)
 	}
@@ -66,20 +27,8 @@ func snapshotDir(t *testing.T, root string) map[string]string {
 
 func assertSnapshotsEqual(t *testing.T, before, after map[string]string) {
 	t.Helper()
-	for path, sum := range before {
-		got, ok := after[path]
-		if !ok {
-			t.Errorf("round-trip guard: %s was removed", path)
-			continue
-		}
-		if got != sum {
-			t.Errorf("round-trip guard: %s changed: before=%s after=%s", path, sum, got)
-		}
-	}
-	for path := range after {
-		if _, ok := before[path]; !ok {
-			t.Errorf("round-trip guard: %s was created", path)
-		}
+	for _, mismatch := range snapshot.Diff(before, after) {
+		t.Errorf("round-trip guard: %s", mismatch)
 	}
 }
 

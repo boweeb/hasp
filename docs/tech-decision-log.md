@@ -36,7 +36,12 @@ rejected.
   This project settles arguments by appeal to `docs/design.md`; a decision with no citation is
   a decision that gets re-litigated.
 
-**Status values:** `Accepted` · `Open` · `Amended by Tn` · `Superseded by Tn` · `Rejected`
+**Status values:** `Accepted` · `Open` · `Rejected` — optionally followed by one or more
+relation clauses naming another entry: `amends`/`amended by`, `extends`/`extended by`,
+`refines`/`refined by`, `supersedes`/`superseded by`, `ratified upstream as` (a `D`-log entry),
+`staged by`, `gap closed by`. The three base values are closed; relation clauses are open-ended
+and grow as entries need them — the Index table below is the authoritative list of which ones
+are actually in use, not this line.
 
 ---
 
@@ -63,9 +68,9 @@ rejected.
 | [T17](#t17) | `Directive` preserves its exact separator and spacing; quote-aware tokenizing | Accepted — amends [T2](#t2) |
 | [T18](#t18) | CST marker defects are represented as data, not parse errors | Accepted — amends [T2](#t2) |
 | [T19](#t19) | Alias location is the mechanism for cross-profile key membership — D2's write path | Accepted |
-| [T20](#t20) | Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T20](#t20) | Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move | Accepted — amends [T4](#t4), [T15](#t15); amended by [T43](#t43) |
 | [T21](#t21) | `show profile` aggregates descendants by default, `--no-recurse` escape | Accepted |
-| [T22](#t22) | `WriteKeyFile` fails closed on an existing target; a `Remove` change kind | Accepted — amends [T4](#t4), [T15](#t15) |
+| [T22](#t22) | `WriteKeyFile` fails closed on an existing target; a `Remove` change kind | Accepted — amends [T4](#t4), [T15](#t15); amended by [T44](#t44) |
 | [T23](#t23) | DSA is in scope for the read path; fixtures are PEM-only, hand-constructed | Accepted — extends [T1](#t1) |
 | [T24](#t24) | Line-terminator handling in the CST: preserved as trivia, excluded from `Args` | Accepted — amends [T2](#t2) |
 | [T25](#t25) | `MetadataLine` is its own CST node type for `#:hasp` lines | Accepted — amends [T2](#t2), [T10](#t10) |
@@ -86,6 +91,9 @@ rejected.
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 | [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
 | [T42](#t42) | Signing covers both the release checksum and the `kos`-built container image, via two GoReleaser sections | Accepted — amends [T9](#t9) |
+| [T43](#t43) | `adopt key`'s alias-preserving move is one atomic `Change`, not an ordered two-`Change` pair | Accepted — amends [T20](#t20) |
+| [T44](#t44) | `edit key --replace-material` routes through `WriteKeyFile{AllowOverwrite: true}`, not a separate move rule | Accepted — amends [T22](#t22) |
+| [T45](#t45) | The clean-room test: `tools/cleanroom`, a `CleanRoom` Mage target, a post-release CI job, and a shared `internal/snapshot` package | Accepted |
 
 ---
 
@@ -1379,7 +1387,8 @@ metadata channel must not.
 <a id="t20"></a>
 ## T20 — Plan ordering: any prefix leaves a working state; `adopt`'s alias-preserving move
 
-**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15); amended by
+[T43](#t43)
 
 ### Context
 
@@ -1478,7 +1487,8 @@ Aggregating without attribution would produce a correct list that supports an in
 <a id="t22"></a>
 ## T22 — `WriteKeyFile` fails closed on an existing target; a `Remove` change kind
 
-**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15)
+**Date:** 2026-08-28 · **Status:** Accepted — amends [T4](#t4), [T15](#t15); amended by
+[T44](#t44)
 
 ### Context
 
@@ -2986,3 +2996,228 @@ confidence-graded `--investigate` mode that reports fingerprint scheme, origin, 
 passphrase-derived facts — a superset of every candidate the input-needed block in
 [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) once named — while leaving `list key`'s plain
 output untouched, satisfying P7 exactly as the closed item's own bound required.
+
+---
+
+<a id="t43"></a>
+## T43 — `adopt key`'s alias-preserving move is one atomic `Change`, not an ordered two-`Change` pair
+
+**Date:** 2026-09-08 · **Status:** Accepted · **Amends:** [T20](#t20)
+
+### Context
+
+[T20](#t20) is correct about the ordering *rule* — a `Plan`'s `Changes` are ordered so any prefix
+leaves a working state — but its own worked example has drifted from what shipped. T20 describes
+`adopt key` inverting `[MoveFile, CreateSymlink]` into `[CreateSymlink, MoveFile]`, two ordered
+`Change`s. That is not the mechanism in the codebase.
+
+What actually ships: `AdoptKeyUseCase.Plan` (`internal/app/adoptkey.go`) builds a single
+`ReplaceWithSymlink{From, To}` `Change` per file — one for the key, and a second, independent one
+for its `.pub` sidecar when present, because the two paths never interact and there is no ordering
+question between them. `ReplaceWithSymlink.Apply` (`internal/app/change_replacewithsymlink.go`)
+delegates to `WriteFS.ReplaceWithSymlink` (`internal/app/plan.go`), whose documented contract is
+copy the source's bytes to the destination, verify byte-for-byte, then atomically `os.Rename` a
+freshly created symlink onto the source — one rename, one primitive, never a bare unlink of the
+source.
+
+### Decision
+
+T20's ordering rule is unchanged and still governs any future `Change` kind that genuinely needs
+two ordered steps. What is corrected here is the record of `adopt key`'s own mechanism: it is one
+atomic `Change`, not two `Change`s kept in a careful order. There is no reachable intermediate
+state at all — not even the "dangling symlink is inert" state T20's worked example relied on —
+which is a strictly stronger guarantee than an ordered two-`Change` pair provides.
+
+### Rationale
+
+The two-`Change` shape was not merely reordered, it was rejected outright, in either direction.
+`[MoveFile, CreateSymlink]` leaves the key briefly undiscoverable if the symlink step fails.
+`[CreateSymlink, MoveFile]` — T20's own described order — is not equivalently safe, either:
+`os.Rename`'s replace-on-conflict semantics mean a move landing on an existing path can destroy
+the very file the symlink was standing in for, which is worse than the original problem, not a
+fix for it. `docs/tdd.md` §4 ("Change ordering") and §11 (`Write mechanics`, point 4) already
+carry this exact reasoning against the single atomic primitive that shipped instead. T20's worked
+example simply predates that primitive landing; the append-only convention means the fix is a new
+entry naming T20, not an edit to it.
+
+### Consequence
+
+- `docs/tdd.md` §4 and §11 already state the current mechanism correctly, so no `tdd.md` change
+  and no code change accompanies this entry — it corrects `tech-decision-log.md` alone.
+- `release`'s mirror operation, `WriteFS.ReplaceSymlinkWithFile` (`internal/app/plan.go`), follows
+  the identical one-`Change` shape for the identical reason: a single atomic replace has no
+  ordering problem to guard against in the first place.
+- The general lesson for future write use cases: collapse a move-plus-alias operation into one
+  atomic `Change` wherever the underlying filesystem primitive supports it, and reach for T20's
+  ordered-multi-`Change` case only when it genuinely does not.
+
+---
+
+<a id="t44"></a>
+## T44 — `edit key --replace-material` routes through `WriteKeyFile{AllowOverwrite: true}`, not a separate move rule
+
+**Date:** 2026-09-08 · **Status:** Accepted · **Amends:** [T22](#t22)
+
+### Context
+
+[T22](#t22)'s Consequence section claims `edit key --replace-material` "deliberately does not
+route through `WriteKeyFile`" and instead uses T15's copy → verify → unlink move rule. That is not
+what shipped. `WriteKeyFile` (`internal/app/change_writekeyfile.go`) gained an `AllowOverwrite`
+field — `false` for `new key`, always; `true` only for `--replace-material` — and
+`EditKeyUseCase.planReplaceMaterial` (`internal/app/editkey.go`) builds `WriteKeyFile{...,
+AllowOverwrite: true}` `Change`s directly against the key's existing real path.
+
+### Decision
+
+`--replace-material`'s `Plan` is: a `WriteKeyFile{AllowOverwrite: true}` `Change` against the
+key's current path, plus a matched `.pub` sidecar `Change` — `WriteKeyFile{AllowOverwrite: true}`
+if the incoming material has its own `.pub`, `Remove` if it doesn't but the old key did, and no
+sidecar `Change` at all if neither has one. `RequiresBackup()` mirrors `AllowOverwrite` exactly, so
+T22's safety property — the one legitimate overwrite is unconditionally backed up first — still
+holds; only the mechanism changed.
+
+Ordering matters here too: the `.pub` `Change` is planned *before* the private-key `WriteKeyFile`,
+per T20's "any prefix leaves a working state" rule. A partial apply that stops after the `.pub`
+step leaves the old, still-matching private key on disk — self-consistent either way. The reverse
+order is worse: a successful private-key swap followed by a failed `.pub` cleanup would leave new
+key bytes on disk with a stale `.pub` silently misreporting the old fingerprint, a P1 violation
+with no `Preview` to have caught it first, since a partial-apply failure happens after `Preview`
+already showed both changes as a pair. This reasoning lives in `planReplaceMaterial`'s own comment
+in `internal/app/editkey.go`.
+
+### Rationale
+
+T22's stated reason for wanting a *separate* mechanism — this is the one path allowed to overwrite
+key material, and it must be unconditionally backed up first — is satisfied directly by
+`AllowOverwrite` and `RequiresBackup()`'s coupling on `WriteKeyFile` itself. There is no need for a
+second `Change` kind that duplicates `WriteKeyFile`'s own write mechanics for the sake of one
+caller. This keeps [D4](decision-log.md#d4)'s no-operation-destroys-an-irreplaceable-secret
+guarantee, backup-first included, expressed in one place instead of two.
+
+### Consequence
+
+- `docs/tdd.md` §4's `WriteKeyFile` type sketch already documents `AllowOverwrite` and cites T22
+  for it, so no `tdd.md` change and no code change accompanies this entry — it corrects
+  `tech-decision-log.md` alone.
+- T22's fail-closed default (`AllowOverwrite: false`) for `new key` is unaffected; only
+  `--replace-material`'s own record is corrected.
+- The `.pub`-before-private-key ordering is specific to `--replace-material`'s own two-`Change`
+  shape, not a restatement of T20's general rule — it exists because this particular pair of
+  `Change`s has a genuine ordering question, unlike [T43](#t43)'s single-`Change` case.
+
+---
+
+<a id="t45"></a>
+## T45 — The clean-room test: `tools/cleanroom`, a `CleanRoom` Mage target, a post-release CI job, and a shared `internal/snapshot` package
+
+**Date:** 2026-09-08 · **Status:** Accepted
+
+### Context
+
+[`roadmap.md` §5.5](roadmap.md#55-m35--hardening) exit criterion 6 states the milestone's own
+mechanical proof: a clean-room install of `hasp` (README.md's one documented path, `go install
+github.com/boweeb/hasp/cmd/hasp@latest`) must be able to run `list key` against a synthetic
+`~/.ssh` fixture and get an accurate inventory back, then round-trip that fixture through `adopt`
+and `release` byte-identical to where it started. Unlike every other M3.5 chunk, this criterion
+had no assigned chunk and nothing in the repository beyond the roadmap's own prose implemented it
+— confirmed by grep for "clean-room" and "clean room" turning up nothing else.
+
+Two duplicated snapshot/diff implementations already existed by the time this entry was written:
+`internal/app/adopt_release_roundtrip_test.go`'s `snapshotDir`/`assertSnapshotsEqual` (digest
+includes each file's permission mode) and `internal/cli/writeguard_test.go`'s
+`snapshotTree`/`assertTreeUnchanged` (digest omits it) — the first file's own doc comment already
+named the reason for the duplication: `internal/cli` imports `internal/app`, so the dependency
+cannot run the other way, and a `*testing.T`-coupled helper in one package cannot be called from
+the other. A closer read for this entry found a **third**, `internal/cli/writeguard_alltree_test.go`'s
+`snapshotTreeForGuard`/`assertTreeUnchangedForGuard` — needed because that file lives in package
+`cli` itself (the only place `write.go`'s unexported `isStdinTTY` can be forced without a real
+pty), and a package-`cli` file cannot see symbols defined in a package-`cli_test` file even though
+both live under `internal/cli/`. `tools/cleanroom` was about to become a legitimate fourth caller
+of the same logic.
+
+### Decision
+
+**A new package, `internal/snapshot`,** holds the digest/diff logic as two plain functions with no
+`*testing.T` coupling — `Snapshot(root string) (map[string]string, error)` and
+`Diff(before, after map[string]string) []string` (empty means identical) — importable from any of
+`internal/app`, `internal/cli` (both packages), and `tools/cleanroom` without regard to which
+already imports which. It keeps the stronger, mode-including digest `internal/app`'s version used;
+the other two callers gain mode-change detection they didn't have before, not lose coverage they
+did. All three prior call sites become thin wrappers: `snapshotDir`/`assertSnapshotsEqual`,
+`snapshotTree`/`assertTreeUnchanged`, and `snapshotTreeForGuard`/`assertTreeUnchangedForGuard` each
+keep their own name (for their own file's callers) and `t.Helper()`/`t.Errorf` shape, but their
+bodies now call `internal/snapshot.Snapshot`/`.Diff` instead of reimplementing the walk. This
+consolidates three existing near-duplicates into one, rather than adding a fourth.
+
+**A new tool, `tools/cleanroom`,** matching the existing `tools/docscheck`/`tools/gendocs`/
+`tools/genfixtures` convention (standalone `package main`, run via `go run ./tools/<name>`, never
+imported by `cmd/hasp`). `tools/cleanroom/fixture.go` builds a small, realistic `~/.ssh`-shaped
+fixture — one key already adopted into a managed profile (a `.hasp`-marked directory, D13) with
+its top-level alias symlink, one still-unmanaged key, and a real ed25519 keypair via
+`internal/adapter/keyfile.Generate` (the same pure-Go mechanism `new key` itself uses, T1) rather
+than raw bytes, since `keyfile.Inspect` fails open and silently skips anything it cannot classify
+as a key. `tools/cleanroom/main.go` execs a real `hasp` binary as a subprocess against that
+fixture — `list key --json`, `adopt key ... --json --yes`, `release key ... --json --yes` — reusing
+`internal/cli/render.Envelope` to unmarshal the outer `--json` envelope (its `Data` payload needs
+its own narrow, unmarshal-only view, since `domain.Key`'s `Identity` field is a
+`json.Marshaler`-only interface with no matching `UnmarshalJSON`). It snapshots the fixture before
+and after (excluding `.hasp-backups/`, mirroring the existing round-trip test's own exclusion of
+hasp's own backup store, T8/P4) via `internal/snapshot`, and reports every subprocess's own
+non-zero exit and every snapshot mismatch as a hard failure — no partial-success state, per the
+roadmap's own "deliberately a script rather than a judgement."
+
+**A new, standalone Mage target, `CleanRoom`,** alongside `Fuzz`/`Fixtures`/`GenDocs`/`Release` —
+excluded from `CI`'s `mg.Deps` for the same family of reasons those targets already are. Reads
+`HASP_CLEANROOM_BIN`; if unset, builds the current tree to a temp binary first, so `go run mage.go
+cleanroom` is also a self-contained local dev-loop smoke test.
+
+**A new job in `.github/workflows/release.yml`, not `ci.yml`,** running after the existing
+`release` job (`needs: release`) so the pushed tag and its published artifacts already exist. It
+checks out the repository — unlike the hypothetical "no checkout at all" shape a simpler design
+might reach for, `tools/cleanroom`'s own source lives in this repository, so the harness driving
+the test legitimately needs it — but the `hasp` binary under test is never built from that
+checkout. It comes from `go install github.com/boweeb/hasp/cmd/hasp@${{ github.ref_name }}`, the
+tag just pushed, never `@latest`, wrapped in a bounded retry loop (six attempts, 20s apart) to
+absorb the Go module proxy's own indexing lag immediately after a fresh tag push. No `container:`
+directive is needed for this isolation: a GitHub Actions job is a fresh VM by default, and this
+workflow does not share any `actions/cache` between the `release` job and this one, so `go install`
+here already cannot resolve from the `release` job's own build/module cache — the actual risk this
+criterion exists to rule out.
+
+### Rationale
+
+**No Dockerfile.** A container image would need to be built, published, and kept in sync with
+`mise.toml`'s pinned Go version by hand — a second place that version could drift from the one
+`docs/tdd.md` §17 already cites as the single source of truth. A plain GitHub Actions job already
+gives the needed isolation (a fresh VM, no shared cache) for free.
+
+**`release.yml`, not `ci.yml`.** [T41](#t41) already established the precedent this decision
+extends: don't put a slow, network-dependent, and occasionally-flaky check into the aggregate that
+blocks every commit and PR. `go install ...@<tag>` depends on the public Go module proxy actually
+having indexed a tag that, from this workflow's own point of view, was pushed moments ago —
+exactly the kind of external timing dependency `CI`'s `mg.Deps` set has no business carrying.
+Gating it on `release` instead means it only runs when there is a real tag to prove, at the one
+point in the release process a stranger's own `go install` would actually happen.
+
+**`@<tag>`, not `@latest`.** `@latest` resolves to whatever the proxy currently considers the
+newest version at request time — for a workflow run immediately following the tag that triggered
+it, that should be the same tag, but nothing guarantees it stays that way if a second tag lands in
+the same window, and it gives up the one guarantee this job actually needs: proving *this* tag's
+artifact, not proximately-the-newest-one.
+
+### Consequence
+
+- `docs/tdd.md` §17's target-set sentence now lists `CleanRoom` alongside `Build`, `Test`, `Vet`,
+  `Lint`, `Cross`, `Fuzz`, `Fixtures`, `Docs`, and `Release`, and gains a paragraph describing what
+  it does and why it stays outside `CI`'s `mg.Deps`, matching how `Docs` and `Release` are already
+  described there.
+- `internal/app/adopt_release_roundtrip_test.go` and `internal/cli/writeguard_test.go` (and, found
+  during this chunk, `internal/cli/writeguard_alltree_test.go`) all changed to call
+  `internal/snapshot` instead of reimplementing it; none of their own test bodies or assertions
+  changed, and the full existing suite (`go test ./...`) stays green.
+- A future caller that needs "did this directory tree change" reaches for `internal/snapshot`
+  first — a fourth reimplementation of the same ~20 lines would now be a regression in its own
+  right, not just an opportunity missed.
+- [`roadmap.md` §5.5](roadmap.md#55-m35--hardening) exit criterion 6 now has a real, mechanical
+  implementation behind its prose, runnable locally (`go run mage.go cleanroom`) and in CI
+  (`.github/workflows/release.yml`'s `clean-room` job) exactly as the criterion itself demands.

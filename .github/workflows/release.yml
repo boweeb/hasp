@@ -39,3 +39,46 @@ jobs:
         run: go run mage.go release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  clean-room:
+    name: Clean-room install verification
+    # Runs after release publishes, so this tag and its artifacts already exist (roadmap.md §5.5
+    # exit criterion 6) — a fresh job/VM with no actions/cache sharing with the release job above,
+    # so the go install step below is isolated from that job's own build/module cache by
+    # construction, with no container: needed to get that isolation (docs/tech-decision-log.md,
+    # the T45 entry recording this job's design).
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # `@${{ github.ref_name }}`, never `@latest`: this step must resolve the exact tag this
+      # workflow run is for, not whatever the proxy happens to consider latest. A handful of
+      # retries with a short sleep absorb the module proxy's own indexing lag immediately after a
+      # fresh tag push — a `go install` racing that lag is a false failure, not a real one.
+      - name: go install hasp@${{ github.ref_name }} (retried for module proxy indexing lag)
+        run: |
+          set -o pipefail
+          attempt=1
+          max_attempts=6
+          until go install "github.com/boweeb/hasp/cmd/hasp@${{ github.ref_name }}"; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "go install failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            echo "attempt $attempt failed — the module proxy may not have indexed this tag yet; retrying in 20s" >&2
+            attempt=$((attempt + 1))
+            sleep 20
+          done
+
+      - name: Locate the installed binary
+        run: echo "HASP_CLEANROOM_BIN=$(go env GOPATH)/bin/hasp" >> "$GITHUB_ENV"
+
+      - name: mage cleanroom
+        run: go run mage.go cleanroom

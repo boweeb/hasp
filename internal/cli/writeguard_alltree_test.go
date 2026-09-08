@@ -2,60 +2,27 @@ package cli
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/boweeb/hasp/internal/app"
+	"github.com/boweeb/hasp/internal/snapshot"
 )
 
-// snapshotTreeForGuard is a minimal duplicate of writeguard_test.go's own snapshotTree
-// (internal/cli's cli_test external test package), reimplemented here because this file lives in
-// package cli itself — the only place isStdinTTY (write.go's unexported injectable var) can be
-// forced without a real pty — and a package-cli file cannot see symbols defined in a package
-// cli_test file even though both live under the same directory (Go's two-test-package
-// convention). Duplicating ~20 lines of digesting logic is cheaper and more honest than exporting
-// test-only plumbing across that boundary.
+// snapshotTreeForGuard is a thin t.Helper() wrapper over internal/snapshot.Snapshot, named
+// distinctly from writeguard_test.go's own snapshotTree (internal/cli's cli_test external test
+// package) because this file lives in package cli itself — the only place isStdinTTY (write.go's
+// unexported injectable var) can be forced without a real pty — and a package-cli file cannot see
+// symbols defined in a package cli_test file even though both live under the same directory (Go's
+// two-test-package convention). Both wrappers share the same underlying digest logic via
+// internal/snapshot now, so this is a naming duplicate only, not a logic one.
 func snapshotTreeForGuard(t *testing.T, root string) map[string]string {
 	t.Helper()
-	snap := map[string]string{}
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if rel == "." {
-			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 {
-			target, linkErr := os.Readlink(path)
-			if linkErr != nil {
-				return linkErr
-			}
-			snap[rel] = "symlink:" + target
-			return nil
-		}
-		if d.IsDir() {
-			snap[rel] = "dir"
-			return nil
-		}
-		b, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return readErr
-		}
-		sum := sha256.Sum256(b)
-		snap[rel] = "file:" + hex.EncodeToString(sum[:])
-		return nil
-	})
+	snap, err := snapshot.Snapshot(root)
 	if err != nil {
 		t.Fatalf("snapshotTreeForGuard(%s): %v", root, err)
 	}
@@ -64,20 +31,8 @@ func snapshotTreeForGuard(t *testing.T, root string) map[string]string {
 
 func assertTreeUnchangedForGuard(t *testing.T, before, after map[string]string) {
 	t.Helper()
-	for path, sum := range before {
-		got, ok := after[path]
-		if !ok {
-			t.Errorf("write-nothing guard: %s was removed", path)
-			continue
-		}
-		if got != sum {
-			t.Errorf("write-nothing guard: %s changed", path)
-		}
-	}
-	for path := range after {
-		if _, ok := before[path]; !ok {
-			t.Errorf("write-nothing guard: %s was created", path)
-		}
+	for _, mismatch := range snapshot.Diff(before, after) {
+		t.Errorf("write-nothing guard: %s", mismatch)
 	}
 }
 

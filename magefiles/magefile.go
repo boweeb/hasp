@@ -7,6 +7,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 )
@@ -104,6 +106,39 @@ func Docs() error {
 func Release() error {
 	return sh.RunV("go", "run", "github.com/goreleaser/goreleaser/v2@"+goreleaserVersion,
 		"release", "--clean")
+}
+
+// CleanRoom runs roadmap.md §5.5 exit criterion 6, the milestone's own mechanical proof that "a
+// stranger can install it, trust it, and walk away from it": tools/cleanroom builds a synthetic
+// ~/.ssh fixture, drives a real hasp binary through `list key`, `adopt key`, and `release key`
+// against it, and fails unless the fixture comes back byte-identical (internal/snapshot).
+//
+// Like Fuzz, Fixtures, GenDocs, and Release, this is a standalone target, deliberately excluded
+// from CI's mg.Deps: it is not "verify the tree as committed" (T41's own distinction) but "prove
+// an installed binary behaves," and .github/workflows/release.yml's own clean-room job installs
+// hasp from the public Go module proxy — a genuine network dependency with its own indexing-lag
+// flakiness, exactly the kind of slow/flaky-but-not-blocking-on-every-commit target T41 already
+// established the precedent for keeping out of the per-commit aggregate.
+//
+// HASP_CLEANROOM_BIN, if set, names a pre-built hasp binary to test — the release workflow sets
+// this to the binary a real `go install ...@<tag>` just produced, so the release-time run proves
+// the actually-installed artifact, not a local rebuild. Left unset (the common local case), this
+// target builds the current tree to a temp location first, making `go run mage.go cleanroom` a
+// fast, self-contained dev-loop smoke test on its own.
+func CleanRoom() error {
+	bin := os.Getenv("HASP_CLEANROOM_BIN")
+	if bin == "" {
+		tmp, err := os.MkdirTemp("", "hasp-cleanroom-build-*")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		bin = tmp + "/hasp"
+		if err := sh.RunV("go", "build", "-o", bin, "./cmd/hasp"); err != nil {
+			return err
+		}
+	}
+	return sh.RunV("go", "run", "./tools/cleanroom", "-hasp-bin", bin)
 }
 
 // CI is the aggregate target a workflow shim invokes (T32's thin-shim rule). It deliberately

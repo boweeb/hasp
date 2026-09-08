@@ -325,13 +325,14 @@ extend the read surface.
    citations, and matching log index/anchor counts — and fails the build when it does not.
 5. The committed CLI reference, man pages, and completions are byte-identical to freshly
    generated output; CI fails if they are stale.
-6. **The clean-room test passes**: in a container with no repository checkout, following only the
-   published `README.md`'s install steps, `hasp list key` returns an accurate inventory of a
-   synthetic `~/.ssh` fixture, `hasp adopt` then `hasp release` returns that fixture
-   **byte-identical** to where it started, and the whole run is covered by §3's write-nothing
-   snapshot guard. This is the mechanical form of "a stranger can install it, trust it, and walk
-   away from it" — the milestone's own one-line claim — and it is deliberately a script rather
-   than a judgement, because every other exit criterion in this document is.
+6. **The clean-room test passes**: in an isolated environment, installing the `hasp` binary under
+   test exclusively via the published `README.md`'s `go install` step against the public module
+   proxy — never built from a local checkout ([T45](tech-decision-log.md#t45)) — `hasp list key`
+   returns an accurate inventory of a synthetic `~/.ssh` fixture, `hasp adopt` then `hasp release`
+   returns that fixture **byte-identical** to where it started, and the whole run is covered by
+   §3's write-nothing snapshot guard. This is the mechanical form of "a stranger can install it,
+   trust it, and walk away from it" — the milestone's own one-line claim — and it is deliberately
+   a script rather than a judgement, because every other exit criterion in this document is.
 7. `golangci-lint` and the Go toolchain are both pinned to exact versions.
 8. **The repository a stranger actually lands on is this project.** GitHub's default branch is
    `main`, and the archived Python predecessor's `master` history has been moved to cold storage
