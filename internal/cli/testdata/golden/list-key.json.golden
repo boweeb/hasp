@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "kind": "key.list",
+  "data": [
+    {
+      "identity": {
+        "kind": "fingerprint",
+        "value": "SHA256:t4rn6Go9uzGHCyff1lwYWtX+swf+EQhuqmE2dHSqkFE"
+      },
+      "locations": [
+        {
+          "path": "<KEYDIR>/id_ed25519",
+          "isAlias": false
+        }
+      ],
+      "name": "id_ed25519",
+      "algorithm": "ssh-ed25519",
+      "bits": 256,
+      "comment": "",
+      "format": "openssh",
+      "encrypted": false,
+      "hasPublicHalf": false,
+      "profiles": null,
+      "sizeBytes": 387
+    },
+    {
+      "identity": {
+        "kind": "fingerprint",
+        "value": "SHA256:6Lw4BEhRqMMX/Q9mrizVEEA9b56OPK2uutmTFTVNBFY"
+      },
+      "locations": [
+        {
+          "path": "<KEYDIR>/id_rsa_legacy",
+          "isAlias": false
+        }
+      ],
+      "name": "id_rsa_legacy",
+      "algorithm": "ssh-rsa",
+      "bits": 3072,
+      "comment": "",
+      "format": "pkcs1",
+      "encrypted": false,
+      "hasPublicHalf": true,
+      "profiles": null,
+      "sizeBytes": 2455
+    }
+  ]
+}
