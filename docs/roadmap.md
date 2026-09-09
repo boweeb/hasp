@@ -377,6 +377,21 @@ any of them would break every one of those citations invisibly.
 - **`--investigate` on `show key` and `list key`** ([`tdd.md` §9](tdd.md#9-command-surface--the-38-grid-spelled-out)) —
   opt-in, out of the default read path entirely.
 
+**Chunks**
+
+Sequenced by dependency, the same way [M3.5](#55-m35--hardening)'s table is. **Merge Commit**
+carries the landing commit once a chunk lands, so this stays a completion record rather than the
+task tracker [§8](#8-what-this-document-is-not) rules out.
+
+| # | Chunk | After | Merge Commit |
+| --- | --- | --- | --- |
+| M3.6.0 | Default-read baseline — the committed capture of `list key`'s pre-M3.6 output that criterion 7 is asserted against, taken before any behaviour changes and therefore first | — | |
+| M3.6.1 | Vocabulary and registry — P10's closed confidence set and the `origins` shape; the four schemes and each one's declared material requirement; the committed AWS and legacy vectors, the MD5-collision assertion, the confidence golden list, and the no-network guard | 0 | |
+| M3.6.2 | Derivation sources — the `ssh-agent` client and its fake-agent test; passphrase-gated material opening, one prompt per invocation, and the no-TTY degrade | 1 | |
+| M3.6.3 | Multi-scheme `find key` — shape routing, both MD5 candidates computed rather than one guessed, and confidence-graded match evidence in both renderers | 1 | |
+| M3.6.4 | `--investigate` on `show key` and `list key` — the projection assembled across every source, both renderers, and the guard that the default read is untouched | 2, 3 | |
+| M3.6.5 | Close-out — the regenerated reference surface, narrative documentation, this table's own completion record, and the `v1.0.0` tag criterion 8 reserves for it | all | |
+
 **Explicitly out of scope**
 
 The keyring-backed passphrase cache — considered and rejected for now (`design.md` §10); the
