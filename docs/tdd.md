@@ -1298,11 +1298,17 @@ This is [T2](tech-decision-log.md#t2)'s contract, tested directly rather than as
   `derived`, `confirmed`, `possible`, `unknown` — is asserted by name, so a fifth value anywhere in
   the codebase shows up in a diff rather than in a consumer silently accepting a value outside the
   set it was told was closed.
-- **No scheme performs I/O beyond reading the key file already in memory** ([T35](tech-decision-log.md#t35)).
-  A guard test runs every registered scheme's `Compute` inside a `net.Dialer` whose `Control`
-  callback fails any socket creation, and asserts no scheme ever trips it — the mechanical proof
-  behind [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in
-  prose.
+- **No scheme performs I/O beyond reading the key file already in memory** ([T35](tech-decision-log.md#t35),
+  amended by [T47](tech-decision-log.md#t47)). A `net.Dialer`/`Control`-callback guard was tried
+  first and does not work: nothing under test ever constructs or receives a `net.Dialer`, so the
+  hook can never actually trip, which makes it a guard that cannot fail. The mechanism actually
+  implemented is a `go list`-based assertion, the same mechanical shape
+  [T13](tech-decision-log.md#t13)'s and [T32](tech-decision-log.md#t32)'s layering guards already
+  use: `internal/adapter/fpscheme`'s own **direct** imports (not the full transitive
+  `go list -deps` closure those two guards use — `golang.org/x/crypto/ssh` itself directly
+  imports `net` for unrelated reasons, which would make a transitive check fail permanently)
+  contain none of `net`, `net/http`, or `os/exec`. This is the mechanical proof behind
+  [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in prose.
 
 ---
 
