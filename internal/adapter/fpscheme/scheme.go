@@ -128,6 +128,39 @@ func createdRSAApplicable(m keyfile.Material) (bool, domain.ReasonToken) {
 	return true, ""
 }
 
+// CreatedRSAPromptWorthy answers T39 rule 2's question — "would a passphrase unlock something
+// otherwise completely unknown" — for the one scheme that question is ever about
+// (aws-created-rsa, tdd.md §18), from material already at hand, before ever asking for one.
+// createdRSAApplicable above is deliberately not reused for this: it type-asserts m.Private,
+// which by definition is only populated *after* a successful decrypt, so it cannot answer a
+// question a policy layer (chunk M3.6.2's passphrase gate) needs answered *before* deciding
+// whether decrypting is worth interrupting the user for at all.
+//
+// Three outcomes, not two, because the honest answer for a legacy-PEM key with no .pub sidecar
+// is neither "yes" nor "no" — it is "cannot tell without the passphrase itself":
+//
+//   - m.Public != nil: the algorithm is already known without decrypting anything — an
+//     OpenSSH-format encrypted key embeds its public half unencrypted (keyfile.OpenMaterial
+//     populates m.Public from PassphraseMissingError.PublicKey before any passphrase is ever
+//     considered), and so does a `.pub` sidecar. worthPrompting reports m.Public.Type() ==
+//     ssh.KeyAlgoRSA exactly, and ambiguous is false: there is nothing left to resolve.
+//   - m.Public == nil: §5.1's total derivation gap — legacy PEM, encrypted, no `.pub` sidecar.
+//     The algorithm is genuinely undiscoverable without the passphrase itself; there is no
+//     public-material signal left to consult. This function resolves that unavoidable ambiguity
+//     conservatively: worthPrompting is true and ambiguous is true, meaning "treat it as a
+//     candidate anyway." A pointless prompt on a key that turns out not to be RSA costs the user
+//     one keystroke past declining; silently never prompting for a genuine AWS-created RSA key
+//     because hasp guessed "probably not" is the false negative D20's whole rationale exists to
+//     rule out, one layer over from where D20 itself applies. Callers that want to distinguish
+//     the two cases (e.g. to phrase a prompt differently) can check ambiguous; the passphrase
+//     gate (chunk M3.6.2) does not need to.
+func CreatedRSAPromptWorthy(m keyfile.Material) (worthPrompting bool, ambiguous bool) {
+	if m.Public != nil {
+		return m.Public.Type() == ssh.KeyAlgoRSA, false
+	}
+	return true, true
+}
+
 func createdRSACompute(m keyfile.Material) (string, error) {
 	priv, ok := m.Private.(*rsa.PrivateKey)
 	if !ok {

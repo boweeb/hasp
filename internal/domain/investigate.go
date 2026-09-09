@@ -149,3 +149,36 @@ const (
 	OriginAWSEC2Created  = "aws-ec2-created"
 	OriginAWSEC2Imported = "aws-ec2-imported"
 )
+
+// FactSource labels *where* --investigate obtained a fact, when that provenance itself matters
+// enough to travel with the value rather than be inferred from context (T38, chunk M3.6.2). It
+// is a narrower, deliberately separate concept from Confidence (P10) above: Confidence says how
+// sure hasp is that a value is right; FactSource says where hasp got it from. The two compose —
+// an agent-sourced comment is reported at ConfidenceDerived (it is a plain fact, not a guess)
+// and FactSourceAgent (it is real only for as long as the agent that supplied it keeps running).
+//
+// FactSource is intentionally not folded into Confidence's closed four-value set: doing so would
+// either invent a fifth confidence value (forbidden, T37's frozen compatibility-surface row) or
+// silently misreport an agent-sourced fact as an ordinary derived one — the exact
+// labelled-never-merged treatment T16 already established for Binding.Kind
+// (BindingExplicit vs. BindingImplicitDefault), which T38 explicitly extends to this case:
+// "labelled agent-sourced, never merged into the plain derived bucket."
+//
+// It lives here, alongside Confidence, rather than as a bare string field on
+// internal/adapter/sshagent.Fact alone, so a future consumer has one typed, documented
+// vocabulary to check regardless of which source produced the fact — sshagent.Fact also carries
+// it directly (as this exact type), so the label travels with the value from the moment it is
+// produced rather than needing to be reattached downstream.
+type FactSource string
+
+const (
+	// FactSourcePlainRead is a plain read's own derivation — the default for everything §5-§11
+	// already report. It needs no visible label in practice, since there is only one source for
+	// it; named here only so FactSourceAgent below has an explicit zero-value counterpart rather
+	// than relying on Go's implicit "" for a claim this file otherwise states outright.
+	FactSourcePlainRead FactSource = ""
+	// FactSourceAgent labels a fact internal/adapter/sshagent supplied (T38): real only for as
+	// long as the agent that reported it keeps running, which is why it is never merged into the
+	// plain derived bucket above.
+	FactSourceAgent FactSource = "agent-sourced"
+)
