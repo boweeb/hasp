@@ -71,9 +71,11 @@ kos:
   - id: hasp
     build: hasp
     main: ./cmd/hasp
-    # Deliberately floating, unlike T32's dev-tool pins: a distroless base should pick up
-    # Chainguard's continuous security patches on every release, not freeze them.
-    base_image: cgr.dev/chainguard/static:latest
+    # Deliberately floating, unlike T32's dev-tool pins: a distroless base should pick up its
+    # maintainer's continuous security patches on every release, not freeze them. `:nonroot`
+    # preserves Chainguard's prior nonroot-by-default behavior — plain
+    # gcr.io/distroless/static:latest runs as root without it (T46).
+    base_image: gcr.io/distroless/static:nonroot
     repositories:
       - ghcr.io/boweeb/hasp
     # ko's default naming appends the import-path base name plus an MD5 hash of the full import
