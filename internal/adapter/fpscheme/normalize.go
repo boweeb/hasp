@@ -49,11 +49,30 @@ func Normalize(clue string) string {
 	return stripped
 }
 
+// sha256Base64Len is the full-shape length of a SHA-256 digest (32 bytes) rendered as base64
+// with "=" padding already stripped by Normalize: 44 base64 characters for 32 bytes, minus the
+// one trailing "=" a 32-byte input always produces (32 % 3 == 2, so the final base64 group is
+// padded by exactly one character). This is the *only* base64-shaped length T36 treats as
+// fully determining a scheme; anything else base64-shaped is a fragment (below).
+const sha256Base64Len = 43
+
 // CandidateSchemes returns every scheme id a normalized clue's shape admits, per T36's routing
 // table. It never returns fewer schemes than the shape allows and never guesses a single
 // "correct" one — T36's central rule, stated there in exactly these terms: "shape narrows the
-// candidate set; it never uniquely determines a scheme." A clue whose shape matches nothing
-// returns nil.
+// candidate set; it never uniquely determines a scheme."
+//
+// Only a clue matching one of T36's three *full* shapes — 40 hex digits, 32 hex digits, or a
+// full-length (43-character) base64 SHA-256 digest — narrows to fewer than every registered
+// scheme. A **fragment** of any of those shapes returns every registered scheme, not a guess:
+// J2 explicitly supports identifying a key from a fingerprint fragment (tdd.md §9's `find` cell;
+// `internal/app/key.go`'s `FindKeys` does a substring match), and hex digits are a subset of the
+// base64 alphabet, so a short hex-looking fragment is genuinely indistinguishable from a fragment
+// of a base64-encoded SHA-256 value — there is no shape signal left to narrow with. Routing a
+// fragment to a single scheme anyway reintroduces, one layer down, precisely the silent miss
+// D20 exists to eliminate: "shape narrows; it never uniquely determines," applied honestly, means
+// a shape that determines nothing narrows to nothing. A clue containing a character outside
+// every scheme's alphabet (garbage, or empty after normalization) still returns nil — that is not
+// ambiguity, it is certainty that no scheme can ever match.
 //
 // clue must already be normalized (Normalize) before it is passed here — CandidateSchemes does
 // not normalize its input, so a caller can route the same normalized value it also intends to
@@ -68,13 +87,30 @@ func CandidateSchemes(normalizedClue string) []domain.SchemeID {
 		// 32 hex digits (47 characters before normalization strips 15 colons): MD5 — two
 		// candidates that share this shape and differ in value (T35/T36's MD5 collision).
 		return []domain.SchemeID{domain.SchemeAWSImportedRSA, domain.SchemeLegacySSHMD5}
-	case isBase64ish(normalizedClue) && len(normalizedClue) > 0:
-		// SHA-256, base64-encoded, with or without a stripped "SHA256:" prefix: the
-		// SSH-native scheme. One candidate.
+	case isBase64ish(normalizedClue) && len(normalizedClue) == sha256Base64Len:
+		// Full-length SHA-256, base64-encoded, with or without a stripped "SHA256:" prefix:
+		// the SSH-native scheme. One candidate.
 		return []domain.SchemeID{domain.SchemeSSHNativeSHA256}
+	case isBase64ish(normalizedClue) && len(normalizedClue) > 0:
+		// A fragment: every character is valid in some scheme's alphabet, but the length
+		// matches none of the three full shapes above, so shape narrows nothing. Every
+		// registered scheme stays a candidate — see the doc comment above.
+		return allSchemeIDs()
 	default:
 		return nil
 	}
+}
+
+// allSchemeIDs returns every registered scheme's id, in registry order. Reading directly from
+// the registry (scheme.go) rather than hardcoding the four current ids keeps T35's "the registry
+// is open — a new scheme is one entry, not a new call site" property true here too: a fifth
+// registered scheme is automatically included in the fragment case above with no further change.
+func allSchemeIDs() []domain.SchemeID {
+	ids := make([]domain.SchemeID, len(registry))
+	for i, s := range registry {
+		ids[i] = s.ID
+	}
+	return ids
 }
 
 func isHexCaseInsensitive(s string) bool {

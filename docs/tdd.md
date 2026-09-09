@@ -1588,12 +1588,19 @@ uses to display a fingerprint. hasp's own SSH-native scheme ([T1](tech-decision-
 `FingerprintSHA256`) is one entry among several; AWS alone contributes three distinct schemes to
 the registry:
 
-| Scheme | Hashed input | Hash | Needs |
-| --- | --- | --- | --- |
-| AWS created-RSA | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted |
-| AWS imported-RSA | PKIX/SPKI DER of the **public** key | MD5 | public half only |
-| AWS ED25519 (created *or* imported) | SSH wire-format public key | SHA-256 | public half only |
-| Legacy SSH MD5 | SSH wire-format public key | MD5 | public half only |
+| Scheme | `id` | Hashed input | Hash | Needs |
+| --- | --- | --- | --- | --- |
+| AWS created-RSA | `aws-created-rsa` | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted |
+| AWS imported-RSA | `aws-imported-rsa` | PKIX/SPKI DER of the **public** key | MD5 | public half only |
+| AWS ED25519 (created *or* imported), and hasp's own SSH-native fingerprint | `ssh-native-sha256` | SSH wire-format public key | SHA-256 | public half only |
+| Legacy SSH MD5 | `legacy-ssh-md5` | SSH wire-format public key | MD5 | public half only |
+
+The `id` column is the literal, permanent wire-format value `domain.SchemeID` carries in
+`--investigate`'s JSON output (`internal/domain/investigate.go`) — `aws-created-rsa` and
+`aws-imported-rsa` are named verbatim by [T36](tech-decision-log.md#t36); `ssh-native-sha256` and
+`legacy-ssh-md5` were this project's own naming judgment call for the two schemes T35's table
+otherwise names only in prose, made explicit here so the TDD, not only a Go doc comment, is the
+identifiers' recorded home.
 
 Every scheme is `func(Key) (Fingerprint, error)`, computed entirely in memory from bytes hasp
 already has — stdlib (`x509.MarshalPKCS8PrivateKey` + `crypto/sha1`,

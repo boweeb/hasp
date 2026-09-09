@@ -3313,6 +3313,16 @@ both work — `go list -deps .`, the full transitive closure — would therefore
 moment `fpscheme` imports `ssh` at all, for a reason completely unconnected to whether this
 package's own code ever dials.
 
+**What this guard actually stands in for.** [T35](#t35)'s "never a network call" boundary is not
+incidental to the scheme registry — it is what keeps `design.md` §3.2's *"Not a key distribution
+mechanism"* boundary intact even though matching a console fingerprint is, on its face, about an
+external system. That boundary is itself [P3](design.md#4-principles)'s scope half: hasp manages
+arrangement, not secrets, and a scheme that phoned out to verify a fingerprint against a console
+would be hasp acting as exactly the distribution mechanism §3.2 forbids. This entry exists only to
+make that boundary mechanically checkable rather than a claim resting on review discipline, so it
+cites [P3](design.md#4-principles) directly, not only the T35/T13/T32 entries that shape its
+mechanism.
+
 ### Decision
 
 Replace the `net.Dialer`/`Control` mechanism with a `go list`-based guard, the same mechanical
