@@ -389,7 +389,7 @@ task tracker [§8](#8-what-this-document-is-not) rules out.
 | M3.6.1 | Vocabulary and registry — P10's closed confidence set and the `origins` shape; the four schemes and each one's declared material requirement; the committed AWS and legacy vectors, the MD5-collision assertion, the confidence golden list, and the no-network guard | 0 | |
 | M3.6.2 | Derivation sources — the `ssh-agent` client and its fake-agent test; passphrase-gated material opening, one prompt per invocation, and the no-TTY degrade | 1 | |
 | M3.6.3 | Multi-scheme `find key` — shape routing, both MD5 candidates computed rather than one guessed, and confidence-graded match evidence in both renderers | 1 | |
-| M3.6.4 | `--investigate` on `show key` and `list key` — the projection assembled across every source, both renderers, and the guard that the default read is untouched | 2, 3 | |
+| M3.6.4 | `--investigate` on `show key` and `list key` — the projection assembled across every source, both renderers, and the guard that the default read is untouched. **Owes the "agent tried first" ordering** ([T39](tech-decision-log.md#t39), [T38](tech-decision-log.md#t38)): `internal/app.PassphraseGate` cannot enforce it itself (`tdd.md` §18's `ssh-agent` subsection), so this chunk's own call site is where the agent lookup must run, and its result merge into a candidate key's material, before `PassphraseGate.Derive` is ever called for that key | 2, 3 | |
 | M3.6.5 | Close-out — the regenerated reference surface, narrative documentation, this table's own completion record, and the `v1.0.0` tag criterion 8 reserves for it | all | |
 
 **Explicitly out of scope**

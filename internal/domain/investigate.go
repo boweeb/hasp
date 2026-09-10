@@ -124,6 +124,16 @@ const (
 // ConfidenceUnknown, Reason non-empty) rather than being omitted; no scheme is ever silently
 // dropped from the response.
 type SchemeFingerprint struct {
+	// Scheme carries the literal JSON key "scheme", deliberately not "id" even though Origin.ID
+	// below is exactly the same shape of thing — a stable identifier for what produced this
+	// value. The asymmetry is intentional, not an inconsistency a future reader should "tidy":
+	// the two are different namespaces (a fingerprint scheme's own id, SchemeID — "aws-created-
+	// rsa" and friends, T35 — versus an inferred origin's id, a plain string — "aws-ec2-created"
+	// and friends, T37), and naming both fields "id" would blur that distinction on the wire for
+	// no reason beyond surface symmetry. Ratified before the v1.0.0 freeze (tdd.md §16 row 2 makes
+	// the envelope shape, and by extension each kind's `data` field names, part of the frozen
+	// compatibility surface); left as-is by deliberate maintainer decision during M3.6.3, not an
+	// oversight carried forward.
 	Scheme     SchemeID    `json:"scheme"`
 	Value      string      `json:"value"`
 	Confidence Confidence  `json:"confidence"`
@@ -156,6 +166,14 @@ const (
 // sure hasp is that a value is right; FactSource says where hasp got it from. The two compose —
 // an agent-sourced comment is reported at ConfidenceDerived (it is a plain fact, not a guess)
 // and FactSourceAgent (it is real only for as long as the agent that supplied it keeps running).
+//
+// Forward note, chunk M3.6.4: once FactSource actually reaches --json (it does not yet — this
+// vocabulary is defined here, ahead of its first --investigate caller, for the reason stated
+// below), it becomes a consumer-filterable safety signal in exactly the sense Confidence already
+// is — a consumer deciding whether to trust an agent-sourced, only-real-while-the-agent-runs fact
+// is making the same kind of decision T37 describes for Confidence. It should get the same
+// closed-set golden-list guard test (tdd.md §12) Confidence already has then, not be left to a
+// reviewer's eye the way a smaller, two-value set might tempt someone to skip.
 //
 // FactSource is intentionally not folded into Confidence's closed four-value set: doing so would
 // either invent a fifth confidence value (forbidden, T37's frozen compatibility-surface row) or

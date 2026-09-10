@@ -145,9 +145,12 @@ func (g *PassphraseGate) obtain() ([]byte, error) {
 	return g.passphrase, g.promptErr
 }
 
-// Close zeroes the held passphrase (rule 4, D19's "zeroed after" constraint) — call once, after
-// every candidate key in the invocation has been through Derive. A PassphraseGate must not be
-// reused after Close.
+// Close zeroes the held passphrase (rule 4, D19's "zeroed after" constraint). Callers should
+// `defer gate.Close()` immediately at construction — the same pattern internal/cli/new.go:61
+// already uses for `new key`'s own passphrase buffer (`defer zeroBytes(secret)`) — rather than
+// calling it by hand after the last Derive, so a return added later on an error path can never
+// accidentally skip it. A PassphraseGate must not be reused after Close.
+// (Guarded by TestPassphraseGate_Close_ZeroesThePassphraseBuffer, tdd.md §12.)
 func (g *PassphraseGate) Close() {
 	for i := range g.passphrase {
 		g.passphrase[i] = 0

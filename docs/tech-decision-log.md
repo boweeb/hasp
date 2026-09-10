@@ -3272,6 +3272,15 @@ maintainers are not the audience it is priced for. Wiring a login step and a tok
 `release.yml` to work around that would trade a one-line `base_image:` swap for an ongoing
 account-maintenance dependency this project has no organizational backing to sustain.
 
+**This entry serves [P6](design.md#4-principles) directly — the same clause [T40](#t40) already
+invoked for the module path.** T40's own rationale is that a publicly resolvable module path is
+what makes P6's "nothing hasp knows may be trapped inside it" promise reachable by someone who is
+not the author; a container image gated behind a business-email signup is exactly the same kind
+of barrier applied to a different artifact, `ko`'s published image rather than `go install`'s
+module path. An image nobody but a signed-up account can pull is, in practice, a released artifact
+only the author can use — the same failure mode P6 already names for anything hasp would keep
+only to itself, applied here to distribution rather than to data.
+
 ### Consequence
 
 - `.goreleaser.yaml`'s `kos:` block now points at `gcr.io/distroless/static:nonroot`; its comment

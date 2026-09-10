@@ -173,15 +173,24 @@ func TestPassphraseGate_AlreadyUnlocked_NeverPrompts(t *testing.T) {
 	}
 }
 
-// TestPassphraseGate_AgentTriedFirst_NeverPrompts is the T38-consequence integration test roadmap.md
-// §5.6 exit criterion 5 asks for: "a key present in the agent must not trigger the callback at
-// all." It exercises the real internal/adapter/sshagent source end to end — a fake agent with the
-// ed25519-openssh-encrypted-nopub fixture loaded and a non-empty comment (the committed fixture
-// itself carries an empty one, tools/genfixtures used ssh-keygen -C "") — merges the agent's
-// comment into the material a caller would pass to Derive (simulating chunk M3.6.4's own
-// "agent tried first" wiring at the call site, per PassphraseGate's own doc comment), and asserts
-// the callback never fires and the agent-sourced comment survives the call unchanged.
-func TestPassphraseGate_AgentTriedFirst_NeverPrompts(t *testing.T) {
+// TestPassphraseGate_AgentSourcedComment_SurvivesDerive_ButNeverPrompts replaces a review-flagged
+// misnamed test, formerly TestPassphraseGate_AgentTriedFirst_NeverPrompts. That name claimed to
+// prove PassphraseGate consults an agent before prompting; it does not and never will — see
+// PassphraseGate's own doc comment, rule 1: the agent (internal/adapter/sshagent, this same
+// chunk's other half) and this gate answer disjoint questions (a comment vs. aws-created-rsa's
+// hash), so they are never actually in competition for anything, and "tried first" is satisfied
+// entirely by call-site ordering outside this type (chunk M3.6.4). The fixture this test uses,
+// ed25519-openssh-encrypted-nopub, makes fpscheme.CreatedRSAPromptWorthy return false (an
+// ed25519 key is never an aws-created-rsa candidate, tdd.md §18), so Derive returns at rule 2
+// before ever reaching the callback — the exact same path TestPassphraseGate_NotPromptWorthy_
+// NeverPrompts already proves directly, with no agent involved at all. Renamed rather than
+// deleted because it exercises something that test does not: it runs the real
+// internal/adapter/sshagent client end to end against a fake agent (T38's own guard test shape,
+// tdd.md §12) and proves an agent-sourced comment, once a caller merges it into `known` before
+// calling Derive (simulating chunk M3.6.4's "agent tried first" wiring), survives a Derive call
+// unchanged — Derive must never clear or overwrite Material.Comment for a fact it played no part
+// in producing.
+func TestPassphraseGate_AgentSourcedComment_SurvivesDerive_ButNeverPrompts(t *testing.T) {
 	path, known := openKnownMaterial(t, "ed25519-openssh-encrypted-nopub")
 
 	priv, err := keyfile.OpenMaterial(path, []byte(testPassphrase))
@@ -248,5 +257,63 @@ func TestPassphraseGate_AgentTriedFirst_NeverPrompts(t *testing.T) {
 	}
 	if got.Material.Comment != wantComment {
 		t.Errorf("Comment = %q, want %q (agent-sourced comment must survive Derive unchanged)", got.Material.Comment, wantComment)
+	}
+}
+
+// TestPassphraseGate_Close_ZeroesThePassphraseBuffer is D19's fourth constraint (user-initiated,
+// scoped, held in memory, zeroed after) and T39 rule 4, guarded mechanically rather than left to
+// review discipline alone — tdd.md §12's guard-test list names every other mechanically-enforced
+// invariant, and this one's prior absence was exactly why it went unguarded (review finding on
+// M3.6.2). Same technique internal/adapter/keyfile/generate_test.go's
+// TestGenerate_ZeroesThePassphraseBuffer and internal/app/newkey_test.go already use: the
+// callback returns the *caller's own* slice, so asserting every byte of that same slice is 0
+// after Close proves the effect reached the caller, not merely some internal copy the gate might
+// have made instead of keeping the original backing array.
+func TestPassphraseGate_Close_ZeroesThePassphraseBuffer(t *testing.T) {
+	path, known := openKnownMaterial(t, "rsa-pem-encrypted-nopub")
+
+	secret := []byte(testPassphrase)
+	gate := &PassphraseGate{Passphrase: func() ([]byte, error) {
+		return secret, nil
+	}}
+	got := gate.Derive(path, known)
+	if !got.Unlocked {
+		t.Fatalf("Derive did not unlock with the correct passphrase — cannot exercise Close on a held passphrase")
+	}
+
+	gate.Close()
+
+	for i, b := range secret {
+		if b != 0 {
+			t.Fatalf("secret[%d] = %v, want 0 (Close did not zero the passphrase buffer)", i, b)
+		}
+	}
+}
+
+// TestPassphraseGate_OpenFails_Degrades covers Derive's one remaining untested branch: the
+// injected Open seam (PassphraseGate.Open) itself returning an error — path unreadable or not a
+// recognizable private key at all, keyfile.OpenMaterial's own documented error contract. This is
+// exactly the seam Open exists to make testable (review finding on M3.6.2): a wrong/rejected
+// passphrase (TestPassphraseGate_WrongPassphrase_Degrades, above) is a different, already-covered
+// case where OpenMaterial returns no error at all.
+func TestPassphraseGate_OpenFails_Degrades(t *testing.T) {
+	path, known := openKnownMaterial(t, "rsa-pem-encrypted-nopub")
+
+	wantErr := errors.New("boom: simulated open failure")
+	gate := &PassphraseGate{
+		Open: func(string, []byte) (keyfile.Material, error) {
+			return keyfile.Material{}, wantErr
+		},
+		Passphrase: func() ([]byte, error) {
+			return []byte(testPassphrase), nil
+		},
+	}
+	got := gate.Derive(path, known)
+
+	if got.Unlocked {
+		t.Fatal("Unlocked = true when the injected Open failed")
+	}
+	if got.Reason != domain.ReasonPrivateKeyUnavailable {
+		t.Errorf("Reason = %q, want %q", got.Reason, domain.ReasonPrivateKeyUnavailable)
 	}
 }

@@ -1309,6 +1309,16 @@ This is [T2](tech-decision-log.md#t2)'s contract, tested directly rather than as
   imports `net` for unrelated reasons, which would make a transitive check fail permanently)
   contain none of `net`, `net/http`, or `os/exec`. This is the mechanical proof behind
   [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in prose.
+- **`PassphraseGate.Close` actually zeroes the held passphrase**
+  ([D19](decision-log.md#d19), [T39](tech-decision-log.md#t39)). D19's fourth constraint —
+  user-initiated, scoped to one operation, held in memory, **zeroed after** — is otherwise the one
+  of the three properties §11 names with no mechanical test: gutting `Close()` to a no-op still
+  left every other `PassphraseGate` test passing (a review finding on M3.6.2). The guard uses the
+  same slice/backing-array-aliasing technique as
+  `internal/adapter/keyfile/generate_test.go`'s `TestGenerate_ZeroesThePassphraseBuffer` and
+  `internal/app/newkey_test.go`: the injected `Passphrase` callback returns the test's own `[]byte`,
+  and the test asserts every byte of that same slice is `0` after `Close` — proof the effect
+  reached the caller's own copy, not merely one internal to the gate.
 
 ---
 
@@ -1675,6 +1685,24 @@ never merged into the plain `derived` bucket, because it is real only for as lon
 keeps running — the same labelled-not-merged treatment
 [T16](tech-decision-log.md#t16) gives implicit-default bindings. No agent, or the socket unset,
 degrades silently to what is derivable without it (§11) — never an error.
+
+**Forward obligation, recorded rather than assumed:** T39's "try the agent first" is a call-site
+ordering requirement — the agent lookup runs, and its result is merged into a candidate key's
+material, *before* `PassphraseGate.Derive` is ever called for that key — not a property either
+source enforces on its own. `internal/app.PassphraseGate` (M3.6.2) does not talk to an agent
+itself and cannot verify it was consulted first; the ordering is discharged entirely by chunk
+[M3.6.4](roadmap.md#56-m36--investigation)'s wiring inside `--investigate`'s own call site, which
+is the only place both sources are ever invoked together. `roadmap.md` §5.6's M3.6.4 chunk row
+names this explicitly, so the obligation has one recorded home rather than being left implicit in
+two chunks that each assume the other one covers it.
+
+**A known limitation, not yet worth its own T-log entry:** a `byPath`-identified key ([T1](tech-decision-log.md#t1)'s
+undecidable row — legacy PEM, encrypted, no `.pub` sidecar) has no derivable public key at all, so
+even when the agent holds that exact key loaded, there is no public-key signal on hasp's side left
+to cross-reference the agent's own listing against. [T38](tech-decision-log.md#t38) scopes
+cross-referencing to "by public key" and is silent on this case; the practical consequence is that
+such a key's comment stays `unknown` even with the right agent running, the same way its
+created-RSA fingerprint does without a correct passphrase ([T39](tech-decision-log.md#t39), below).
 
 ### Passphrase-gated derivation
 
