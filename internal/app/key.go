@@ -69,8 +69,9 @@ type FindMatch struct {
 // shape admits (J2, D20, T36) — not only hasp's own SSH-native scheme. Normalization and shape
 // routing are internal/adapter/fpscheme's own (Normalize, CandidateSchemes, M3.6.1); FindKeys
 // consumes them rather than reimplementing either, and computes only the schemes a clue's shape
-// admits, not every scheme for every key, so the common case (an SSH-native clue) stays as cheap
-// as it was before this chunk (T36).
+// admits, not every scheme for every key, so the common case (an SSH-native clue) computes the
+// fewest schemes it can (T36) — see candidatesNeedMaterial below for what that shape also buys in
+// disk I/O, which is no longer the same claim (tdd.md §18, item 4, M3.6.3 review).
 //
 // find key never prompts for a passphrase (T39, T48, the consent boundary D19 draws): the
 // aws-created-rsa scheme, which needs the decrypted private key, is only ever evaluated against
@@ -87,6 +88,32 @@ func FindKeys(m Machine, clue string) (matches []FindMatch, warnings []string) {
 	candidates := fpscheme.CandidateSchemes(normalized)
 	if len(candidates) == 0 {
 		return nil, nil
+	}
+
+	if !candidatesNeedMaterial(candidates) {
+		// The only shape that reaches here is the full-length base64 SHA-256 clue, whose sole
+		// candidate is ssh-native-sha256 (fpscheme.CandidateSchemes). D19/P3 license reading
+		// private key material only for an operation that needs it (item 4, M3.6.3 review); this
+		// shape does not, because ssh-native-sha256's Compute is byte-for-byte
+		// ssh.FingerprintSHA256 over the public key — exactly the value deriveKeys already stored
+		// as k.Identity (keyfile.Inspect, pipeline.go) — so no key's file is reopened here at
+		// all, restoring FindKeys' pre-M3.6.3 zero-disk-I/O behavior for this shape rather than
+		// merely reducing it. A key with no derivable fingerprint at all (Identity.Kind() ==
+		// IdentityPath, T1's undecidable row) is skipped, not reopened: Inspect already tried the
+		// identical derivation OpenMaterial(path, nil) would repeat and came back empty, so
+		// reopening it can only reproduce that same "no public key" answer, never a match.
+		id := candidates[0]
+		for _, k := range m.Keys {
+			if k.Identity.Kind() != domain.IdentityFingerprint {
+				continue
+			}
+			value := k.Identity.Value()
+			if value == "" || !strings.Contains(compareFold(value), compareFold(normalized)) {
+				continue
+			}
+			matches = append(matches, FindMatch{Key: k, Origins: []domain.Origin{originForSchemeMatch(id)}})
+		}
+		return matches, nil
 	}
 
 	unevaluable := map[domain.SchemeID]int{}
@@ -125,30 +152,69 @@ func FindKeys(m Machine, clue string) (matches []FindMatch, warnings []string) {
 	return matches, unevaluableWarnings(candidates, unevaluable)
 }
 
-// compareFold reduces s to its letters and digits, lowercased, so a scheme's computed value and
-// a user-typed clue compare equal despite two independent kinds of formatting noise (T50): case
-// (fpscheme.Normalize deliberately leaves base64 case exactly as given — folding case there would
-// silently corrupt which bytes a SHA-256 value names, D20's own base64-padding note) and
-// separator punctuation a human pastes in for readability (a hyphen grouping a base64 fragment
-// into pronounceable chunks, say), which Normalize also does not strip beyond a literal colon,
-// for the identical reason: "-" and "_" are meaningful content in the URL-safe base64 alphabet,
-// and CandidateSchemes' shape routing (T36) needs Normalize's output at its true, uncorrupted
-// length to route a full-length clue correctly.
+// candidatesNeedMaterial reports whether evaluating clue's candidate schemes against a key
+// requires opening that key's file at all (item 4, M3.6.3 review; D19, P3, P8: hasp may read
+// private key material only for an operation that needs it, and P8's one-laptop scale is what
+// makes the pre-fix N-reads-per-invocation regression cheap in absolute terms without making it
+// correct in principle). True whenever a candidate is declared RequiresDecryptedPrivateKey
+// (fpscheme.Schemes' Requires field, M3.6.1) — aws-created-rsa, the one scheme find can still
+// never actually satisfy for an encrypted key (T48) — or is an AWS scheme at all:
+// aws-imported-rsa is declared RequiresPublicHalf, but what it hashes (the PKIX/SPKI DER of the
+// public key) is not the value k.Identity already carries (that value is always
+// ssh-native-sha256's own SHA-256-over-SSH-wire-format encoding, T1), so Identity cannot stand in
+// for it the way it can for ssh-native-sha256 itself. legacy-ssh-md5 never appears as a candidate
+// without aws-imported-rsa alongside it (fpscheme.CandidateSchemes' MD5-shape and fragment
+// routing), so naming the two AWS schemes here is sufficient without naming it too.
+func candidatesNeedMaterial(candidates []domain.SchemeID) bool {
+	requires := make(map[domain.SchemeID]fpscheme.MaterialRequirement, len(fpscheme.Schemes()))
+	for _, s := range fpscheme.Schemes() {
+		requires[s.ID] = s.Requires
+	}
+	for _, id := range candidates {
+		if requires[id] == fpscheme.RequiresDecryptedPrivateKey {
+			return true
+		}
+		switch id {
+		case domain.SchemeAWSCreatedRSA, domain.SchemeAWSImportedRSA:
+			return true
+		}
+	}
+	return false
+}
+
+// compareFold strips exactly ":", whitespace, "-", and "_" and lowercases letters, so a scheme's
+// computed value and a user-typed clue compare equal despite two independent kinds of formatting
+// noise (T50): case (fpscheme.Normalize deliberately leaves base64 case exactly as given —
+// folding case there would silently corrupt which bytes a SHA-256 value names, D20's own
+// base64-padding note) and separator punctuation a human pastes in for readability (a hyphen
+// grouping a base64 fragment into pronounceable chunks, say), which Normalize also does not strip
+// beyond a literal colon, for the identical reason: "-" and "_" are meaningful content in the
+// URL-safe base64 alphabet, and CandidateSchemes' shape routing (T36) needs Normalize's output at
+// its true, uncorrupted length to route a full-length clue correctly.
 //
-// Folding both sides of the comparison here, rather than either of Normalize's two jobs, is safe
-// for the same reason T50 gives for case alone: none of the four registered schemes (T35) ever
-// emits "-" or "_" as real content — the two colon-hex schemes use only hex digits and colons,
-// and the SSH-native scheme emits standard, not URL-safe, base64 (`+`, `/`) — so this fold can
-// never conflate two genuinely distinct values a scheme would actually compute; it only forgives
-// formatting a human introduces. compareFold is find's own comparison step, never
-// CandidateSchemes' routing input or a scheme's own Compute output — both of those still see
-// Normalize's shape-preserving form.
+// The stripped set is deliberately narrower than "every non-alphanumeric rune" (item 3, M3.6.3
+// review): T50's own safety argument for folding covers only "-" and "_" — none of the four
+// registered schemes (T35) ever emits either as real content, the two colon-hex schemes use only
+// hex digits and colons, so this fold can never conflate two genuinely distinct values those
+// schemes compute. That argument does not extend to "+" and "/": T50's own text notes the
+// SSH-native scheme emits *standard*, not URL-safe, base64, so "+" and "/" are real content in
+// its Compute output, and folding them away would be exactly the kind of silent conflation T50
+// warns against, just for a different pair of characters — stripping only what the written
+// argument actually covers keeps the code matching the invariant it cites rather than
+// overreaching past it. compareFold is find's own comparison step, never CandidateSchemes'
+// routing input or a scheme's own Compute output — both of those still see Normalize's
+// shape-preserving form.
 func compareFold(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		switch {
+		case r == ':' || r == '-' || r == '_' || unicode.IsSpace(r):
+			continue
+		case unicode.IsUpper(r):
 			b.WriteRune(unicode.ToLower(r))
+		default:
+			b.WriteRune(r)
 		}
 	}
 	return b.String()
@@ -181,8 +247,12 @@ func unevaluableWarnings(candidates []domain.SchemeID, unevaluable map[domain.Sc
 		if n == 0 {
 			continue
 		}
+		// tdd.md §10 makes the envelope's warnings array a public contract, frozen at v1.0.0 —
+		// this string must not name a scheduling artifact (a milestone/chunk id) that is
+		// meaningless to an end user and wrong the moment the chunk is renumbered (item 5,
+		// M3.6.3 review). Citing T39 is fine: internal/cli/profile.go:45 already does.
 		out = append(out, fmt.Sprintf(
-			"%s could not be evaluated for %d encrypted key(s): find key never prompts for a passphrase (T39) — decrypt the key yourself to compare by hand, or use hasp's --investigate mode once it lands (M3.6.4) to attempt decryption interactively",
+			"%s could not be evaluated for %d encrypted key(s): find key never prompts for a passphrase (T39) — decrypt the key yourself to compare by hand, or use hasp's --investigate flag, once available, to attempt decryption interactively",
 			id, n))
 	}
 	return out

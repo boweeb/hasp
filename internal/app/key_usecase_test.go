@@ -2,7 +2,9 @@ package app
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
+	"unicode"
 )
 
 func TestShowKey_FoundWithBoundHost(t *testing.T) {
@@ -35,6 +37,25 @@ func TestShowKey_NotFound(t *testing.T) {
 	}
 }
 
+// flipCase inverts the case of every letter in s, leaving digits and punctuation untouched — a
+// test helper for proving a case-insensitive comparison actually folds case, rather than merely
+// tolerating a clue that never had any (item 6, M3.6.3 review).
+func flipCase(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case unicode.IsUpper(r):
+			b.WriteRune(unicode.ToLower(r))
+		case unicode.IsLower(r):
+			b.WriteRune(unicode.ToUpper(r))
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func TestFindKeys_FragmentPunctuationAndCaseInsensitive(t *testing.T) {
 	dir := t.TempDir()
 	copyFixture(t, "ed25519-openssh-plain-pub", filepath.Join(dir, "id_ed25519"))
@@ -47,12 +68,30 @@ func TestFindKeys_FragmentPunctuationAndCaseInsensitive(t *testing.T) {
 	full := m.Keys[0].Identity.Value() // "SHA256:xxxxx..."
 	fragment := full[len(full)-8:]
 
-	// Mangle case and inject punctuation into the fragment — J2's requirement.
-	mangled := "  " + fragment[:2] + ":" + fragment[2:]
+	flipped := flipCase(fragment)
+	if flipped == fragment {
+		t.Fatalf("fixture fragment %q has no letters to flip; test proves nothing about case-folding", fragment)
+	}
+
+	// Mangle case (flipped, genuinely different from the real fingerprint's case) and inject
+	// punctuation into the fragment — J2's requirement is both, not just punctuation (item 6).
+	mangled := "  " + flipped[:2] + ":" + flipped[2:]
 
 	got, _ := FindKeys(m, mangled)
 	if len(got) != 1 {
 		t.Fatalf("FindKeys(%q) = %d results, want 1", mangled, len(got))
+	}
+}
+
+// TestCompareFold_PreservesPlusAndSlash guards item 3's narrowing (M3.6.3 review, T50): T50's own
+// safety argument for folding punctuation away covers only "-" and "_" ("none of the four
+// registered schemes ever emits '-' or '_' as real content"), but the SSH-native scheme's Compute
+// output is standard, not URL-safe, base64 — meaning "+" and "/" are real content T50 never
+// licenses folding. Two clues differing only in "+" vs "/" must therefore compare unequal.
+func TestCompareFold_PreservesPlusAndSlash(t *testing.T) {
+	a, b := compareFold("abc+def"), compareFold("abc/def")
+	if a == b {
+		t.Errorf("compareFold(%q) == compareFold(%q) == %q; '+' and '/' are real base64 content and must not fold together (T50)", "abc+def", "abc/def", a)
 	}
 }
 

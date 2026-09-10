@@ -1661,9 +1661,17 @@ to SHA-256/SSH-native/ED25519; and 47 characters of colon-hex (32 hex digits) na
 MD5 schemes — AWS imported-RSA and legacy SSH MD5 — which share a shape and differ in value
 because one hashes the PKIX/SPKI DER encoding and the other the SSH wire-format blob. `find`
 computes every scheme the shape admits, which is one for two of the three shapes and two for the
-MD5 shape, keeping the common case — an SSH-native clue — as cheap as it was before this section
-existed. **Shape narrows; it never uniquely determines**, and treating it as though it did would
-reintroduce precisely the silent miss [D20](decision-log.md#d20) exists to eliminate.
+MD5 shape — that is the sense in which the common case (an SSH-native clue) stays as cheap as it
+was before this section existed: **scheme-computation count**, not disk I/O. Those are the same
+claim only for a full-length SSH-native clue, whose sole candidate needs nothing beyond
+`k.Identity`'s own already-derived value (`deriveKeys`/`keyfile.Inspect`, §5) — `find` reopens no
+key file at all for that shape, restoring the zero-disk-I/O behavior `find` had before multi-scheme
+matching existed. Every other shape names at least one AWS scheme as a candidate, and evaluating
+an AWS scheme needs the key's material (`keyfile.OpenMaterial`) regardless of how few schemes are
+computed, so those shapes do read every candidate key's file once per `find` invocation — a real,
+named cost (D19, P3, P8), not the zero-I/O case. **Shape narrows; it never uniquely determines**,
+and treating it as though it did would reintroduce precisely the silent miss
+[D20](decision-log.md#d20) exists to eliminate.
 
 **Normalization and comparison are two separate steps** ([T50](tech-decision-log.md#t50)).
 `fpscheme.Normalize`'s own transformations, above, are exactly [T36](tech-decision-log.md#t36)'s
