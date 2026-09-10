@@ -383,12 +383,19 @@ Sequenced by dependency, the same way [M3.5](#55-m35--hardening)'s table is. **M
 carries the landing commit once a chunk lands, so this stays a completion record rather than the
 task tracker [§8](#8-what-this-document-is-not) rules out.
 
+**A header note, not a silent workaround:** unlike M3.5's table, whose commits are already on
+`main`, chunks 0–3 below landed on the still-unmerged `m36-investigation` branch — "Merge Commit"
+is not yet literally accurate for them, and this table does not invent a merge that has not
+happened. The hashes recorded are each chunk's landing commit on that branch; the column keeps its
+name for consistency with M3.5's own header until the branch actually merges, at which point the
+column is accurate again without needing a rename.
+
 | # | Chunk | After | Merge Commit |
 | --- | --- | --- | --- |
-| M3.6.0 | Default-read baseline — the committed capture of `list key`'s pre-M3.6 output that criterion 7 is asserted against, taken before any behaviour changes and therefore first | — | |
-| M3.6.1 | Vocabulary and registry — P10's closed confidence set and the `origins` shape; the four schemes and each one's declared material requirement; the committed AWS and legacy vectors, the MD5-collision assertion, the confidence golden list, and the no-network guard | 0 | |
-| M3.6.2 | Derivation sources — the `ssh-agent` client and its fake-agent test; passphrase-gated material opening, one prompt per invocation, and the no-TTY degrade | 1 | |
-| M3.6.3 | Multi-scheme `find key` — shape routing, both MD5 candidates computed rather than one guessed, and confidence-graded match evidence in both renderers | 1 | |
+| M3.6.0 | Default-read baseline — the committed capture of `list key`'s pre-M3.6 output that criterion 7 is asserted against, taken before any behaviour changes and therefore first | — | `551c93f` |
+| M3.6.1 | Vocabulary and registry — P10's closed confidence set and the `origins` shape; the four schemes and each one's declared material requirement; the committed AWS and legacy vectors, the MD5-collision assertion, the confidence golden list, and the no-network guard | 0 | `e07bd40` (fix: `0f99139`) |
+| M3.6.2 | Derivation sources — the `ssh-agent` client and its fake-agent test; passphrase-gated material opening, one prompt per invocation, and the no-TTY degrade | 1 | `5a1b48a` (fixes: `5b4563b`) |
+| M3.6.3 | Multi-scheme `find key` — shape routing, both MD5 candidates computed rather than one guessed, and confidence-graded match evidence in both renderers | 1 | `61877d7` (fixes: `ad842a3`) |
 | M3.6.4 | `--investigate` on `show key` and `list key` — the projection assembled across every source, both renderers, and the guard that the default read is untouched. **Owes the "agent tried first" ordering** ([T39](tech-decision-log.md#t39), [T38](tech-decision-log.md#t38)): `internal/app.PassphraseGate` cannot enforce it itself (`tdd.md` §18's `ssh-agent` subsection), so this chunk's own call site is where the agent lookup must run, and its result merge into a candidate key's material, before `PassphraseGate.Derive` is ever called for that key | 2, 3 | |
 | M3.6.5 | Close-out — the regenerated reference surface, narrative documentation, this table's own completion record, and the `v1.0.0` tag criterion 8 reserves for it | all | |
 
