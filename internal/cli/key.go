@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -60,11 +61,11 @@ func newFindKeyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			keys := app.FindKeys(m, args[0])
+			matches, warnings := app.FindKeys(m, args[0])
 			if flags.JSON {
-				return render.JSON(cmd.OutOrStdout(), "key.find", keys, nil)
+				return render.JSON(cmd.OutOrStdout(), "key.find", matches, warnings)
 			}
-			return renderKeyTable(cmd, keys)
+			return renderKeyFindTable(cmd, matches, warnings)
 		},
 	}
 }
@@ -144,6 +145,55 @@ func renderKeyTable(cmd *cobra.Command, keys []domain.Key) error {
 		}
 	}
 	return w.Flush()
+}
+
+// renderKeyFindTable is `find key`'s human form (T36, T48): one row per key per matched scheme,
+// carrying both which scheme matched and the origin evidence that match is — SCHEME, ORIGIN, and
+// CONFIDENCE never collapse into a single "matched" column, exactly as T36 requires (a match
+// under aws-created-rsa/aws-imported-rsa is `confirmed` provenance; a match under
+// ssh-native-sha256/legacy-ssh-md5 is `possible` and proves only that this is the right key,
+// nothing about how it came to exist). SCHEME matters as its own column, not merely implied by
+// ORIGIN, because for those latter two schemes Origin.ID *is* the scheme id (originForSchemeMatch,
+// internal/app/key.go) — but for the two AWS schemes Origin.ID names the inferred origin
+// (`aws-ec2-created`/`aws-ec2-imported`), a different namespace than SchemeID (domain.Origin's own
+// doc comment) — so a reader needs SCHEME to see which of the two possible MD5 candidates
+// actually matched at the MD5 shape's own ambiguity (T35/T36). Warnings — a scheme the clue's
+// shape admitted but that could not be evaluated for some keys, T48 — print to stderr after the
+// table: they are advisory, not part of the answer stdout carries (tdd.md §10).
+func renderKeyFindTable(cmd *cobra.Command, matches []app.FindMatch, warnings []string) error {
+	w := render.NewTabWriter(cmd.OutOrStdout())
+	if _, err := fmt.Fprintln(w, "NAME\tSCHEME\tORIGIN\tCONFIDENCE"); err != nil {
+		return err
+	}
+	for _, match := range matches {
+		for _, o := range match.Origins {
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", match.Key.Name, schemeFromOrigin(o), o.ID, o.Confidence); err != nil {
+				return err
+			}
+		}
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	for _, warning := range warnings {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "warning:", warning); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// schemeFromOrigin recovers the scheme id that produced o from its own Because evidence
+// (originForSchemeMatch, internal/app/key.go, always sets Because[0] to "scheme=<id>") — the
+// renderer's only way to show SCHEME distinctly from ORIGIN without app.FindMatch growing a
+// parallel field that duplicates what Because already carries as machine-readable evidence (T37).
+func schemeFromOrigin(o domain.Origin) string {
+	for _, b := range o.Because {
+		if scheme, ok := strings.CutPrefix(string(b), "scheme="); ok {
+			return scheme
+		}
+	}
+	return "-"
 }
 
 func renderKeyDetail(cmd *cobra.Command, d app.KeyDetail) error {

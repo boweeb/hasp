@@ -912,7 +912,7 @@ raises on an unmanaged resource requires `adopt` first, exactly as J5 anticipate
 | --- | --- | --- | --- |
 | **list** | Every key found (managed + unmanaged): name, algorithm, fingerprint (or `unknown`), format, encrypted?, profiles, comment. **`--investigate`** (§18, [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39)) adds every registered scheme's value, a confidence-graded origin, and any `ssh-agent`-sourced fact, per key — deliberately high-friction, and accepted as such: an investigation is purposeful, and its cost (speed, possibly a passphrase prompt) is paid knowingly, not by accident. Absent the flag, output is byte-identical to a pre-`--investigate` read (P7) | Every host stanza across all groups, or `--group=<g>` to scope one: pattern, resolved bindings — explicit and implicit-default, labelled (§5, T16) — derived profile(s) | Every directory carrying `.hasp`, with key/host counts |
 | **show** `<handle>` | Full detail for one key: identity, every location (aliases), profiles, hosts that bind it (J8). **`--investigate`** (§18) is the same surface as `list key --investigate`, scoped to one key — every scheme, confidence-graded origin, agent-sourced facts, and, if a passphrase is offered and a TTY is present, whatever it unlocks ([T39](tech-decision-log.md#t39)) | Full stanza detail: directives, resolved `IdentityFile` targets, derived profile(s), which host group it lives in | Keys and hosts, **aggregated across child profiles by default** ([T21](tech-decision-log.md#t21)) — `show profile work` includes `work.foobarco` and `work.acme`, per J8's own offboarding example; `--no-recurse` scopes to the profile alone |
-| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) — and, per D20, across every registered fingerprint **scheme** ([T35](tech-decision-log.md#t35), [T36](tech-decision-log.md#t36)): the clue's length and alphabet route it to a candidate scheme before any key is examined, and which scheme matched is itself confidence-graded origin evidence (§18) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
+| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) — and, per D20, across every registered fingerprint **scheme** ([T35](tech-decision-log.md#t35), [T36](tech-decision-log.md#t36)): the clue's length and alphabet route it to a candidate scheme before any key is examined, and which scheme matched is itself confidence-graded origin evidence (§18). **Never prompts for a passphrase** ([T48](tech-decision-log.md#t48)) — `--investigate` is the only flag licensed to ask; a candidate scheme a clue's shape admits but that cannot be evaluated for lack of a decrypted private key is reported as an explicit warning, never a silent gap (D20) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
 | **new** | Generate a keypair (`ed25519` by default, [T1](tech-decision-log.md#t1)), optionally in a profile (`--profile`); passphrase flags below. Fails closed if the target path already exists — `new key` never overwrites ([T22](tech-decision-log.md#t22), §11) | Create a stanza (`--key=<name>`, `--group=<g>`) inside a marked region | Create the directory (`mkdir -p` semantics for intermediate segments) and, for the leaf, a `.hasp` marker with a `#` header (D15) |
 | **edit** | Rename (`--name`); `--add-alias`/`--remove-alias`; `--replace-material=<path>`; move between profiles (`--profile`) | Change directives; move between groups (`--group`); rebind (`--key`) | Rename (moves the directory, D13); nothing else — key/host membership is edited on the key/host, not here |
 | **check** | Duplicates confirmed (same fingerprint) or unconfirmed ([T12](tech-decision-log.md#t12)); missing public half; key in no profile; fingerprint `unknown` | Dangling `IdentityFile` targets; unresolvable tokens (§5); relative `IdentityFile` values, whose resolution diverges from `ssh`'s ([T28](tech-decision-log.md#t28)); unreachable stanzas shadowed by `Include` order ([T11](tech-decision-log.md#t11)); host bound to no key — fires only when **neither** an explicit **nor** a resolvable implicit-default binding exists (§5, T16); a stanza present in more than one host group, or a stanza missing from all of them, after a `Plan` that touched more than one file only partially applied ([T13](tech-decision-log.md#t13)) | Empty profile directories; a directory that looks like a profile (holds keys) but carries no `.hasp` |
@@ -1059,6 +1059,33 @@ after hasp breaks the shape without warning. Both renderers — human and JSON �
 internal read-model value ([T13](tech-decision-log.md#t13)'s single read aggregate): one code
 path computes an answer, two display it, so the two forms can diverge in formatting but never in
 content.
+
+### `key.find` matches ([T36](tech-decision-log.md#t36), [T48](tech-decision-log.md#t48))
+
+`find key`'s `data` is an array of matches, one per key the clue's shape-admitted candidate schemes
+matched under — never flattened to a bare key list, because which scheme matched is itself
+confidence-graded evidence (§18's "Multi-scheme `find`") that a consumer branching on `confidence`
+needs to see:
+
+```json
+{
+  "key": {"name": "id_rsa_legacy", "identity": {"kind": "fingerprint", "value": "..."}, "..."},
+  "origins": [
+    {"id": "aws-ec2-created", "confidence": "confirmed", "because": ["scheme=aws-created-rsa"]}
+  ]
+}
+```
+
+`key` is the full `domain.Key` value (§3), identical in shape to `key.list`/`key.show`'s own —
+`find` invents no new key representation. `origins` is one or more T37 origin-evidence entries, one
+per matched scheme for that key (§18: two for the same key is possible at the MD5 shape's own
+ambiguity, T36's collision case); `because[0]` is always `"scheme=<id>"`, the one machine-readable
+way to recover which registered scheme actually produced a given origin entry, since `Origin.ID`
+itself only names the scheme directly for the two non-AWS schemes (§18's "Multi-scheme `find`",
+above). The envelope's `warnings` array ([T14](tech-decision-log.md#t14)) carries
+[T48](tech-decision-log.md#t48)'s explicit "could not evaluate" notices — a scheme the clue's shape
+admitted but that a candidate key's missing decrypted private key made unevaluable, never silently
+absent from `data` instead.
 
 ### `--investigate` output: the `origins` array and its `confidence` field ([T37](tech-decision-log.md#t37))
 
@@ -1638,6 +1665,30 @@ MD5 shape, keeping the common case — an SSH-native clue — as cheap as it was
 existed. **Shape narrows; it never uniquely determines**, and treating it as though it did would
 reintroduce precisely the silent miss [D20](decision-log.md#d20) exists to eliminate.
 
+**Normalization and comparison are two separate steps** ([T50](tech-decision-log.md#t50)).
+`fpscheme.Normalize`'s own transformations, above, are exactly [T36](tech-decision-log.md#t36)'s
+spec and no more — in particular, base64 case is preserved, never folded, because folding it would
+silently change which bytes a SHA-256 fingerprint names. J2's *"punctuation and case shouldn't
+matter"* promise still has to hold in full, so `find`'s own comparison step (not `Normalize`, and
+not `CandidateSchemes`' shape routing, both of which still see `Normalize`'s unfolded output) folds
+case **and** separator punctuation such as a hyphen a human inserts for readability on both the
+candidate scheme's computed value and the normalized clue before the substring check. This is safe
+because none of the four registered schemes ever emits `-` or `_` as real content — the two
+colon-hex schemes use hex digits and colons only, and the SSH-native scheme emits standard, not
+URL-safe, base64 — so the fold can only forgive formatting noise, never conflate two genuinely
+distinct values.
+
+**`find` never prompts for a passphrase** ([T48](tech-decision-log.md#t48)). `--investigate`
+(below) is the only flag licensed to ask ([T39](tech-decision-log.md#t39)); `find` always opens a
+candidate key with no passphrase, so `aws-created-rsa` — the one registered scheme that needs the
+decrypted private key — can never be evaluated against an encrypted candidate key through `find`.
+Rather than let that read as a silent "you don't have this key," exactly the failure
+[D20](decision-log.md#d20) exists to eliminate, `find` reports it as an explicit warning naming the
+scheme and how many keys in the search it could not evaluate, distinct from an honest "checked, and
+this key's fingerprint under that scheme does not match." Both renderers surface it — the `--json`
+envelope's existing `warnings` field ([T14](tech-decision-log.md#t14)) and the human renderer's own
+stderr channel.
+
 **Which scheme matched is the origin evidence — for two of the four schemes only.** A match under
 `aws-created-rsa` or `aws-imported-rsa` is deterministic proof of provenance, because AWS computes
 exactly one of the two depending on how the key came to exist, so `find` reports origin as
@@ -1647,7 +1698,12 @@ proves nothing either — it is only another way of naming the same public key, 
 signal at all. Both of those report `possible`, never `confirmed`. The asymmetry matters most in
 the MD5 shape, where the two candidate schemes land on opposite sides of it: matching
 `aws-imported-rsa` is provenance, matching legacy SSH MD5 is not, and the renderer must not
-flatten them into a single "matched" verdict.
+flatten them into a single "matched" verdict. The human renderer shows the matched scheme itself
+(`SCHEME`) alongside the origin it implies (`ORIGIN`) and its confidence, since `ORIGIN` alone
+would name the scheme only for the two non-AWS schemes (whose origin id *is* the scheme id) and
+not for the two AWS schemes (whose origin id — `aws-ec2-created`/`aws-ec2-imported` — is a
+different namespace from the scheme id that produced it, see `SchemeFingerprint.Scheme`'s own doc
+comment, `internal/domain/investigate.go`).
 
 ### The confidence vocabulary and the `origins` shape
 
@@ -1702,19 +1758,26 @@ even when the agent holds that exact key loaded, there is no public-key signal o
 to cross-reference the agent's own listing against. [T38](tech-decision-log.md#t38) scopes
 cross-referencing to "by public key" and is silent on this case; the practical consequence is that
 such a key's comment stays `unknown` even with the right agent running, the same way its
-created-RSA fingerprint does without a correct passphrase ([T39](tech-decision-log.md#t39), below).
+created-RSA fingerprint does without a correct passphrase ([T39](tech-decision-log.md#t39), below,
+as narrowed by [T49](tech-decision-log.md#t49)).
 
 ### Passphrase-gated derivation
 
-Full argument: [T39](tech-decision-log.md#t39). [D19](decision-log.md#d19) generalizes D17's four
-constraints — user-initiated, scoped to one operation, held in memory, zeroed after — from `new
-key`'s write path to any read. Two facts need it: the created-RSA scheme, `unknown` in its
-entirety for any encrypted key with no agent and no passphrase; and, when
-[T38](tech-decision-log.md#t38)'s agent path finds nothing loaded, an OpenSSH-format key's
-comment.
+Full argument: [T39](tech-decision-log.md#t39), narrowed by [T49](tech-decision-log.md#t49).
+[D19](decision-log.md#d19) generalizes D17's four constraints — user-initiated, scoped to one
+operation, held in memory, zeroed after — from `new key`'s write path to any read. **Exactly one
+fact needs it: the created-RSA scheme**, `unknown` in its entirety for any encrypted key with no
+agent-supplied private key and no passphrase. An OpenSSH-format key's comment is a
+**separate, agent-only** fact ([T38](tech-decision-log.md#t38)) — [T49](tech-decision-log.md#t49)
+found that `golang.org/x/crypto/ssh`'s passphrase-decrypt API discards the comment even after a
+correct passphrase, so a prompt can never recover it regardless of whether the agent has anything
+loaded; §18's own earlier text claiming otherwise was wrong, not merely imprecise, and is corrected
+here.
 
-hasp tries the agent first. If a passphrase would still unlock something otherwise completely
-`unknown`, and a TTY is attached, `--investigate` prompts once (`x/term.ReadPassword`, the same
+hasp tries the agent first for whatever the agent can supply (the comment, per T38) — not because
+the two sources compete for the created-RSA fact, but because a key already loaded needs no prompt
+for anything the agent already answered. If a passphrase would still unlock the created-RSA scheme
+specifically, and a TTY is attached, `--investigate` prompts once (`x/term.ReadPassword`, the same
 path [T6](tech-decision-log.md#t6) established), and the one passphrase collected is tried across
 every candidate key in the invocation — never one prompt per key.
 

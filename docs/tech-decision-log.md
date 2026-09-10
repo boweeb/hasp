@@ -87,7 +87,7 @@ are actually in use, not this line.
 | [T36](#t36) | `find` matches across every registered scheme; the clue's shape routes the search | Accepted — amends `tdd.md` §9 |
 | [T37](#t37) | Confidence is a closed, permanent vocabulary in the output contract | Accepted — amends [T14](#t14), [T29](#t29), [T31](#t31) |
 | [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
-| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
+| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6); amended by [T49](#t49) |
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 | [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
 | [T42](#t42) | Signing covers both the release checksum and the `kos`-built container image, via two GoReleaser sections | Accepted — amends [T9](#t9) |
@@ -96,6 +96,9 @@ are actually in use, not this line.
 | [T45](#t45) | The clean-room test: `tools/cleanroom`, a `CleanRoom` Mage target, a post-release CI job, and a shared `internal/snapshot` package | Accepted |
 | [T46](#t46) | Container base image moves from Chainguard to Google's distroless (`cgr.dev/chainguard/static` → `gcr.io/distroless/static:nonroot`) after Chainguard gated free registry access behind a business-email requirement | Accepted |
 | [T47](#t47) | The fingerprint-scheme no-network guard is a `go list` direct-import assertion, not the `net.Dialer`-`Control` mechanism `tdd.md` §12 originally named | Accepted — amends [T35](#t35) |
+| [T48](#t48) | `find key` never prompts for a passphrase; an inapplicable-for-that-reason scheme is an explicit warning, not a silent miss | Accepted |
+| [T49](#t49) | Narrowing §18/T39's comment-recovery claim: a passphrase prompt cannot recover an OpenSSH-format key's comment; only `ssh-agent` can | Accepted — amends [T39](#t39) |
+| [T50](#t50) | `find`'s comparison folds case and separator punctuation at compare time; `fpscheme.Normalize` stays exactly as it is | Accepted |
 
 ---
 
@@ -2693,7 +2696,7 @@ first preference [T27](#t27) already established, both intact.
 <a id="t39"></a>
 ## T39 — Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY
 
-**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6)
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6) · **Amended by:** [T49](#t49)
 
 ### Context
 
@@ -3369,3 +3372,202 @@ consistent with two precedents already in the tree rather than inventing a third
   never true of `golang.org/x/crypto/ssh` even before this package existed, and pretending
   otherwise would make the guard fail for a fact this project has no intention of changing (T35's
   registry needs `x/crypto/ssh`, full stop).
+
+---
+
+<a id="t48"></a>
+## T48 — `find key` never prompts for a passphrase; an inapplicable-for-that-reason scheme is an explicit warning, not a silent miss
+
+**Date:** 2026-09-10 · **Status:** Accepted
+
+### Context
+
+[T36](#t36) supplies multi-scheme `find`'s matching algorithm — which schemes a clue's shape
+admits, and that both MD5 candidates are computed rather than one guessed — but does not say
+whether `find` may prompt for a passphrase to evaluate a candidate key against a scheme that needs
+the decrypted private key. One registered scheme does: `aws-created-rsa`
+([T35](#t35)) hashes the *decrypted* private key, so a 40-hex-digit clue routes to a scheme that,
+for an encrypted candidate key with no already-derivable private material, cannot be evaluated at
+all without exactly the passphrase [T39](#t39) scopes prompting to `--investigate` alone.
+`tdd.md` §9's global-flag table already lists `--investigate`'s own cost as *"speed, and possibly
+a passphrase prompt"* and states the flag is absent from every other verb×noun cell — `find`
+included — but nothing said what `find` should report when it hits exactly the case that flag
+exists to unlock.
+
+### Decision
+
+`find key` never prompts for a passphrase, under any circumstance. [T39](#t39)'s prompt is scoped
+entirely to `--investigate`; `find` is not that flag, and does not borrow its consent. A key that
+cannot be evaluated against a candidate scheme because the decrypted private key is unavailable —
+concretely, [T35](#t35)'s `aws-created-rsa` scheme against an encrypted candidate key — is **never
+silently absent from the result**: it is reported as an explicit warning, naming the scheme and
+how many keys in the search could not be evaluated against it, distinct from an honest "this key's
+fingerprint under this scheme does not match."
+
+### Rationale
+
+[D20](decision-log.md#d20)'s own rationale is that a false negative during `find` reads as "you
+don't have this key," which is a confidently wrong answer, not a missing one. Treating "never
+evaluated" identically to "evaluated and did not match" reintroduces that exact failure one layer
+inside the search itself: a user holding the right key, encrypted, sees no signal distinguishing
+"hasp checked and this isn't it" from "hasp never actually looked." An explicit warning keeps that
+distinction visible without asking `find` to do what only `--investigate` is licensed to do — one
+passphrase, held for one operation, that operation being `--investigate`, not `find`
+([D19](decision-log.md#d19), [P3](design.md#4-principles)). This also keeps `find` fast and
+non-interactive, matching [J2](design.md#7-journeys)'s framing of identification as an ordinary,
+low-friction lookup — the opposite of [J10](design.md#7-journeys)'s deliberately higher-friction
+investigation.
+
+### Consequence
+
+- `internal/app.FindKeys` returns `(matches []FindMatch, warnings []string)` rather than a bare
+  slice: `keyfile.OpenMaterial` is always called with a `nil` passphrase, and a scheme reporting
+  `domain.ReasonPrivateKeyUnavailable` for a candidate key increments that scheme's own warning
+  count rather than being dropped.
+- Both renderers surface the warning: `render.JSON`'s existing `warnings` field
+  ([T14](#t14)) needs no contract change, and the human renderer gains its own channel (stderr,
+  after the results table — advisory, not part of the answer stdout carries, `tdd.md` §10).
+- `tdd.md` §9's `find` cell for **key** and §18's "Multi-scheme `find`" subsection are amended to
+  state this plainly.
+
+---
+
+<a id="t49"></a>
+## T49 — Narrowing §18/T39's comment-recovery claim: a passphrase prompt cannot recover an OpenSSH-format key's comment; only `ssh-agent` can
+
+**Date:** 2026-09-10 · **Status:** Accepted — amends [T39](#t39)
+
+### Context
+
+`tdd.md` §18's "Passphrase-gated derivation" subsection and [T39](#t39) both state that, when
+[T38](#t38)'s agent path finds nothing loaded, a passphrase prompt is one of two facts
+passphrase-gated derivation exists to recover — the other being [T35](#t35)'s created-RSA scheme —
+implying an OpenSSH-format encrypted key's comment is recoverable either way: from the agent, or
+by prompting and decrypting.
+
+That second path does not exist. Verified this session against
+`$(go env GOMODCACHE)/golang.org/x/crypto@v0.56.0/ssh/keys.go` (the exact version this module
+pins, `go.mod`): `parseOpenSSHPrivateKey` parses an OpenSSH-format key's on-wire comment into one
+of `openSSHRSAPrivateKey`, `openSSHEd25519PrivateKey`, or `openSSHECDSAPrivateKey` — each of those
+three structs carries its own `Comment string` field — but `parseOpenSSHPrivateKey` itself returns
+only `(crypto.PrivateKey, error)`, and its caller, the exported
+`ParseRawPrivateKeyWithPassphrase`, returns only `(interface{}, error)`. Neither return type
+carries the comment anywhere a caller of the public decrypt API can reach — it is parsed, used
+internally, and then discarded before the function returns. `internal/adapter/keyfile.OpenMaterial`
+calls exactly this function ([T35](#t35)'s own read path), so no amount of decrypting through
+hasp's own code, with a correct passphrase or otherwise, ever recovers this comment. `ssh-agent`
+recovers it by a completely different mechanism ([T38](#t38)): the agent protocol exposes a
+loaded key's comment directly, with no decryption performed by hasp at all, which is why that path
+works when this one cannot.
+
+### Decision
+
+The passphrase-gated path's scope is **`aws-created-rsa` alone**. An OpenSSH-format encrypted
+key's comment is **agent-only** ([T38](#t38)): if `ssh-agent` has nothing loaded for that key,
+the comment stays `unknown`, full stop — a passphrase prompt is not a fallback for it, because
+there is no code path by which a correct passphrase would ever produce it.
+
+### Rationale
+
+This is a narrowing forced by a fact about a dependency's own API shape
+([P3](design.md#4-principles), [D19](decision-log.md#d19)): D19's consent gate licenses *reading*
+private key material the user explicitly asked for, but licensing the read does not manufacture a
+return value the library used to perform it never exposes. A subprocess wrapping `ssh-keygen`
+directly could recover the comment (it parses the same on-wire structure independently), but
+[T1](#t1) forbids subprocessing for exactly the reasons that rule exists — pure-Go derivation,
+no shelling out — so that route is not available either. [J10](design.md#7-journeys)'s promise is
+to surface everything hasp *can* determine, clearly marked with how sure hasp is; stating a
+capability the code cannot actually deliver would be the opposite of that promise, not a detail in
+service of it.
+
+### Consequence
+
+- `tdd.md` §18's "Passphrase-gated derivation" subsection is corrected: "two facts need
+  [passphrase-gated derivation]" becomes one (`aws-created-rsa`), and the comment gap is described
+  as agent-only, closing over the incorrect claim rather than leaving it as current truth.
+- `tdd.md` §18's `ssh-agent` subsection gains a note that a `byPath`-identified key ([T1](#t1)'s
+  undecidable row) has no derivable public key at all, so even a loaded agent has no signal on
+  hasp's side left to cross-reference against — a related, previously unrecorded limitation this
+  same reassessment surfaced.
+- Chunk [M3.6.4](roadmap.md#56-m36--investigation), which wires `PassphraseGate` and the agent
+  source together at a shared call site, implements exactly one passphrase-recoverable fact
+  (`aws-created-rsa`) rather than two — a smaller implementation surface than §18 previously
+  described, not a smaller one than [T39](#t39)'s own mechanics (one prompt per invocation, degrade
+  without a TTY) required regardless.
+
+---
+
+<a id="t50"></a>
+## T50 — `find`'s comparison folds case and separator punctuation at compare time; `fpscheme.Normalize` stays exactly as it is
+
+**Date:** 2026-09-10 · **Status:** Accepted
+
+### Context
+
+[J2](design.md#7-journeys) promises *"Punctuation and case shouldn't matter,"* and
+[D20](decision-log.md#d20) widens that promise to span every registered fingerprint scheme rather
+than only spellings of one. [T36](#t36) specifies `fpscheme.Normalize`'s own transformations —
+strip colons and internal whitespace, lowercase hex digits, strip base64 `=` padding, tolerate a
+`SHA256:`/`MD5:` prefix — and `internal/adapter/fpscheme/normalize.go` implements exactly that,
+deliberately **not** lowercasing base64: base64 is case-sensitive, so folding its case would
+silently change which bytes a SHA-256 fingerprint names, not merely how it is spelled. That
+implementation is correct on its own terms — a normalized value is also the value compared and
+displayed, and corrupting it would be a real, not cosmetic, defect.
+
+But J2's promise and base64's case-sensitivity are individually correct and jointly
+unsatisfiable as a single-function contract: `hasp find key sha256:T4RN-6Go9-uzGH` (this
+project's own committed `testdata/script/key-find.txtar` case, predating this chunk) must match
+the key whose real fingerprint is `SHA256:t4rn6Go9uzGHCyff1lwYWtX+swf+EQhuqmE2dHSqkFE` — different
+case throughout, and separator hyphens (`internal/cli/fullinventory_test.go`'s own case,
+`T4RN-6go9`, is the same shape) that never appear as real content in any value a registered scheme
+actually computes. `fpscheme.Normalize`, applied faithfully to [T36](#t36)'s spec, preserves both
+the case difference and the hyphens verbatim — neither is a colon, whitespace, padding character,
+or scheme prefix — so a direct comparison against `Normalize`'s own output silently fails on both
+committed cases at once, a regression introduced when `internal/app.FindKeys` (M3.6.3's WIP) moved
+from an older, single-scheme normalizer that folded both away unconditionally.
+
+### Decision
+
+Leave `fpscheme.Normalize` exactly as [T36](#t36) specifies it — its case- and shape-preserving
+behavior remains correct for what it is actually for: [T36](#t36)'s own `CandidateSchemes` shape
+routing needs an exact, uncorrupted length and alphabet to route a full-length clue to the right
+candidate scheme, and a scheme's own `Compute` output must not be silently rewritten either.
+
+`find`'s own comparison step folds **both** operands — a candidate scheme's computed value and the
+normalized clue — down to lowercase letters and digits only, immediately before the substring
+check, in a helper local to `internal/app.FindKeys` (`compareFold`) rather than inside
+`fpscheme.Normalize` itself. This folds away case, exactly as J2 promises, and — necessarily
+broader than the case tension alone — separator punctuation such as a hyphen a human inserts
+purely for readability, since none of [T35](#t35)'s four registered schemes ever emits `-` or `_`
+as real content: the two colon-hex schemes use only hex digits and colons, and the SSH-native
+scheme emits standard, not URL-safe, base64 (`+`, `/`).
+
+### Rationale
+
+The residual risk this fold accepts is a theoretical false positive: two distinct base64
+fingerprints, or two distinct values otherwise, differing only in a fold this comparison forgives.
+Across a 43-character base64 digest or a 32/40-digit hex digest that is effectively impossible, and
+even if it occurred, `find` returns a list the user disambiguates rather than acting unattended —
+whereas a false *negative* is exactly the silent miss [D20](decision-log.md#d20) exists to
+eliminate. The asymmetry favours folding, the same judgment [P10](design.md#4-principles)'s
+confidence vocabulary already makes structurally: `find`'s match evidence is reported as
+`confirmed` or `possible`, never asserted beyond what the evidence supports, so a comparison that
+occasionally over-matches is caught by the very origin-evidence distinction [T36](#t36) already
+requires the renderer to preserve, not silently trusted as certain.
+
+Folding at the comparison step, not inside `Normalize`, keeps [T36](#t36)'s shape-routing
+contract — and every existing test asserting `Normalize`'s and `CandidateSchemes`' exact output —
+intact and unchanged; this is an additive change to how `find` compares two already-normalized
+values, not a redefinition of what "normalized" means.
+
+### Consequence
+
+- `internal/app.FindKeys`'s match comparison uses `compareFold` on both the candidate scheme's
+  computed value and the normalized clue, in place of a direct substring check against
+  `fpscheme.Normalize`'s own output.
+- `tdd.md` §18's "Multi-scheme `find`" subsection gains a sentence stating that `find`'s own
+  comparison step folds case and separator punctuation, distinct from `Normalize`'s own,
+  narrower, shape-preserving transformations.
+- `internal/cli/testdata/script/key-find.txtar`'s and `internal/cli/fullinventory_test.go`'s
+  existing mangled-clue assertions — both predating this chunk — pass unmodified; neither needed a
+  golden-value change, only this fix to what compares them.

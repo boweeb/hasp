@@ -1,0 +1,155 @@
+# Multi-scheme find key (M3.6.3, T36/T48/T50): all four registered schemes, both directions of
+# the MD5 shape's own collision (exit criterion 1a), T50's case-and-punctuation folding at
+# compare time, and T48's explicit-warning-over-silent-miss path.
+#
+# id_rsa_legacy is testdata/keys/rsa-pem-plain-pub verbatim (unencrypted, tdd.md §12's own
+# committed vectors), id_ed25519 is testdata/keys/ed25519-openssh-plain-pub verbatim, and
+# id_rsa_old is testdata/keys/rsa-pem-encrypted-nopub verbatim (legacy PEM, encrypted, no .pub —
+# T1's undecidable row, always unevaluable for aws-created-rsa since find never prompts).
+mkdir $WORK/home/.ssh
+cp rsa.pem $WORK/home/.ssh/id_rsa_legacy
+cp ed25519.pem $WORK/home/.ssh/id_ed25519
+cp rsa-encrypted.pem $WORK/home/.ssh/id_rsa_old
+
+# aws-created-rsa (SHA-1, 40 hex digits): confirmed provenance (T36).
+exec hasp find key 97:47:11:3c:af:56:47:b3:f9:a9:89:36:6d:ca:be:0b:33:a0:05:f7 --key-dir $WORK/home/.ssh
+stdout 'id_rsa_legacy'
+stdout 'aws-created-rsa'
+stdout 'aws-ec2-created'
+stdout 'confirmed'
+stderr 'aws-created-rsa could not be evaluated for 1 encrypted key'
+
+exec hasp find key 97:47:11:3c:af:56:47:b3:f9:a9:89:36:6d:ca:be:0b:33:a0:05:f7 --key-dir $WORK/home/.ssh --json
+stdout '"kind": "key.find"'
+stdout '"scheme=aws-created-rsa"'
+stdout '"id": "aws-ec2-created"'
+stdout '"confidence": "confirmed"'
+stdout '"warnings"'
+
+# The MD5 shape's own collision, both directions (roadmap.md exit criterion 1a): aws-imported-rsa
+# is confirmed provenance, legacy-ssh-md5 is only possible — same key, same 47-character shape,
+# different value, different confidence.
+exec hasp find key a8:e7:45:95:5f:a3:f0:b1:79:6c:c2:f1:d2:80:57:ea --key-dir $WORK/home/.ssh
+stdout 'id_rsa_legacy'
+stdout 'aws-imported-rsa'
+stdout 'confirmed'
+
+exec hasp find key 34:29:f4:da:3c:db:49:4b:35:ba:c1:c2:cd:2e:75:a8 --key-dir $WORK/home/.ssh
+stdout 'id_rsa_legacy'
+stdout 'legacy-ssh-md5'
+stdout 'possible'
+
+# ssh-native-sha256 (base64, full 43-character shape): possible, no AWS provenance signal.
+exec hasp find key SHA256:lqTGTP6KJSQptQJQEZj7scuX7jLWFfb0qoAHTT1IpPA --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+stdout 'ssh-native-sha256'
+stdout 'possible'
+
+# T50: case mangled AND punctuation (hyphens) injected into a base64 fragment — J2's literal
+# "punctuation and case shouldn't matter" promise, folded at compare time without corrupting
+# fpscheme.Normalize's own shape-preserving output.
+exec hasp find key sha256:LQtg-TP6K-JSQp --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+
+# T48: a SHA-1-shaped clue with no real match still surfaces the warning for id_rsa_old, which can
+# never be evaluated against aws-created-rsa — find never prompts for a passphrase — and the
+# result table carries no false match to go with it.
+exec hasp find key 0000000000000000000000000000000000000a --key-dir $WORK/home/.ssh
+stdout '^NAME'
+! stdout 'id_rsa_old'
+! stdout 'id_rsa_legacy'
+! stdout 'id_ed25519'
+stderr 'aws-created-rsa could not be evaluated for 1 encrypted key'
+stderr 'never prompts for a passphrase'
+
+-- rsa.pem --
+-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+-- ed25519.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACA3+ZJXBZOBXWl3ghNZhvxcSVUVnBsPxmkEThzzh7MYwQAAAIhrJgilayYI
+pQAAAAtzc2gtZWQyNTUxOQAAACA3+ZJXBZOBXWl3ghNZhvxcSVUVnBsPxmkEThzzh7MYwQ
+AAAEAEOZ/I/Si6NtHzlRVU79LrFZAZ5QvZgW15bLAPxzy4mzf5klcFk4FdaXeCE1mG/FxJ
+VRWcGw/GaQROHPOHsxjBAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----
+-- rsa-encrypted.pem --
+-----BEGIN RSA PRIVATE KEY-----
+Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-128-CBC,7ECEE3B09DF9C19175250A47405BD5AC
+
+1t69tSAZcut9i9YMba7rwFUHWFzQMB5Y33PByyrnYxs6y3AEEPf13efsf6eklHNn
+aPP4eY5QwLv2DXi7YsTDJAZZ7pRMGtDckw0pVPrkshzdcW8Ixonph+etj+ciJ0R9
+APS2kAclCoxO0aKsLsASssx0JdpFUYuMV9js7pug0lN37EjrSzOHwvCCk+DLU14i
+Rf2pr1ZVhYtutwunGzB99P54Aov5Cjc00E1RvMalq+qmSbAHzgyISTjUNDxAWiKJ
+iVestmzvQkE8KPXD825uFuSVCpPMv8nkpWr4wSS9pRPnu12hiBBXlHW2gWfK3dWi
+MxWdpjwzIjBiqHcDOPLwc3EFnrkFWNljsrEbyhC7XY/+eVbzmRquTL0vDkISa/di
+eE9T/l6tmeM2cyLlUUyPjRRDXX8TeXJPw8niVFvLjhnh0oVxxqf2c5eOiqhMst5k
+wKSmQRsxVuC8kAYjA+GvlLsVfS9VaJS+x+KsY+Ve+bPgXQVozl3kRiCgO61gB5UF
+/ybx1d//6sFWzpcPznbQ8Qz8HdBbZImWr9IJ8yReerlL6S3duQMKWhMUZC7OVm5c
+JjIfdtFpUQBJGVSWyJXq6oOLjImwupnrAZ1bC97JL2ZoyEOE+bJRvPHTHdZKIFRM
+3zt66blkwbKPVgLVoAVDPssix/8FbSncler8wZhWDOygHwFVWHNQ1Lh4FyORcOlO
+twzS21mvmk9DRKQ3Whi+o7PXnLqSc1BuY6Jwy2jlllnRw+EVgJl8yOtD+/fBsZHD
+LGctnXPufLNwC8Eo3Mjf5ekEufA07EJ7LfSCBwPs2p3iC06QJnzPBlWDYyfW+Y8W
+Gvm01/l7ZPEGYxycjBzm8NuocgSHKGcAh2buCSfMV2ClN13GVTZPAA0mK7S20VPe
+YXWdginC0zIsOW2likJFiUb/OSu0pXFjgYbTmBnFaz/HUYrDRBNLq79YseVEkpkR
+eRzUjfvGT9K5a9Q/FDbqmzKnUA7CGGlLXHGx0jFxZ3+kZmClL50C2Zae23tSKvnp
+TpWwPeNCDoPBWL+Ai0pkLcjW+hpkR7Y7XF3CadLe/nujTNUskhcXOzqsmw9RlydE
+5Dwwk9YC8CYlmSM7sSOSvDMSjSCcoP89y4gTiPWucVXd6Ch+tE8Mp0wpy0S/nv7n
+tSAx6nuRFxTmnY5uGc4u4Lp01b/rHoGMpOblSXlX9Gw3hDBjBU/atAmXzCm9Ol8v
+xY1DnWLBWV8OlE+dHJyiMHNrIFyBUUcQ744BseCA+bcZErjNyuUkO4ssmiwOp2N4
+1hFFnGvc0hgO4QIvjE6Neto2/2vPMHPC6AQBSTcsglAniFUwKFGWT09TMmf2ZJjU
+4T3LFdriVwS/FnYuSmGLcNE1NmrQsSNizaGz+JM+GEbFQCEw1oLjlCmxLdb74BfK
++6mu+GPmmo8sbqYqWNd5ghKfHlbmp00tUpMSupKmSZGSvS1HgBe3R9as/DsuBnfW
+5X5H/m+7otbrR/+OuFUoT3ir6nymUR0G7aKqSQVN8ISsSoNHG2ur0MEE7/E08QhP
+ny1FzlpmCBw+o1jeNS/nHDTse1pxUBynp/LnDpFHgO9Vhqhre0lQ9ZUmanMULwOu
+nee/uxQyQK4/3SY1CSWA7OM4fpAZdOeSR/yW8hM5vI5L7XGS+e1eDHHwGWnUQTaG
+VYNrLO/WL53S6ry47WQUoB3AEfVNtnOtTpJTdd9hZByccpuJ3z98K/KDPr/+pml0
+x/DRr7cYQqyVx/TrD55PK/AzpmjPUy8XyOvXZ8PFr5uAranr6FZrSz+UJ6m7qgQj
+9s4U+Ox5wqxHi+jUvAAm9Mk11UE3LoT5ohbJogfg6PV2dvT1+YFsAY9WZ/K4hdnz
+8/V1/5P6GsyfILpE4uAw6wdJkRfuYIlEOkpze5Tsn0OjW8Je048Y4jzgcY0aYP4G
+0fTKyCVdlfnJvDjcg8ZfXuHltVPFZqaPK00iR7OoUnwN3H78GKnpw5fPWne+FFFx
+AZfUvMqTX/zKYACljFCL6CPn4WQCgOf15X/xZ3qxjo+CL2kch8dsMAAyOVsja9hk
+ks5oaPMkg3skkFGSKAbmT6EUCgAkELUf/IJb3zITLePqZx0hAOFcYNEavoRZN9NJ
+vMX0Makw9dsg+i5S0l5p8LPItZvtb+YvUdKGd72sr3rMWA97TZOmd7BUrn6s3V69
+NfqGSvz3SzGVjcURgOVB9ZUISUUTgU9XLpN7gRAR+Goz3ADuHbYftPHZaNHUg1AT
+FoeMQBM23rkc75cN160FnwExbrati5+Le+FgV9DwtzK+fQG7qxJMRwb3h64NzImC
+SxEM07USbUxlpmmi4N7nCvlPWqPjJOSl3obdtY53NrpynVeDUsmH+DfzzFFg7lKW
+-----END RSA PRIVATE KEY-----

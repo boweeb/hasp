@@ -69,12 +69,16 @@ func resolveKeyClue(m app.Machine, clue string) (domain.Key, error) {
 	if detail, ok := app.ShowKey(m, clue); ok {
 		return detail.Key, nil
 	}
-	matches := app.FindKeys(m, clue)
+	// T48's warnings are advisory ("a scheme could not be evaluated for N keys"), not part of
+	// resolving one clue to one key — resolveKeyClue's callers (adopt/release key) don't render
+	// warnings at all, so there is nowhere honest to surface one here; the ordinary `find key`
+	// command is where a user actually sees them.
+	matches, _ := app.FindKeys(m, clue)
 	switch len(matches) {
 	case 0:
 		return domain.Key{}, fmt.Errorf("key %q not found", clue)
 	case 1:
-		return matches[0], nil
+		return matches[0].Key, nil
 	default:
 		return domain.Key{}, fmt.Errorf("%q matches %d keys; use a more specific clue", clue, len(matches))
 	}
