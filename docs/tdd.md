@@ -902,6 +902,20 @@ nouns of their own.
 | `--no-color` | Disables ANSI in the human renderer |
 | `--investigate` | Opt-in investigation mode (§18, D21) on `show key` and `list key`: surfaces every registered fingerprint scheme, a confidence-graded origin, and `ssh-agent`-sourced facts, at the cost of speed and possibly a passphrase prompt. Absent from every other verb×noun cell; never affects default output |
 
+**A registration note on `--investigate`, worth stating plainly rather than leaving to inference
+from the table's own name.** `--key-dir`, `--json`, `--yes`, `--verbose`, and `--no-color` above
+are true global flags: `PersistentFlags()` on the root Cobra command, so every generated reference
+page under `docs/cli/` lists all five regardless of which command it documents
+([T34](tech-decision-log.md#t34)). `--investigate` sits in this table because its *semantics* are
+global in kind — the same consent-gated read (D19) and the same confidence vocabulary (§18, P10)
+would apply anywhere it could appear — but it is registered as a **local** flag on `list key` and
+`show key` alone (`internal/cli/key.go`), not on the root command. This row's own "Absent from
+every other verb×noun cell" is therefore enforced by *where the flag is registered*, not merely by
+what those two commands' handlers choose to do with it: a persistent flag would advertise
+`--investigate` on the generated reference page for `hasp new key`, `hasp check`, and every other
+command, which is exactly the leak "absent from every other cell" promises against
+([T51](tech-decision-log.md#t51)).
+
 ### The grid
 
 `check` (J5 — *"tell me what's untidy... help me fix each one deliberately"*) is advisory
@@ -1096,15 +1110,66 @@ surfaces beyond a plain read carries a **confidence status** from a closed, perm
 ```json
 "origins": [
   {"id": "aws-ec2-created", "confidence": "possible",
-   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+   "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
 ]
 ```
 
 `because` is an array of **machine-readable evidence tokens**, never prose — a consumer branches
-on them directly; the human renderer is the only place a token becomes a sentence. Unlike
-`severity` above, which [T29](tech-decision-log.md#t29) makes deliberately re-tunable, the
-confidence vocabulary is **closed**: adding, removing, or redefining a value is a breaking change
-(§16), because a consumer filtering on `derived` is making a safety decision, not a display choice.
+on them directly; the human renderer is the only place a token becomes a sentence. The `algorithm=`
+and `format=` tokens above carry `domain.Key`'s own literal field values (`Algorithm`,
+`Format.String()`), not a simplified spelling — `KeyFormat.String()`'s closed set is
+`openssh`/`pkcs1`/`pkcs8`/`sec1`/`dsa` and never `"pem"` — a precision on this subsection's own
+earlier, illustrative spelling, recorded as such in
+[T51](tech-decision-log.md#t51) rather than silently corrected. Unlike `severity` above, which
+[T29](tech-decision-log.md#t29) makes deliberately re-tunable, the confidence vocabulary is
+**closed**: adding, removing, or redefining a value is a breaking change (§16), because a consumer
+filtering on `derived` is making a safety decision, not a display choice.
+
+**The full per-key shape ([T51](tech-decision-log.md#t51)), landed by chunk M3.6.4.**
+`--investigate` does not introduce a new envelope `kind` — `list key --investigate` and
+`show key --investigate` still emit `key.list` and `key.show` respectively (§16 row 3's frozen
+surface is unchanged) — it is additive on the same per-key object those kinds already emit,
+`app.InvestigatedKey` embedding `domain.Key` so every plain-read field marshals exactly as before
+and gains four new sibling fields:
+
+```json
+{
+  "name": "id_rsa_legacy",
+  "algorithm": "ssh-rsa",
+  "...": "...every other domain.Key field, unchanged...",
+  "schemes": [
+    {"scheme": "aws-created-rsa", "value": "", "confidence": "unknown", "reason": "private-key-unavailable"},
+    {"scheme": "aws-imported-rsa", "value": "a1:b2:...", "confidence": "derived"},
+    {"scheme": "ssh-native-sha256", "value": "SHA256:...", "confidence": "derived"},
+    {"scheme": "legacy-ssh-md5", "value": "a1:b2:...", "confidence": "derived"}
+  ],
+  "origins": [
+    {"id": "aws-ec2-created", "confidence": "possible", "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]},
+    {"id": "aws-ec2-imported", "confidence": "possible", "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
+  ],
+  "agentComment": "jesse@laptop",
+  "commentSource": "agent-sourced"
+}
+```
+
+`schemes` (§18's registry, T35) is every registered scheme's answer, in registry order, never
+fewer — a scheme that could not be computed reports its own honest `confidence: "unknown"` shape
+with a `reason`, rather than being omitted (roadmap.md §5.6 exit criterion 2). `origins` is the
+no-external-clue provenance guess §18 and T51 describe; it is tagged `json:"origins"` with **no**
+`omitempty` and is **always present as an array — `[]`, never JSON `null`**, even for a key with no
+origin evidence at all (a non-RSA algorithm): `render.marshalData` only normalizes a nil slice to
+`[]` at the top-level `data` value it renders, never at a field nested inside a struct, so
+`InvestigatedKey`'s own zero value for `Origins` is built as `[]domain.Origin{}` at the source
+(`internal/app.originsForInvestigate`) precisely so a `--json` consumer never has to special-case
+`origins: null` the way it still must for `profiles` and `hosts` (T51's own recorded, deliberately
+deferred item). `agentComment` and `commentSource` (T38) are the `ssh-agent`-sourced comment fact
+and its label; both carry `omitempty` and are absent from the wire entirely when no agent match was
+found — a consumer's signal for "was there a match" is `commentSource == "agent-sourced"`, never an
+empty-string check on `agentComment` alone, since an agent can legitimately report an empty
+comment. All four new fields use the same lowerCamelCase JSON tag convention `domain.Key`'s own
+fields already use (`schemes`, `origins`, `agentComment`, `commentSource` — not
+`Schemes`/`Origins`/… or `agent_comment`/…), so nothing about `--investigate`'s additive shape asks
+a consumer to learn a second naming convention.
 
 `log/slog` writes to stderr, off by default, enabled by `--verbose`. Nothing else ever writes to
 stdout except the rendered answer.
@@ -1728,12 +1793,14 @@ read carries a status from P10's closed set:
 ```json
 "origins": [
   {"id": "aws-ec2-created", "confidence": "possible",
-   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+   "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
 ]
 ```
 
 `because` carries machine-readable evidence tokens, never prose — free text belongs to the human
-renderer alone. The vocabulary is **closed and permanent** (§16, row 7): unlike
+renderer alone; `algorithm=`/`format=` carry `domain.Key`'s own literal field values, a precision
+on this section's earlier, illustrative spelling recorded in
+[T51](tech-decision-log.md#t51). The vocabulary is **closed and permanent** (§16, row 7): unlike
 [T29](tech-decision-log.md#t29)'s deliberately re-tunable `severity`, a value here is a safety
 signal a consumer may filter on, and neither adding a fifth value nor redefining one of the four
 is compatible without a major version bump.
@@ -1750,15 +1817,44 @@ keeps running — the same labelled-not-merged treatment
 [T16](tech-decision-log.md#t16) gives implicit-default bindings. No agent, or the socket unset,
 degrades silently to what is derivable without it (§11) — never an error.
 
-**Forward obligation, recorded rather than assumed:** T39's "try the agent first" is a call-site
-ordering requirement — the agent lookup runs, and its result is merged into a candidate key's
-material, *before* `PassphraseGate.Derive` is ever called for that key — not a property either
-source enforces on its own. `internal/app.PassphraseGate` (M3.6.2) does not talk to an agent
-itself and cannot verify it was consulted first; the ordering is discharged entirely by chunk
-[M3.6.4](roadmap.md#56-m36--investigation)'s wiring inside `--investigate`'s own call site, which
+**Forward obligation, recorded rather than assumed — now discharged.** T39's "try the agent first"
+is a call-site ordering requirement — the agent lookup runs, and its result is merged into a
+candidate key's material, *before* `PassphraseGate.Derive` is ever called for that key — not a
+property either source enforces on its own. `internal/app.PassphraseGate` (M3.6.2) does not talk
+to an agent itself and cannot verify it was consulted first; the ordering is discharged entirely by
+chunk M3.6.4's wiring inside `--investigate`'s own call site
+(`internal/app.investigateKey`/`knownMaterialWithAgentFact`, `internal/app/investigate.go`), which
 is the only place both sources are ever invoked together. `roadmap.md` §5.6's M3.6.4 chunk row
-names this explicitly, so the obligation has one recorded home rather than being left implicit in
-two chunks that each assume the other one covers it.
+named this explicitly ahead of time, so the obligation had one recorded home rather than being left
+implicit in two chunks that each assumed the other one covered it — and
+[T51](tech-decision-log.md#t51) records how the discharge was actually verified, which is the part
+worth stating here rather than leaving to the commit that did it.
+
+**What pins the ordering is an observable output difference, not the call sequence's own shape.**
+A first implementation split the work into numbered steps that already satisfied the ordering
+structurally — `PassphraseGate.Derive` cannot be called with the merged material before that
+material exists — but the reported `agentComment` was read from a value computed *before*
+`Derive` ran, so a hypothetical call site that quietly re-derived a second, unmerged `Material` and
+handed that to `Derive` instead would have produced identical output: the guard test written
+against that shape passed even with the ordering inverted. `investigateKey` now reads
+`agentComment` from `derived.Material.Comment` — the actual material that flowed through
+`Derive` — guarded on `commentSource == domain.FactSourceAgent` so an ordinary `.pub` sidecar
+comment is never mislabelled agent-sourced ([T38](tech-decision-log.md#t38)'s labelling rule); an
+inverted call site now produces a visibly wrong `agentComment` instead of a silently-still-correct
+one, and `TestInvestigateKey_AgentTriedBeforeDerive` is written to fail against exactly that
+inversion. [T51](tech-decision-log.md#t51) is this decision's permanent record.
+
+**This also corrects an understatement in this section's own earlier account of
+`PassphraseGate.Derive`'s comment-preservation contract.** Sourcing `agentComment` from
+`derived.Material.Comment` only reports the agent's fact correctly if `Derive` actually carries a
+caller-merged comment through its **successful**-unlock path — and, until T51/M3.6.4, it did not:
+`Derive` returned the freshly-decrypted `Material` verbatim on that path, silently erasing a
+caller-merged agent comment exactly when a correct passphrase was also supplied. `Derive` now
+carries `known.Comment` forward onto the freshly-opened material whenever that material has no
+comment of its own, and never overwrites a real, non-empty sidecar comment — see
+[T51](tech-decision-log.md#t51) for the full argument, including why the bug was load-bearing
+rather than cosmetic (T49's finding that the decrypt path itself never recovers the comment at all,
+making the agent the only source for it once a key is encrypted with no `.pub` sidecar).
 
 **A known limitation, not yet worth its own T-log entry:** a `byPath`-identified key ([T1](tech-decision-log.md#t1)'s
 undecidable row — legacy PEM, encrypted, no `.pub` sidecar) has no derivable public key at all, so
@@ -1780,7 +1876,11 @@ agent-supplied private key and no passphrase. An OpenSSH-format key's comment is
 found that `golang.org/x/crypto/ssh`'s passphrase-decrypt API discards the comment even after a
 correct passphrase, so a prompt can never recover it regardless of whether the agent has anything
 loaded; §18's own earlier text claiming otherwise was wrong, not merely imprecise, and is corrected
-here.
+here. The prompt does not *recover* the comment — but `PassphraseGate.Derive` is careful not to
+*destroy* one an agent already supplied while unlocking the created-RSA fact: it carries a
+caller-merged `Material.Comment` forward onto the freshly-decrypted material on its successful-
+unlock path, a fix [T51](tech-decision-log.md#t51) records in full, since an earlier version of
+that path silently dropped the merge on exactly that branch.
 
 hasp tries the agent first for whatever the agent can supply (the comment, per T38) — not because
 the two sources compete for the created-RSA fact, but because a key already loaded needs no prompt

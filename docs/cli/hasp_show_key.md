@@ -9,7 +9,8 @@ hasp show key <name> [flags]
 ### Options
 
 ```
-  -h, --help   help for key
+  -h, --help          help for key
+      --investigate   opt-in investigation mode (tdd.md §18): every registered fingerprint scheme, a confidence-graded origin, and ssh-agent-sourced facts, at the cost of speed and possibly a passphrase prompt
 ```
 
 ### Options inherited from parent commands

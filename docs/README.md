@@ -27,7 +27,7 @@ and the whole point of this set is that a settled argument stays settled.
 | [`tech-decision-log.md`](tech-decision-log.md) | **Why the technical design says that.** `T1`–`T39`, same rules as the D-log, separate namespace | Approved |
 | [`roadmap.md`](roadmap.md) | **What gets built in what order, and how you know a milestone is done.** Sequencing and exit criteria; deliberately no dates or estimates | Approved |
 | [`project-assessment-2026-08.md`](project-assessment-2026-08.md) | **The Python predecessor, as found in August 2026.** Evidence, not a plan — its roadmap is superseded | Historical |
-| [`user-guide.md`](user-guide.md) | **How to use hasp, by journey (J1–J8).** Real commands and example invocations for each journey `design.md` §7 defines, pointing at the generated CLI reference for exhaustive flag syntax | New |
+| [`user-guide.md`](user-guide.md) | **How to use hasp, by journey (J1–J8, J10).** Real commands and example invocations for each journey `design.md` §7 defines, pointing at the generated CLI reference for exhaustive flag syntax | New |
 | [`on-disk.md`](on-disk.md) | **What hasp actually leaves on disk.** `.hasp` markers, in-file marked regions, the settings file, `~/.ssh/.hasp-backups/`, and the full withdrawal path | New |
 
 ## Reading order
@@ -45,9 +45,11 @@ later than the rest.
 ([T34](tech-decision-log.md#t34)): a root `README.md` aimed at orientation and install, a
 [`user-guide.md`](user-guide.md) organized around J1–J8, an [`on-disk.md`](on-disk.md) on what
 hasp actually leaves behind, and a root `SECURITY.md` restating the project's existing custody and
-access guarantees. Both new documents under `docs/` are indexed in the table above, alongside the
-generated reference under `docs/cli/` that this second audience also relies on for exact flag
-syntax.
+access guarantees. M3.6 ([`roadmap.md` §5.6](roadmap.md#56-m36--investigation)) added a J10 section
+to that same guide once `--investigate` gave the journey commands to document; J9 stays out of it,
+still gated behind M4 ([D8](decision-log.md#d8)). Both new documents under `docs/` are indexed in
+the table above, alongside the generated reference under `docs/cli/` that this second audience also
+relies on for exact flag syntax.
 
 **To argue with it:** find the `Dn` or `Tn` that settled the question. If none did, the design has
 a gap and it gets amended rather than reinterpreted — which is how `D16`, `D17` and `D18` came to

@@ -45,7 +45,7 @@ import (
 // manPageDate is pinned rather than time.Now() so regenerating the reference without any command
 // tree change produces byte-identical output (see package doc). Bump this only when deliberately
 // regenerating the reference for a real reason.
-var manPageDate = time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
+var manPageDate = time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
 
 const (
 	cliDocsDir     = "docs/cli"
