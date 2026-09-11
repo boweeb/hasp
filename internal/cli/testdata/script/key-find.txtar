@@ -6,6 +6,11 @@ cp key.pem $WORK/home/.ssh/id_ed25519
 exec hasp find key sha256:T4RN-6Go9-uzGH --key-dir $WORK/home/.ssh
 stdout 'id_ed25519'
 
+# The plural spelling searches, rather than falling through to find's childless parent — which
+# printed help and exited 0 without ever looking, so this line fails without the alias.
+exec hasp find keys sha256:T4RN-6Go9-uzGH --key-dir $WORK/home/.ssh
+stdout 'id_ed25519'
+
 exec hasp find key nonexistentfragment --key-dir $WORK/home/.ssh
 stdout '^NAME'
 ! stdout 'id_ed25519'

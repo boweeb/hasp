@@ -12,8 +12,9 @@ import (
 
 func newListProfileCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "profile",
-		Short: "List every directory carrying a .hasp marker, with key/host counts",
+		Use:     "profile",
+		Short:   "List every directory carrying a .hasp marker, with key/host counts",
+		Aliases: []string{"profiles"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {
@@ -54,9 +55,10 @@ func newShowProfileCmd() *cobra.Command {
 
 func newFindProfileCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "profile <clue>",
-		Short: "Match by name fragment",
-		Args:  exactArgs(1),
+		Use:     "profile <clue>",
+		Short:   "Match by name fragment",
+		Aliases: []string{"profiles"},
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {
@@ -73,8 +75,9 @@ func newFindProfileCmd() *cobra.Command {
 
 func newCheckProfileCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "profile",
-		Short: "Report empty or unmarked profile directories",
+		Use:     "profile",
+		Short:   "Report empty or unmarked profile directories",
+		Aliases: []string{"profiles"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {

@@ -30,8 +30,9 @@ const investigateFlagUsage = "opt-in investigation mode (tdd.md §18): every reg
 // its literal section heading.
 func newListKeyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "key",
-		Short: "List every key found, managed and unmanaged",
+		Use:     "key",
+		Short:   "List every key found, managed and unmanaged",
+		Aliases: []string{"keys"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {
@@ -131,9 +132,10 @@ func newInvestigateRequest() app.InvestigateRequest {
 
 func newFindKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "key <fingerprint-fragment>",
-		Short: "Identify a key from a fingerprint fragment, ignoring punctuation and case",
-		Args:  exactArgs(1),
+		Use:     "key <fingerprint-fragment>",
+		Short:   "Identify a key from a fingerprint fragment, ignoring punctuation and case",
+		Aliases: []string{"keys"},
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {
@@ -150,8 +152,9 @@ func newFindKeyCmd() *cobra.Command {
 
 func newCheckKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "key",
-		Short: "Report duplicate, incomplete, or unaffiliated keys",
+		Use:     "key",
+		Short:   "Report duplicate, incomplete, or unaffiliated keys",
+		Aliases: []string{"keys"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {

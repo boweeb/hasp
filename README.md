@@ -46,10 +46,11 @@ hasp --key-dir ~/.ssh show key <name>
 hasp --key-dir ~/.ssh check
 ```
 
-`list key` inventories every key it finds, managed and unmanaged alike. `show key <name>` gives
-full detail on one of them — identity, locations, profiles, and bound hosts. `check` reports
-untidiness (duplicates, missing public halves, orphans, dangling references) without fixing
-anything; fixing is a separate, explicit step (`adopt`, then `edit`) once you decide you want it.
+`list key` inventories every key it finds, managed and unmanaged alike (`list keys` works too —
+`list`, `check`, and `find` all accept the plural noun). `show key <name>` gives full detail on
+one of them — identity, locations, profiles, and bound hosts. `check` reports untidiness
+(duplicates, missing public halves, orphans, dangling references) without fixing anything;
+fixing is a separate, explicit step (`adopt`, then `edit`) once you decide you want it.
 
 For the full command surface — every subcommand and flag, kept byte-identical to the binary by
 CI — see the generated reference starting at [`docs/cli/hasp.md`](docs/cli/hasp.md), or run

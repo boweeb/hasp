@@ -45,7 +45,9 @@ hasp --key-dir ~/.ssh list profile
 `list host` reports every `Host` stanza across `~/.ssh/config` and any host groups it includes;
 scope it to one group with `--group <name>`. `list profile` reports every directory carrying a
 `.hasp` marker, with key and host counts. Run all three and you have a complete, honest inventory
-of a `~/.ssh` you've never touched with hasp before.
+of a `~/.ssh` you've never touched with hasp before. `list`, `check`, and `find` also accept the
+plural spelling (`list keys`, `check hosts`, `find profiles`, ...) if that reads more naturally to
+you; this guide sticks to the singular throughout.
 
 ## J2 — Identify
 

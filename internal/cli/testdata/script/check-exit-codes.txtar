@@ -25,6 +25,13 @@ rm $WORK/home/.ssh/work/id_ed25519.pub
 ! exec hasp check --key-dir $WORK/home/.ssh
 stdout 'empty-profile-dir'
 
+# The plural spelling routes to the key-scoped check, not to check's own aggregate RunE: exit 0
+# here even though the tree as a whole is dirty. Before `keys` was a registered spelling it fell
+# through to the parent as an ignored positional arg, running the aggregate — which exits 1 and
+# prints empty-profile-dir at this point, so this line fails without the alias.
+exec hasp check keys --key-dir $WORK/home/.ssh
+stdout 'clean'
+
 -- key.pem --
 -----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
