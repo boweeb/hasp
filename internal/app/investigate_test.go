@@ -146,7 +146,13 @@ func TestOriginsForInvestigate_NonRSA_Empty(t *testing.T) {
 // TestNormalizeNilSlices_NestedFieldNormalized and friends) prove the renderer's general
 // guarantee, and internal/cli's end-to-end guard
 // (TestJSONKinds_NeverEmitArrayTypedNull, internal/cli/jsonnullguard_test.go) proves it holds
-// through the full --json pipeline for every kind, including this one.
+// through the full --json pipeline for this kind specifically — key.list/key.show under
+// --investigate are among the nine of that guard's twelve enumerated kinds that genuinely carry a
+// nested array field and therefore genuinely bite. T53 records the qualification the bare phrase
+// "every kind" elided: profile.list and profile.find are structural no-ops for this regression
+// class (their payload types carry no nested array field at all), and check.report's own
+// map-nested case cannot be driven nil by any live detector. T53's Context enumerates two sites
+// carrying that unqualified phrasing; this comment was a third it did not count.
 func TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil(t *testing.T) {
 	dir := t.TempDir()
 	copyFixture(t, "ed25519-openssh-plain-pub", filepath.Join(dir, "id_ed25519"))
