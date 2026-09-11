@@ -292,10 +292,15 @@ func refineSchemeReasons(schemes []domain.SchemeFingerprint, derived DerivedMate
 // marshals as `[]`, never `null` — proven where that guarantee now actually lives, one layer up,
 // by internal/cli/render's own unit tests and by internal/cli's end-to-end guard
 // (TestJSONKinds_NeverEmitArrayTypedNull, internal/cli/jsonnullguard_test.go), which asserts it
-// through the full --json pipeline for every kind including this one. This sentence cited a
-// TestOriginsForInvestigate_JSON_NeverNull that T52 itself deleted — it tested the retired
-// workaround via a bare json.Marshal that bypassed the renderer entirely, so it could not have
-// proven the claim it was cited for even had it survived.
+// through the full --json pipeline for this kind's own `origins` field specifically, and for every
+// other --json kind's own genuinely nested array fields the same way — T53
+// (docs/tech-decision-log.md) records, as a corrected and deliberate fact rather than an
+// oversight, that two of the guard's twelve enumerated kinds (profile.list, profile.find) are
+// structural no-ops for this regression class: their payload types carry no nested array field at
+// all, so neither can fail for this class of defect regardless of what normalizeNilSlices does. An
+// earlier version of this comment cited a TestOriginsForInvestigate_JSON_NeverNull that T52 itself
+// deleted — it tested the retired workaround via a bare json.Marshal that bypassed the renderer
+// entirely, so it could not have proven the claim it was cited for even had it survived.
 //
 // tdd.md §10's / T37's worked example — {"id": "aws-ec2-created", "confidence": "possible",
 // "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]} — shows the shape

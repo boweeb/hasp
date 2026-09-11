@@ -145,6 +145,40 @@ func TestNormalizeNilSlices_NeverDescendsIntoJSONMarshaler(t *testing.T) {
 	}
 }
 
+// textMarshalerWithUnexportedState implements encoding.TextMarshaler only (deliberately not
+// json.Marshaler), and its MarshalText reads unexported state — proving trap 3's TextMarshaler
+// half (revision cycle 1, verifier finding 1): a type that owns its wire output via MarshalText
+// rather than MarshalJSON must be left completely untouched by the walk too, or reconstructing it
+// field-by-field would zero the unexported field MarshalText depends on (CanSet's skip in the
+// Struct case), and MarshalText would then read the corrupted copy instead of the caller's value.
+type textMarshalerWithUnexportedState struct {
+	secret string // unexported: MarshalText's use of it, not reflection's, is what must be tested
+}
+
+func (m textMarshalerWithUnexportedState) MarshalText() ([]byte, error) {
+	return []byte("secret:" + m.secret), nil
+}
+
+type textMarshalerWrapper struct {
+	Custom textMarshalerWithUnexportedState `json:"custom"`
+}
+
+// TestNormalizeNilSlices_NeverDescendsIntoTextMarshaler proves the walk leaves a
+// TextMarshaler-only type's unexported state alone: without the textMarshalerType check, the
+// Struct case would rebuild textMarshalerWithUnexportedState with its unexported "secret" field
+// skipped (CanSet() == false) rather than copied, zeroing it before MarshalText ever runs, and
+// this test's want value would read `"custom":"secret:"` instead.
+func TestNormalizeNilSlices_NeverDescendsIntoTextMarshaler(t *testing.T) {
+	raw, err := marshalData(textMarshalerWrapper{Custom: textMarshalerWithUnexportedState{secret: "s3cr3t"}})
+	if err != nil {
+		t.Fatalf("marshalData: %v", err)
+	}
+	want := `{"custom":"secret:s3cr3t"}`
+	if string(raw) != want {
+		t.Errorf("raw = %s, want %s (the type's own MarshalText output, unexported state intact)", raw, want)
+	}
+}
+
 // TestNormalizeNilSlices_NilPointer proves rule 7: a nil pointer is left nil (it names a single
 // optional value, not a "no results" collection — T14's contract is about arrays) rather than
 // being treated as anything slice-shaped.

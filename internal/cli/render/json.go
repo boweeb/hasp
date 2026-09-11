@@ -4,6 +4,7 @@
 package render
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,6 +67,19 @@ func marshalData(data any) ([]byte, error) {
 // wire encoding so normalizeNilSlices never descends into (and never risks corrupting) it.
 var jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 
+// textMarshalerType is encoding.TextMarshaler's reflect.Type (revision cycle 1, verifier finding
+// 1). encoding/json defers to TextMarshaler — encoding the value as a JSON string via
+// MarshalText — for any type that does not implement json.Marshaler; trap 3's ownership argument
+// (a type that owns its own wire encoding must never be rebuilt field-by-field, because
+// reconstruction silently zeroes unexported state via the CanSet() skip in the Struct case, and a
+// MarshalText/MarshalJSON method reads the corrupted copy afterward) applies identically whether
+// the owning method is named MarshalJSON or MarshalText — encoding/json's choice of which one to
+// call is an implementation detail of *how* the type is serialized, not a fact about whether it
+// owns that serialization. No type in this tree implements only TextMarshaler as of this writing
+// (verified: `grep -rn "MarshalText" internal/` finds nothing), so this guards a class of future
+// defect, not a live one — exactly the same posture trap 2's []byte guard already takes.
+var textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+
 // normalizeNilSlices returns a value equal to v for encoding/json's purposes, except that every
 // nil slice reachable inside it (at any depth, through structs, slices, maps, pointers, and
 // interfaces) is replaced with a non-nil, zero-length slice of the same type, so it marshals as
@@ -95,21 +109,30 @@ var jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
 //     every []byte-shaped field silently breaks. There is no such field in this tree today, but
 //     the guard costs nothing and a future one must not regress this.
 //
-//  3. A type that implements json.Marshaler owns its output completely — domain.KeyFormat,
-//     domain.BindingKind, domain.ProfilePath, domain.Confidence, domain.SchemeID,
-//     domain.KeyIdentity's byFingerprint/byPath, app.Severity, and app.DiffKind, as of this
-//     writing (T52) — and rebuilding one field-by-field through reflection (dropping its
-//     unexported state per trap 5, or simply second-guessing a MarshalJSON method that already
-//     produces correct output) is exactly the kind of "helpful" rewrite that can silently change
-//     what it emits. normalizeNilSlices checks both a value's own type and a pointer to it
-//     against json.Marshaler (a pointer-receiver MarshalJSON method set only attaches to *T, not
-//     T) and, if either implements it, returns that value completely untouched rather than
-//     descending into it. domain.Origin.Because ([]domain.ReasonToken) is explicitly still in
-//     scope despite this rule: ReasonToken itself carries no MarshalJSON (it marshals as a plain
-//     JSON string, its underlying type), so the *slice* Because is normalized as an ordinary
-//     nil-checked slice — it is the element type owning a custom marshaler that disqualifies
-//     descending into *that element*, never the slice merely containing marshaler-owning (or, as
-//     here, ordinary) elements.
+//  3. A type that implements json.Marshaler OR encoding.TextMarshaler owns its output completely
+//     — domain.KeyFormat, domain.BindingKind, domain.ProfilePath, domain.Confidence,
+//     domain.SchemeID, domain.KeyIdentity's byFingerprint/byPath, app.Severity, and app.DiffKind,
+//     as of this writing (T52), all via json.Marshaler; no type in this tree implements only
+//     TextMarshaler as of this writing (revision cycle 1, verifier finding 1) — and rebuilding one
+//     field-by-field through reflection (dropping its unexported state per trap 5, or simply
+//     second-guessing a Marshal method that already produces correct output) is exactly the kind
+//     of "helpful" rewrite that can silently change what it emits. Both interfaces matter for
+//     identically the same reason, not two different ones: encoding/json defers to TextMarshaler
+//     — encoding the value as a JSON string via MarshalText — for any type that does not
+//     implement json.Marshaler, so a TextMarshaler-only type owns its wire output exactly as
+//     completely as a json.Marshaler one does; checking only json.Marshaler would leave a future
+//     TextMarshaler-only type walked, its unexported state zeroed, and its own MarshalText left
+//     to read the corrupted copy — the identical failure trap 3 exists to prevent, just reached
+//     through the other interface encoding/json actually consults. normalizeNilSlices checks both
+//     a value's own type and a pointer to it against both jsonMarshalerType and textMarshalerType
+//     (a pointer-receiver Marshal method set only attaches to *T, not T) and, if any of the four
+//     checks matches, returns that value completely untouched rather than descending into it.
+//     domain.Origin.Because ([]domain.ReasonToken) is explicitly still in scope despite this rule:
+//     ReasonToken implements neither interface (it marshals as a plain JSON string, its
+//     underlying type, via encoding/json's own default string handling), so the *slice* Because
+//     is normalized as an ordinary nil-checked slice — it is the element type owning a custom
+//     marshaler that disqualifies descending into *that element*, never the slice merely
+//     containing marshaler-owning (or, as here, ordinary) elements.
 //
 //  4. A map is left alone when nil, never normalized to a non-nil empty map. T14's stated
 //     contract — `jq '.data[]'` must not choke on "no results" — is about **arrays**;
@@ -141,9 +164,11 @@ func normalizeNilSlices(v reflect.Value) reflect.Value {
 	}
 	t := v.Type()
 
-	// Trap 3: a type (or a pointer to it) that owns its own JSON encoding is never rebuilt by
-	// this walk — return it exactly as the caller supplied it.
-	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) {
+	// Trap 3: a type (or a pointer to it) that owns its own wire encoding — via json.Marshaler
+	// or encoding.TextMarshaler, encoding/json's fallback when json.Marshaler is absent — is
+	// never rebuilt by this walk — return it exactly as the caller supplied it.
+	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) ||
+		t.Implements(textMarshalerType) || reflect.PointerTo(t).Implements(textMarshalerType) {
 		return v
 	}
 

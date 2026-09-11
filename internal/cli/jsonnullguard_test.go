@@ -9,14 +9,16 @@ import (
 )
 
 // jsonNullGuardArrayFields is every array-typed JSON field name reachable from any --json kind's
-// data payload, across the whole current compatibility surface (T52): domain.Key.Locations
+// data payload, across the whole current compatibility surface (T52/T53): domain.Key.Locations
 // ("locations"), domain.Key.Profiles/domain.Host.Profiles ("profiles"), domain.Host.Patterns
 // ("patterns"), domain.Host.Bindings ("bindings"), domain.Origin.Because ("because"),
 // app.InvestigatedKey.Schemes ("schemes"), app.InvestigatedKey.Origins/app.FindMatch.Origins
 // ("origins"), app.ProfileDetail.Keys ("keys"), app.KeyDetail.Hosts/app.ProfileDetail.Hosts
-// ("hosts"), and render.Envelope.Data itself ("data"). Some of these (locations, patterns,
-// schemes) are never actually empty in practice given how hasp derives them — included anyway,
-// both for completeness against a future change to that invariant and because the cost of
+// ("hosts"), app.Finding.Detail's one documented map-value shape, {"paths": [...]} on a
+// duplicate-key finding ("paths", revision cycle 1, verifier finding 2 — see the check.report
+// subtest below and T53), and render.Envelope.Data itself ("data"). Some of these (locations,
+// patterns, schemes) are never actually empty in practice given how hasp derives them — included
+// anyway, both for completeness against a future change to that invariant and because the cost of
 // checking one more literal substring is zero.
 //
 // This is deliberately a fixed, named list, not a generic "scan every null in the JSON" walk:
@@ -27,7 +29,7 @@ import (
 // assertNoArrayTypedNull's own doc comment) — a byte-level literal-substring check on a known
 // field-name set is the direct, auditable way to do that.
 var jsonNullGuardArrayFields = []string{
-	"data", "profiles", "hosts", "bindings", "origins", "because", "schemes", "keys", "locations", "patterns",
+	"data", "profiles", "hosts", "bindings", "origins", "because", "schemes", "keys", "locations", "patterns", "paths",
 }
 
 // assertNoArrayTypedNull fails t if raw contains an array-typed field rendered as JSON null
@@ -49,13 +51,23 @@ func assertNoArrayTypedNull(t *testing.T, kind string, raw []byte) {
 }
 
 // TestJSONKinds_NeverEmitArrayTypedNull is T52's mechanical end-to-end guard: every --json kind
-// hasp exposes, run against a fixture deliberately built so every array-typed field this kind can
-// carry comes back genuinely empty — the exact shape (a key with no profile, a host with no
-// binding, a profile with no members, a non-RSA key's investigate-mode origins) that used to
-// surface as a literal JSON null before T52's recursive normalizeNilSlices existed. Every kind
-// tdd.md §9's command grid exposes under --json is exercised here: key.list, key.show, key.find,
-// host.list, host.show, host.find, profile.list, profile.show, profile.find, check.report, and
-// both --investigate variants tdd.md §18 adds on top of key.list/key.show.
+// hasp exposes is run here, against a fixture deliberately built so every array-typed field a
+// kind's own payload type can carry comes back genuinely empty — the exact shape (a key with no
+// profile, a host with no binding, a profile with no members, a non-RSA key's investigate-mode
+// origins, a duplicate key's paths list) that used to surface as a literal JSON null before T52's
+// recursive normalizeNilSlices existed. Every kind tdd.md §9's command grid exposes under --json
+// is enumerated here for completeness — key.list, key.show, key.find, host.list, host.show,
+// host.find, profile.list, profile.show, profile.find, check.report, and both --investigate
+// variants tdd.md §18 adds on top of key.list/key.show — but enumeration is not the same claim as
+// coverage: profile.list and profile.find are **structural no-ops** for this regression class
+// (revision cycle 1, verifier finding 2, recorded permanently at T53, docs/tech-decision-log.md).
+// app.ProfileSummary and domain.Profile (internal/app/profile.go, internal/domain/profile.go)
+// carry no nested array-typed field at all — the only array either kind's payload can ever carry
+// is the top-level `data` envelope array itself, which was already covered by marshalData's
+// pre-T52 top-level-only special case, so neither subtest can fail for a defect normalizeNilSlices
+// exists to catch; they run anyway so a future field added to either type is caught the moment it
+// starts carrying a nested array, not silently. Every other kind below, including check.report's
+// map-nested app.Finding.Detail["paths"] case, does exercise a genuine T52-class regression.
 //
 // The fixture, once, shared by every subtest below:
 //   - customEd25519FixtureKeyPEM (this file's own fixture, byte-identical to
@@ -66,6 +78,10 @@ func assertNoArrayTypedNull(t *testing.T, kind string, raw []byte) {
 //     what the config file says.
 //   - The key sits at the key directory's top level, under no ".hasp"-marked profile directory,
 //     so domain.Key.Profiles is nil at the source.
+//   - A second, independent copy of the same key bytes (custom_ed25519_dup, see below) triggers
+//     check_key.go's detectDuplicateKeyConfirmed, so check.report's Detail["paths"] map-nested
+//     slice case is actually exercised, not merely theoretically in scope (revision cycle 1,
+//     verifier finding 2).
 //   - The "bare" Host stanza carries no IdentityFile line and (given the point above) matches no
 //     implicit default identity either, so domain.Host.Bindings, and therefore
 //     domain.Host.Profiles (T5, derived from Bindings), are both nil at the source.
@@ -74,12 +90,26 @@ func assertNoArrayTypedNull(t *testing.T, kind string, raw []byte) {
 //
 // Every one of those is the ordinary, idiomatic Go zero value for "no results" a real, empty
 // ~/.ssh corner can produce validly (an unaffiliated key, an unbound host stanza, an empty
-// profile directory) — this test's whole point is that none of them may ever reach the wire as a
-// literal JSON null.
+// profile directory, a duplicate key with a real paths list) — this test's whole point is that
+// none of them may ever reach the wire as a literal JSON null.
 func TestJSONKinds_NeverEmitArrayTypedNull(t *testing.T) {
 	dir := t.TempDir()
 
 	writeFile(t, filepath.Join(dir, "custom_ed25519"), customEd25519FixtureKeyPEM)
+
+	// A second, independent real file carrying the exact same key bytes as custom_ed25519 —
+	// deliberately, so deriveKeys (internal/app/pipeline.go) groups the two by fingerprint into
+	// one domain.Key with two non-alias Locations, which is check_key.go's own trigger for
+	// detectDuplicateKeyConfirmed ("two or more non-alias Locations"). This is the fixture's one
+	// addition for revision cycle 1, verifier finding 2: without it, no finding in this fixture
+	// ever populated a map[string]any value with a slice (Finding.Detail's one documented
+	// "paths" shape, T52's own cited proof that the map-values-are-walked guarantee matters), so
+	// check.report's subtest exercised nothing beyond the top-level "data" array every other
+	// subtest here already covers structurally. "custom_ed25519" sorts before
+	// "custom_ed25519_dup" lexicographically (a prefix of a longer string always sorts first), so
+	// projectKey's tie-break still picks "custom_ed25519" as the primary location — key.show's
+	// subtest below is unaffected by this addition.
+	writeFile(t, filepath.Join(dir, "custom_ed25519_dup"), customEd25519FixtureKeyPEM)
 
 	writeFile(t, filepath.Join(dir, "lonely", ".hasp"), "# empty managed profile, deliberately unaffiliated\n")
 
@@ -164,6 +194,10 @@ func TestJSONKinds_NeverEmitArrayTypedNull(t *testing.T) {
 	})
 
 	t.Run("profile.list", func(t *testing.T) {
+		// Structural no-op (revision cycle 1, verifier finding 2; T53): app.ProfileSummary
+		// carries no nested array-typed field, so this subtest cannot fail for a T52-class
+		// defect — run anyway so a future field added to ProfileSummary is caught the moment it
+		// starts carrying a nested array, not silently.
 		run(t, "profile.list", "list", "profile")
 	})
 
@@ -178,6 +212,8 @@ func TestJSONKinds_NeverEmitArrayTypedNull(t *testing.T) {
 	})
 
 	t.Run("profile.find", func(t *testing.T) {
+		// Structural no-op, same reason as profile.list above: domain.Profile carries no
+		// nested array-typed field either (revision cycle 1, verifier finding 2; T53).
 		run(t, "profile.find", "find", "profile", "lone")
 	})
 
@@ -188,7 +224,22 @@ func TestJSONKinds_NeverEmitArrayTypedNull(t *testing.T) {
 		root.SetOut(&out)
 		root.SetErr(&out)
 		_ = root.Execute() // check exits 1 when findings exist (T14) — a non-nil error here is expected, not a test failure
-		assertNoArrayTypedNull(t, "check.report", out.Bytes())
+		raw := out.Bytes()
+		assertNoArrayTypedNull(t, "check.report", raw)
+		// Fixture-specific positive assertion (revision cycle 1, verifier finding 2): unlike
+		// every other subtest above, this one previously had none — assertNoArrayTypedNull alone
+		// cannot prove the fixture ever produced app.Finding.Detail["paths"] at all, only that it
+		// isn't null when present. custom_ed25519/custom_ed25519_dup's shared fingerprint raises
+		// detectDuplicateKeyConfirmed (internal/app/check_key.go), whose Detail carries a real,
+		// non-empty "paths" list naming both files — asserted here so this subtest can actually
+		// fail if that map-nested slice ever stops reaching the wire, structurally, not just by
+		// accident of assertNoArrayTypedNull finding nothing to complain about.
+		if !bytes.Contains(raw, []byte(`"paths": [`)) {
+			t.Errorf("check.report: want \"paths\": [...] present (duplicate-key-confirmed finding's map-nested slice): %s", raw)
+		}
+		if !bytes.Contains(raw, []byte("custom_ed25519_dup")) {
+			t.Errorf("check.report: want the duplicate key's second location present inside \"paths\": %s", raw)
+		}
 	})
 }
 
