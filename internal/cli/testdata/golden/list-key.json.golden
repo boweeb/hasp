@@ -20,7 +20,7 @@
       "format": "openssh",
       "encrypted": false,
       "hasPublicHalf": false,
-      "profiles": null,
+      "profiles": [],
       "sizeBytes": 387
     },
     {
@@ -41,7 +41,7 @@
       "format": "pkcs1",
       "encrypted": false,
       "hasPublicHalf": true,
-      "profiles": null,
+      "profiles": [],
       "sizeBytes": 2455
     }
   ]

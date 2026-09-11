@@ -430,8 +430,17 @@ Anything touching J9 or M4.
 5. `hasp show key --investigate --json </dev/null` with no TTY exits `0`, reports what is
    derivable, and marks the rest `unknown` with `passphrase-required-no-tty`.
 6. The no-network guard passes: no scheme opens a socket.
-7. `hasp list key` **without** `--investigate` is byte-identical to its pre-M3.6 output — the
-   investigation mode never leaks into the default read (P7).
+7. `hasp list key` **without** `--investigate` never diverges because `--investigate` exists — the
+   investigation mode never leaks into the default read (P7). Originally stated, and asserted, as
+   byte-identical to the literal pre-M3.6 golden; [T52](tech-decision-log.md#t52)'s structural fix
+   (`render.marshalData`'s recursive nil-slice normalization, landed on this same branch before the
+   `v1.0.0` tag, while correcting structure is still free per the maintainer's own stated stance)
+   deliberately regenerated that golden — `"profiles": null` becomes `"profiles": []` at both
+   occurrences, the JSON form only, the human form byte-for-byte unchanged. The mechanism is
+   therefore byte-identity against the T52-corrected golden, not literally the pre-M3.6 one; the
+   criterion's *intent* — investigation mode never leaks into the default read — is untouched and
+   still asserted the same way it always was, by `TestDefaultRead_ListKey_Golden`'s byte-for-byte
+   comparison plus its companion below.
 8. **`v1.0.0` is tagged at this milestone's close** — not M3.5's — once criterion 7 above confirms
    the default read is untouched and [M3.5](#55-m35--hardening)'s own exit criteria have already
    passed.
@@ -451,6 +460,19 @@ Anything touching J9 or M4.
 >   particular is the default-read golden guard chunk M3.6.0 committed before any
 >   `--investigate` code existed, so "untouched" is asserted against a baseline captured before the
 >   feature, not after it.
+> - **Criterion 7's golden was deliberately regenerated after this chunk landed**, by a
+>   structural-correctness fix ([T52](tech-decision-log.md#t52)) applied on this same branch ahead
+>   of the `v1.0.0` tag: `render.marshalData` now normalizes a nil slice to `[]` at every nesting
+>   depth it can reach, not only at the top-level `data` value, closing a gap T51's own Consequence
+>   named and deferred (`"profiles": null`, `"hosts": null`). `list-key.json.golden` changed —
+>   `"profiles": null` → `"profiles": []`, both occurrences — and `list-key.human.golden` did not
+>   change at all. This is not a silent weakening of criterion 7: its mechanism (byte-for-byte
+>   comparison) and its proof that `--investigate` is not a no-op
+>   (`TestDefaultRead_ListKey_Investigate_DiffersFromGolden`) are both unchanged; only the
+>   golden's own bytes moved, once, deliberately, to match corrected structure — exactly the
+>   maintainer's own stated stance for everything landing before this tag, and exactly the kind of
+>   change the byte-frozen-artifact discipline this same criterion's *language* borrows from
+>   begins enforcing only **at** the tag, not before it.
 > - **8 is explicitly NOT discharged by this chunk, or by this milestone's own work at all.** The
 >   `v1.0.0` tag is the maintainer's to cut, by hand, after `m36-investigation` (carrying chunks
 >   0–3) and `m36-closeout` (carrying chunks 4–5) both merge to `main` — this document does not

@@ -277,20 +277,19 @@ func refineSchemeReasons(schemes []domain.SchemeFingerprint, derived DerivedMate
 // fingerprint is identical whether created or imported, so even a scheme match there proves
 // nothing about provenance — --investigate, with no match at all to lean on, has even less.)
 //
-// That empty array is deliberately `[]domain.Origin{}`, never a bare Go `nil` — and this is
-// load-bearing, not stylistic. InvestigatedKey.Origins is tagged `json:"origins"` with no
-// `omitempty`, so it is always present on the wire; internal/cli/render/json.go's marshalData
-// normalizes a nil slice to `[]` only for the top-level `data` value passed to render.JSON, never
-// for a field nested inside a struct (its own doc comment: "the one place this distinction gets
-// erased before it reaches the wire" — singular, and this is not that place). A bare `nil` here
-// would therefore reach `hasp list key --investigate --json` as a literal `"origins": null` for
-// every non-RSA key, which is exactly the "no results" vs. "zero results" special-casing T14's
-// pipeline contract forbids a consumer from ever having to do (`jq '.data[].origins[]'` errors on
-// null). Do not "simplify" this back to `return nil` — marshalData is deliberately NOT made
-// recursive to fix this class of defect generally (that would also touch KeyDetail.Hosts and the
-// pre-M3.6 `"profiles": null` shape golden-pinned in testdata/golden/list-key.json.golden, both
-// out of this chunk's scope, roadmap.md §5.6 exit criterion 7) — the fix belongs here, at the one
-// call site actually introduced by this chunk.
+// This function returns a bare Go `nil` for that empty case — idiomatic Go, and, as of T52, also
+// correct on the wire: InvestigatedKey.Origins is tagged `json:"origins"` with no `omitempty`, so
+// it is always present in `hasp list key --investigate --json`'s output, but
+// internal/cli/render/json.go's marshalData now normalizes every nil slice it can reach, at any
+// struct-field depth, not only the top-level `data` value passed to render.JSON — the same
+// guarantee that also now covers domain.Key.Profiles ("profiles") and app.KeyDetail.Hosts
+// ("hosts"), both of which used to reach the wire as JSON `null` for exactly this reason before
+// T52. One mechanism in the renderer, applied uniformly, is more structurally consistent than a
+// hand-maintained `[]domain.Origin{}` special case at this one call site — the earlier version of
+// this comment argued at length for keeping that special case specifically *because* marshalData
+// was not yet recursive; T52 made it recursive, so the argument, and the special case it defended,
+// are both retired. Nothing about the wire output changes: a non-RSA key's `origins` field still
+// marshals as `[]`, never `null` — see TestOriginsForInvestigate_JSON_NeverNull.
 //
 // tdd.md §10's / T37's worked example — {"id": "aws-ec2-created", "confidence": "possible",
 // "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]} — shows the shape
@@ -298,7 +297,7 @@ func refineSchemeReasons(schemes []domain.SchemeFingerprint, derived DerivedMate
 // stays exactly right here.
 func originsForInvestigate(k domain.Key) []domain.Origin {
 	if !fpscheme.IsRSAAlgorithm(k.Algorithm) {
-		return []domain.Origin{}
+		return nil
 	}
 	because := []domain.ReasonToken{
 		domain.ReasonToken("algorithm=" + k.Algorithm),

@@ -1,8 +1,6 @@
 package app
 
 import (
-	"bytes"
-	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -123,7 +121,10 @@ func TestOriginsForInvestigate_RSA_BothOriginsPossible(t *testing.T) {
 
 // TestOriginsForInvestigate_NonRSA_Empty pins the non-RSA branch: an empty array, never an
 // invented origin (design.md §5.1 / D12) — neither AWS RSA scheme applies to a non-RSA key at
-// all.
+// all. As of T52, "empty" at this layer is a bare Go `nil` (len(origins) == 0 either way) — see
+// TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil below for why that is now the right,
+// idiomatic answer rather than a `[]domain.Origin{}` this function used to have to construct by
+// hand.
 func TestOriginsForInvestigate_NonRSA_Empty(t *testing.T) {
 	k := domain.Key{Algorithm: "ssh-ed25519", Format: domain.FormatOpenSSH}
 	if origins := originsForInvestigate(k); len(origins) != 0 {
@@ -131,21 +132,22 @@ func TestOriginsForInvestigate_NonRSA_Empty(t *testing.T) {
 	}
 }
 
-// TestOriginsForInvestigate_JSON_NeverNull is finding 1 of chunk M3.6.4's revision cycle 1: a
-// bare Go `nil` for InvestigatedKey.Origins reaches the --json wire as a literal "origins": null,
-// because internal/cli/render/json.go's marshalData only normalizes a nil slice to "[]" for the
-// top-level `data` value it is handed, never for a field nested inside a struct — see
-// originsForInvestigate's own doc comment for the full argument and why marshalData itself must
-// not be made recursive to fix this generally. Asserted at the raw-bytes level, not merely by
-// decoding back into a Go slice, because encoding/json happily decodes a JSON "null" into a nil Go
-// slice too — a round trip through json.Unmarshal would hide exactly the defect this test exists
-// to catch. Covers both of the two ways originsForInvestigate's non-RSA branch is reached: an
-// ed25519 key, whose algorithm is positively known and simply not RSA, and an undecidable
-// *-nopub key (rsa-pem-encrypted-nopub: legacy PEM, encrypted, no .pub sidecar — Algorithm stays
-// "" because there is no signal left to derive it from without the passphrase, T1's own
-// undecidable row) — IsRSAAlgorithm("") is false exactly like IsRSAAlgorithm("ssh-ed25519"), so
-// both must land on the same empty-array output.
-func TestOriginsForInvestigate_JSON_NeverNull(t *testing.T) {
+// TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil is T52's own ripple on this file:
+// originsForInvestigate used to return `[]domain.Origin{}` on the non-RSA branch specifically
+// because internal/cli/render/json.go's marshalData only normalized a nil slice to "[]" for the
+// top-level `data` value it was handed, never for a field nested inside a struct (InvestigatedKey
+// .Origins is exactly such a field) — see originsForInvestigate's own doc comment, current
+// revision, for the full argument. T52 made marshalData recurse into every nested field, so that
+// hand-maintained special case is no longer load-bearing; this test pins the resulting,
+// idiomatic-Go shape at this layer (a bare `nil`) so a future edit does not "restore" the old
+// `[]domain.Origin{}` construction under the mistaken belief it is still required. The wire-level
+// guarantee this used to protect directly — "origins" is never JSON null — is now proven one
+// layer up, where it actually lives: internal/cli/render's own unit tests (T52,
+// TestNormalizeNilSlices_NestedFieldNormalized and friends) prove the renderer's general
+// guarantee, and internal/cli's end-to-end guard
+// (TestJSONKinds_NeverEmitArrayTypedNull, internal/cli/jsonnullguard_test.go) proves it holds
+// through the full --json pipeline for every kind, including this one.
+func TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil(t *testing.T) {
 	dir := t.TempDir()
 	copyFixture(t, "ed25519-openssh-plain-pub", filepath.Join(dir, "id_ed25519"))
 	copyFixture(t, "ed25519-openssh-plain-pub.pub", filepath.Join(dir, "id_ed25519.pub"))
@@ -163,15 +165,8 @@ func TestOriginsForInvestigate_JSON_NeverNull(t *testing.T) {
 		if k.Algorithm == "ssh-rsa" {
 			t.Fatalf("test fixture setup produced an RSA key (%s) — this test is only meaningful for the non-RSA branch", k.Name)
 		}
-		raw, err := json.Marshal(k)
-		if err != nil {
-			t.Fatalf("json.Marshal(%s): %v", k.Name, err)
-		}
-		if bytes.Contains(raw, []byte(`"origins":null`)) {
-			t.Errorf("%s: JSON contains \"origins\":null, want \"origins\":[] — see originsForInvestigate's doc comment (T14)", k.Name)
-		}
-		if !bytes.Contains(raw, []byte(`"origins":[]`)) {
-			t.Errorf("%s: JSON does not contain \"origins\":[] at all: %s", k.Name, raw)
+		if k.Origins != nil {
+			t.Errorf("%s: Origins = %#v, want nil (idiomatic Go zero value, T52)", k.Name, k.Origins)
 		}
 	}
 }

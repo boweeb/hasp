@@ -1046,6 +1046,24 @@ type Envelope struct {
 }
 ```
 
+### Array-typed fields are never `null` ([T52](tech-decision-log.md#t52))
+
+Every array-typed field anywhere in `--json` output is always an array — `[]` for "no results,"
+never JSON `null` — at every nesting depth, not only at `data` itself. This is enforced in exactly
+one place: `internal/cli/render/json.go`'s `marshalData` recursively normalizes every nil Go slice
+it can reach inside the value it is handed (through struct fields, slice elements, map values,
+pointers, and interfaces) before marshaling, so an `internal/app` use case is free to return the
+ordinary, idiomatic Go `nil` for "nothing here" and never has to hand-construct an empty slice
+itself to keep a `--json` consumer's `jq '.data[]'` from erroring on `null` (T14's own pipeline
+contract). A `[]byte`-shaped field is the one deliberate exception — it base64-encodes to a
+string, and a nil one is correctly `null`, never `[]`, matching `encoding/json`'s own documented
+behavior — and a type that implements `json.Marshaler` is never touched by this normalization at
+all, since it owns its own wire output completely. See T52 for the full argument, including why
+this was not always true: `render.marshalData` originally normalized a nil slice only at the
+top-level `data` value, which is why `domain.Key.Profiles` ("profiles") and `app.KeyDetail.Hosts`
+("hosts") both used to reach the wire as a literal `null` despite this same section's own
+contract.
+
 ### `check.report` findings ([T29](tech-decision-log.md#t29))
 
 `check`'s `data` is an array of findings, each with a **permanent** `id` and a **re-tunable**
@@ -1157,13 +1175,13 @@ fewer — a scheme that could not be computed reports its own honest `confidence
 with a `reason`, rather than being omitted (roadmap.md §5.6 exit criterion 2). `origins` is the
 no-external-clue provenance guess §18 and T51 describe; it is tagged `json:"origins"` with **no**
 `omitempty` and is **always present as an array — `[]`, never JSON `null`**, even for a key with no
-origin evidence at all (a non-RSA algorithm): `render.marshalData` only normalizes a nil slice to
-`[]` at the top-level `data` value it renders, never at a field nested inside a struct, so
-`InvestigatedKey`'s own zero value for `Origins` is built as `[]domain.Origin{}` at the source
-(`internal/app.originsForInvestigate`) precisely so a `--json` consumer never has to special-case
-`origins: null` the way it still must for `profiles` and `hosts` (T51's own recorded, deliberately
-deferred item). `agentComment` and `commentSource` (T38) are the `ssh-agent`-sourced comment fact
-and its label; both carry `omitempty` and are absent from the wire entirely when no agent match was
+origin evidence at all (a non-RSA algorithm) — the general renderer guarantee this section states
+above (T52) covers it, the same as `profiles` and `hosts` and every other array-typed field.
+`internal/app.originsForInvestigate` itself returns idiomatic `nil` on that branch;
+`domain.Key.Profiles` and `app.KeyDetail.Hosts` need no equivalent hand-written workaround either —
+none of the three needs one anymore, which is T52's whole point. `agentComment` and
+`commentSource` (T38) are the `ssh-agent`-sourced comment fact and its label; both carry
+`omitempty` and are absent from the wire entirely when no agent match was
 found — a consumer's signal for "was there a match" is `commentSource == "agent-sourced"`, never an
 empty-string check on `agentComment` alone, since an agent can legitimately report an empty
 comment. All four new fields use the same lowerCamelCase JSON tag convention `domain.Key`'s own
