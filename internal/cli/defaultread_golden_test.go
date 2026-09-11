@@ -56,6 +56,53 @@ func TestDefaultRead_ListKey_Golden(t *testing.T) {
 	assertGolden(t, filepath.Join("testdata", "golden", "list-key.json.golden"), jsonOut)
 }
 
+// TestDefaultRead_ListKey_Investigate_DiffersFromGolden is roadmap.md §5.6 exit criterion 7's own
+// companion assertion, named directly in chunk M3.6.4's task spec: criterion 7 itself is already
+// proven by TestDefaultRead_ListKey_Golden staying byte-identical to the pre-M3.6 golden with the
+// flag absent, but that alone cannot distinguish "the flag genuinely changes nothing" from "the
+// flag was wired up to do nothing at all" — both would leave the golden-comparison test green. This
+// test closes that gap: with the identical fixture tree TestDefaultRead_ListKey_Golden uses,
+// `list key --investigate` (human and --json) must differ from the same committed goldens.
+func TestDefaultRead_ListKey_Investigate_DiffersFromGolden(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, "id_ed25519"), ed25519FixtureKeyPEM)
+
+	rsaPriv, err := os.ReadFile(filepath.Join(repoFixturesDir(t), "rsa-pem-plain-pub"))
+	if err != nil {
+		t.Fatalf("read rsa-pem-plain-pub fixture: %v", err)
+	}
+	rsaPub, err := os.ReadFile(filepath.Join(repoFixturesDir(t), "rsa-pem-plain-pub.pub"))
+	if err != nil {
+		t.Fatalf("read rsa-pem-plain-pub.pub fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "id_rsa_legacy"), rsaPriv, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "id_rsa_legacy.pub"), rsaPub, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	humanGolden, err := os.ReadFile(filepath.Join("testdata", "golden", "list-key.human.golden"))
+	if err != nil {
+		t.Fatalf("read committed golden: %v", err)
+	}
+	jsonGolden, err := os.ReadFile(filepath.Join("testdata", "golden", "list-key.json.golden"))
+	if err != nil {
+		t.Fatalf("read committed golden: %v", err)
+	}
+
+	human := runGolden(t, dir, "list", "key", "--investigate")
+	jsonOut := normalizeKeyDir(runGolden(t, dir, "list", "key", "--investigate", "--json"), dir)
+
+	if human == string(humanGolden) {
+		t.Error("list key --investigate (human) is byte-identical to the pre-M3.6 golden — the flag appears to do nothing")
+	}
+	if jsonOut == string(jsonGolden) {
+		t.Error("list key --investigate --json is byte-identical to the pre-M3.6 golden — the flag appears to do nothing")
+	}
+}
+
 // ed25519FixtureKeyPEM is the same inline, throwaway OpenSSH ed25519 key
 // internal/cli/testdata/script/key-list.txtar embeds — committed material, not generated at test
 // time, so the fixture (and therefore the golden it produces) is stable across runs and across

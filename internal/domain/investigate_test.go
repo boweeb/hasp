@@ -51,6 +51,34 @@ func TestSchemeID_ExactStrings(t *testing.T) {
 	}
 }
 
+// TestAllFactSources_GoldenList discharges FactSource's own doc comment's "forward note, chunk
+// M3.6.4": now that FactSource reaches --json (InvestigatedKey.CommentSource,
+// internal/app/investigate.go), it gets TestAllConfidences_GoldenList's identical treatment —
+// asserted by name and by order, so a third source, or a silent redefinition of one of these two,
+// shows up in a diff here rather than reaching a consumer unannounced.
+func TestAllFactSources_GoldenList(t *testing.T) {
+	want := []FactSource{FactSourcePlainRead, FactSourceAgent}
+	got := AllFactSources()
+	if len(got) != len(want) {
+		t.Fatalf("AllFactSources() has %d entries, want %d: got=%v want=%v", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("AllFactSources()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	wantStrings := map[FactSource]string{
+		FactSourcePlainRead: "",
+		FactSourceAgent:     "agent-sourced",
+	}
+	for s, want := range wantStrings {
+		if string(s) != want {
+			t.Errorf("FactSource %v = %q, want %q", s, string(s), want)
+		}
+	}
+}
+
 // TestOrigin_JSONTags pins T37's literal worked example ({"id": ..., "confidence": ...,
 // "because": [...]}) against a struct-tag typo silently changing the wire shape.
 func TestOrigin_JSONTags(t *testing.T) {

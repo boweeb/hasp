@@ -1,6 +1,7 @@
 package sshagent
 
 import (
+	"bytes"
 	"io"
 	"net"
 
@@ -78,4 +79,33 @@ func listFrom(conn io.ReadWriter) []Fact {
 		facts = append(facts, Fact{Public: pub, Comment: k.Comment, Source: domain.FactSourceAgent})
 	}
 	return facts
+}
+
+// MatchComment cross-references facts against pub "by public key" — T38's own words — and
+// returns the agent's comment for whichever Fact carries the identical SSH wire-format public key,
+// if any. This is the chunk M3.6.4 call site's one and only agent lookup for a given candidate
+// key; golang.org/x/crypto/ssh stays confined to this adapter package for exactly this comparison
+// (tdd.md §18's "T35's registry needs x/crypto/ssh" boundary extended to the one other place this
+// tree ever compares two ssh.PublicKey values).
+//
+// pub == nil always returns ok == false — a byPath-identified key (T1's undecidable row: legacy
+// PEM, encrypted, no .pub sidecar) has no derivable public key at all, so there is no signal left
+// on hasp's side to compare the agent's own listing against. tdd.md §18's own "known limitation,
+// not yet worth its own T-log entry" names this exact case: T38 scopes cross-referencing to "by
+// public key" and is silent on the byPath case, so such a key's comment stays unknown even with
+// the right agent running.
+func MatchComment(facts []Fact, pub ssh.PublicKey) (comment string, ok bool) {
+	if pub == nil {
+		return "", false
+	}
+	want := pub.Marshal()
+	for _, f := range facts {
+		if f.Public == nil {
+			continue
+		}
+		if bytes.Equal(f.Public.Marshal(), want) {
+			return f.Comment, true
+		}
+	}
+	return "", false
 }

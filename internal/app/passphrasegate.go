@@ -80,8 +80,26 @@ type DerivedMaterial struct {
 // known is the material already derivable without any passphrase — ordinarily
 // keyfile.OpenMaterial(path, nil). The caller supplies it rather than Derive re-deriving it, so
 // a caller that already merged an agent-sourced comment (internal/adapter/sshagent) into known's
-// Comment field before calling Derive gets that fact preserved through an unrelated call for
-// free — Derive never touches or clears Material.Comment itself.
+// Comment field before calling Derive gets that fact preserved through an unrelated call — on
+// every path, including the successful-unlock one: Derive never touches or clears
+// Material.Comment itself, and on a successful decrypt it carries known.Comment forward onto the
+// freshly-opened Material returned from openFn whenever that fresh material has no comment of its
+// own (mat.Comment == ""), rather than silently dropping it.
+//
+// That carry-forward is not merely tidy — it is the only way a caller ever gets an agent-sourced
+// comment back at all when a correct passphrase is also supplied. T49 found that
+// golang.org/x/crypto/ssh's passphrase-decrypt API (ParseRawPrivateKeyWithPassphrase, wrapped by
+// keyfile.OpenMaterial) discards the OpenSSH comment field even after a correct passphrase — the
+// freshly-opened mat this function receives from openFn has Comment == "" whenever there is no
+// `.pub` sidecar to repopulate it from (keyfile.OpenMaterial's own doc comment), which is exactly
+// the shape an OpenSSH-format encrypted key with no sidecar takes. ssh-agent (T38) is therefore
+// the *only* source for that comment, and the caller's merge into known happened before this call
+// precisely so the fact would survive it (tdd.md §18's "ssh-agent" subsection, roadmap.md §5.6's
+// M3.6.4 chunk row). A prior version of this function returned openFn's mat verbatim on this
+// path, silently erasing a caller-merged comment on the one branch where the caller had done the
+// most work (a correct passphrase) to get here — never overwrite a genuine, non-empty
+// mat.Comment though: a real `.pub` sidecar comment is its own legitimate plain-read fact, and
+// the caller's agent-sourced merge must not clobber it.
 func (g *PassphraseGate) Derive(path string, known keyfile.Material) DerivedMaterial {
 	if known.Private != nil {
 		// Already unencrypted, or already decrypted by an earlier call this invocation
@@ -125,6 +143,15 @@ func (g *PassphraseGate) Derive(path string, known keyfile.Material) DerivedMate
 		// failure — the same passphrase may still be correct for a different candidate key
 		// later in this invocation, so the gate keeps it and keeps going (rule 3).
 		return DerivedMaterial{Material: mat, Unlocked: false, Reason: domain.ReasonPrivateKeyUnavailable}
+	}
+	if mat.Comment == "" {
+		// The successful-unlock path: carry a caller-merged comment (this function's own doc
+		// comment, T49) forward onto the freshly-opened mat, since openFn's own decrypt can
+		// never have supplied one itself (T49) and mat.Comment == "" here means no `.pub`
+		// sidecar repopulated it either. A non-empty mat.Comment is left untouched — a real
+		// sidecar comment is its own plain-read fact and must never be overwritten by a merge
+		// performed for an unrelated (agent) reason.
+		mat.Comment = known.Comment
 	}
 	return DerivedMaterial{Material: mat, Unlocked: true}
 }

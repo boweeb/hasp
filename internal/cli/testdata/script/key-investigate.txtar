@@ -1,0 +1,108 @@
+# --investigate on show key and list key (M3.6.4, tdd.md §18, roadmap.md §5.6). id_rsa is
+# testdata/keys/rsa-openssh-encrypted-pub + .pub verbatim (OpenSSH format, encrypted, public half
+# derivable from the embedded unencrypted public key — T1); id_ed25519 is the same inline,
+# throwaway OpenSSH ed25519 key key-list.txtar and key-find-schemes.txtar already embed — plain
+# (unencrypted), so its public half is derivable with no .pub sidecar at all.
+#
+# testscript's exec never attaches a TTY (new-key.txtar's own comment: "the default for a
+# testscript exec") and no `stdin` directive redirects one here, so every exec below is exactly
+# roadmap.md §5.6 exit criterion 5's own scenario: `hasp show key --investigate --json </dev/null`.
+mkdir $WORK/home/.ssh
+cp rsa-encrypted.pem $WORK/home/.ssh/id_rsa
+cp rsa-encrypted.pub $WORK/home/.ssh/id_rsa.pub
+cp ed25519.pem $WORK/home/.ssh/id_ed25519
+
+# Criterion 5: no TTY, no agent — show key --investigate --json exits 0, reports what is
+# derivable (the three public-half-only schemes), and marks aws-created-rsa unknown with the
+# exact machine-readable reason.
+exec hasp show key id_rsa --investigate --json --key-dir $WORK/home/.ssh
+stdout '"kind": "key.show"'
+stdout '"scheme": "aws-created-rsa"'
+stdout '"confidence": "unknown"'
+stdout '"reason": "passphrase-required-no-tty"'
+stdout '"scheme": "aws-imported-rsa"'
+stdout '"scheme": "ssh-native-sha256"'
+stdout '"scheme": "legacy-ssh-md5"'
+stdout '"id": "aws-ec2-created"'
+stdout '"id": "aws-ec2-imported"'
+stdout '"confidence": "possible"'
+
+# The same, human-rendered: every scheme in registry order, the exact unknown reason, and both
+# RSA origins.
+exec hasp show key id_rsa --investigate --key-dir $WORK/home/.ssh
+stdout 'aws-created-rsa\s+unknown\s+unknown\s+passphrase-required-no-tty'
+stdout 'aws-imported-rsa'
+stdout 'ssh-native-sha256'
+stdout 'legacy-ssh-md5'
+stdout 'aws-ec2-created\s+possible'
+stdout 'aws-ec2-imported\s+possible'
+
+# A non-RSA key: both AWS schemes report scheme-not-applicable (never omitted), and origins is
+# empty — never an invented guess for an algorithm neither AWS RSA scheme could ever apply to.
+exec hasp show key id_ed25519 --investigate --key-dir $WORK/home/.ssh
+stdout 'aws-created-rsa\s+unknown\s+unknown\s+scheme-not-applicable'
+stdout 'aws-imported-rsa\s+unknown\s+unknown\s+scheme-not-applicable'
+stdout '\(none\)'
+
+# list key --investigate: the plain table first (unchanged shape), then a per-key investigation
+# block — both keys present, every scheme for each.
+exec hasp list key --investigate --key-dir $WORK/home/.ssh
+stdout 'NAME\s+ALGORITHM'
+stdout 'Investigation: id_rsa'
+stdout 'Investigation: id_ed25519'
+
+# --investigate is a local flag on list key/show key only (tdd.md §9's own text: "absent from
+# every other verb×noun cell") — not accepted by an unrelated command.
+! exec hasp check key --investigate --key-dir $WORK/home/.ssh
+stderr 'unknown flag'
+
+-- rsa-encrypted.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+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
+gh+6/Q==
+-----END OPENSSH PRIVATE KEY-----
+-- rsa-encrypted.pub --
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC87MCsDaoRz+8kXIjZpOM5ntxfqSur4LR6MhGxUeiV9hBv+KM2j+wJlA5TXPQmA1BfRRKbbh8dcJtg3LyZWvQG2u9BWhBVp3J2L7vrBMR148EgQGpMrWr9/VP5RttgTzOZFJJiMgX9NokVNKdqq+AdS7k3ycPb7gxtj5s7OEZreF76fJeYHlB7FXvvyWHmMn6HcBNVSN15L94Fxo9H4a3BrTRmMkVQ55TekJ/CuFw/lCXkfq96mX57zaXqXeQoyvwCh0NdQ4qmHkoHjHHwaLo9oQ7qprjmfZREnca/F5ed0naBmW+X4JIt6uJcFz/mFrF6ATTk1gnug8ncoPBHy0L0XsD9O1red0Ab9DHPCYkQDpXrlk3OAa25rVYh8TWJNJOZA3Ba38lnsLUXGuBXsXidCGIOrGUMal57sbRx/sjbui6xkmlDitHUINw+Tsbd6Fk0hLL6+2ncQ8bZE4jqna1hGGlLGxLarK4AoK3AT+h8m6aJKYy3Lhm4UwKQVZYu7j0=
+-- ed25519.pem --
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYgAAAIguUITVLlCE
+1QAAAAtzc2gtZWQyNTUxOQAAACAEEd2lOVWo2Yf1SBuQBQ6kipAJm/tP0lwuxYKzGZ0nYg
+AAAEDeq64CYCWqT5OaGWlM4yFGnPx2Oi600gc1LeQFjUfbFQQR3aU5VajZh/VIG5AFDqSK
+kAmb+0/SXC7FgrMZnSdiAAAAAAECAwQF
+-----END OPENSSH PRIVATE KEY-----

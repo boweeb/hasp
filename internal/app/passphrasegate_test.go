@@ -260,6 +260,70 @@ func TestPassphraseGate_AgentSourcedComment_SurvivesDerive_ButNeverPrompts(t *te
 	}
 }
 
+// TestPassphraseGate_MergedCommentSurvivesSuccessfulUnlock is verifier finding 2 of chunk
+// M3.6.4's revision cycle 1: Derive's own doc comment claimed a caller-merged comment "gets
+// preserved through an unrelated call for free," but that was false on exactly the
+// successful-unlock path — Derive returned openFn's freshly-opened mat verbatim there, discarding
+// known.Comment entirely. rsa-openssh-encrypted-nopub is the right fixture: OpenSSH format (so
+// known.Public is populated from the embedded, unencrypted public half, making
+// fpscheme.CreatedRSAPromptWorthy report true), genuinely RSA (so the successful-decrypt branch,
+// not rule 2's "not applicable" early return, is actually reached), encrypted with
+// testPassphrase, and no `.pub` sidecar (so keyfile.OpenMaterial's own fast path never
+// repopulates Comment from a sidecar, leaving the freshly-decrypted mat.Comment == "" — T49's
+// finding that a correct passphrase alone never recovers an OpenSSH comment holds regardless).
+// The only way this fixture's Derive result can carry a non-empty comment at all is through the
+// merge into known this test performs before calling Derive, simulating chunk M3.6.4's own
+// call-site discipline (tdd.md §18's "ssh-agent" subsection): merge first, then Derive.
+func TestPassphraseGate_MergedCommentSurvivesSuccessfulUnlock(t *testing.T) {
+	path, known := openKnownMaterial(t, "rsa-openssh-encrypted-nopub")
+
+	const wantComment = "merged-before-derive-comment"
+	known.Comment = wantComment // simulates an agent-sourced merge (T38) performed before Derive.
+
+	gate := &PassphraseGate{Passphrase: func() ([]byte, error) {
+		return []byte(testPassphrase), nil
+	}}
+	got := gate.Derive(path, known)
+
+	if !got.Unlocked || got.Material.Private == nil {
+		t.Fatalf("Unlocked = %v, Private = %v; want a successful decrypt (this test only proves anything on that path)", got.Unlocked, got.Material.Private)
+	}
+	if got.Material.Comment != wantComment {
+		t.Errorf("Material.Comment = %q, want %q — a caller-merged comment must survive Derive on the successful-unlock path too (T49)", got.Material.Comment, wantComment)
+	}
+}
+
+// TestPassphraseGate_SuccessfulUnlock_NeverOverwritesARealSidecarComment is the fix's other
+// stated half: the carry-forward in TestPassphraseGate_MergedCommentSurvivesSuccessfulUnlock only
+// fires when the freshly-opened mat.Comment is empty. A genuine `.pub` sidecar comment is its own
+// legitimate plain-read fact (keyfile.OpenMaterial's own fast path), and a caller's unrelated
+// agent-sourced merge into known must never clobber it. The injected Open seam (PassphraseGate.Open,
+// the same one TestPassphraseGate_OpenFails_Degrades uses) stands in for a real sidecar here so
+// this test needs no new fixture: it returns a mat carrying its own non-empty Comment, distinct
+// from known.Comment, and proves the sidecar value wins.
+func TestPassphraseGate_SuccessfulUnlock_NeverOverwritesARealSidecarComment(t *testing.T) {
+	path, known := openKnownMaterial(t, "rsa-openssh-encrypted-nopub")
+	known.Comment = "agent-sourced-comment" // merged before Derive, same as the test above.
+
+	const sidecarComment = "real-pub-sidecar-comment"
+	gate := &PassphraseGate{
+		Open: func(string, []byte) (keyfile.Material, error) {
+			return keyfile.Material{Private: "decrypted-private-key-placeholder", Comment: sidecarComment}, nil
+		},
+		Passphrase: func() ([]byte, error) {
+			return []byte(testPassphrase), nil
+		},
+	}
+	got := gate.Derive(path, known)
+
+	if !got.Unlocked {
+		t.Fatalf("Unlocked = %v, want true", got.Unlocked)
+	}
+	if got.Material.Comment != sidecarComment {
+		t.Errorf("Material.Comment = %q, want %q — a real, non-empty comment from the freshly-opened material must never be overwritten by an unrelated merge", got.Material.Comment, sidecarComment)
+	}
+}
+
 // TestPassphraseGate_Close_ZeroesThePassphraseBuffer is D19's fourth constraint (user-initiated,
 // scoped, held in memory, zeroed after) and T39 rule 4, guarded mechanically rather than left to
 // review discipline alone — tdd.md §12's guard-test list names every other mechanically-enforced

@@ -182,10 +182,21 @@ func importedRSAApplicable(m keyfile.Material) (bool, domain.ReasonToken) {
 	if m.Public == nil {
 		return false, domain.ReasonPublicHalfUnavailable
 	}
-	if m.Public.Type() != ssh.KeyAlgoRSA {
+	if !IsRSAAlgorithm(m.Public.Type()) {
 		return false, domain.ReasonSchemeNotApplicable
 	}
 	return true, ""
+}
+
+// IsRSAAlgorithm reports whether algorithm — an ssh.PublicKey.Type() string, the same shape
+// domain.Key.Algorithm carries (keyfile.Inspect populates it from exactly that call) — names RSA.
+// It exists so a caller outside this package (chunk M3.6.4's --investigate origin-evidence rule,
+// internal/app/investigate.go: an RSA key yields both AWS RSA origin guesses, a non-RSA key yields
+// neither) can derive "is RSA" through the identical check importedRSAApplicable above already
+// makes against a key's public half, rather than hardcoding the literal string "ssh-rsa" a second,
+// independently maintained time — so the two checks can never silently drift apart.
+func IsRSAAlgorithm(algorithm string) bool {
+	return algorithm == ssh.KeyAlgoRSA
 }
 
 func importedRSACompute(m keyfile.Material) (string, error) {

@@ -2,17 +2,34 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
+	"github.com/boweeb/hasp/internal/adapter/sshagent"
 	"github.com/boweeb/hasp/internal/app"
 	"github.com/boweeb/hasp/internal/cli/render"
 	"github.com/boweeb/hasp/internal/domain"
 )
 
+// investigateFlagUsage is shared by list key and show key's own --investigate registration so the
+// help text is identical wherever it appears.
+const investigateFlagUsage = "opt-in investigation mode (tdd.md §18): every registered fingerprint scheme, a confidence-graded origin, and ssh-agent-sourced facts, at the cost of speed and possibly a passphrase prompt"
+
+// --investigate is registered as a LOCAL flag on exactly these two commands, deliberately not on
+// root as a persistent flag alongside --json/--verbose/etc. tdd.md §9's own global-flags table
+// lists it there for exposition (it is documented beside the other flags, and its effect is
+// described once rather than twice), but its own text is explicit that it is "absent from every
+// other verb×noun cell" — a persistent root flag would instead make cobra accept (and the
+// generated CLI reference, docs/cli/, T34, advertise) `--investigate` on every command in the
+// tree, including ones tdd.md §9's grid never mentions it for (`new key`, `check host`, ...),
+// which would be a documentation lie the moment `docs/cli` regenerates. Registering it locally on
+// only these two RunE closures is what keeps the surface matching the table's prose rather than
+// its literal section heading.
 func newListKeyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "key",
 		Short: "List every key found, managed and unmanaged",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -20,17 +37,39 @@ func newListKeyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			keys := app.ListKeys(m)
-			if flags.JSON {
-				return render.JSON(cmd.OutOrStdout(), "key.list", keys, nil)
+			investigate, err := cmd.Flags().GetBool("investigate")
+			if err != nil {
+				return err
 			}
-			return renderKeyTable(cmd, keys)
+			if !investigate {
+				// P7/criterion 7: the default read path takes no new branch, opens no new
+				// file, and does no new work at all when the flag is absent — this is that
+				// exact pre-M3.6 code path, untouched.
+				keys := app.ListKeys(m)
+				if flags.JSON {
+					return render.JSON(cmd.OutOrStdout(), "key.list", keys, nil)
+				}
+				return renderKeyTable(cmd, keys)
+			}
+
+			req := newInvestigateRequest()
+			defer req.Gate.Close()
+			investigated := app.InvestigateKeys(m, req)
+			if flags.JSON {
+				return render.JSON(cmd.OutOrStdout(), "key.list", investigated, nil)
+			}
+			if err := renderKeyTable(cmd, m.Keys); err != nil {
+				return err
+			}
+			return renderInvestigatedKeys(cmd, investigated)
 		},
 	}
+	cmd.Flags().Bool("investigate", false, investigateFlagUsage)
+	return cmd
 }
 
 func newShowKeyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "key <name>",
 		Short: "Show full detail for one key: identity, locations, profiles, and bound hosts",
 		Args:  exactArgs(1),
@@ -39,16 +78,55 @@ func newShowKeyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			detail, ok := app.ShowKey(m, args[0])
+			investigate, err := cmd.Flags().GetBool("investigate")
+			if err != nil {
+				return err
+			}
+			if !investigate {
+				detail, ok := app.ShowKey(m, args[0])
+				if !ok {
+					return fmt.Errorf("key %q not found", args[0])
+				}
+				if flags.JSON {
+					return render.JSON(cmd.OutOrStdout(), "key.show", detail, nil)
+				}
+				return renderKeyDetail(cmd, detail)
+			}
+
+			req := newInvestigateRequest()
+			defer req.Gate.Close()
+			detail, ok := app.InvestigateKey(m, args[0], req)
 			if !ok {
 				return fmt.Errorf("key %q not found", args[0])
 			}
 			if flags.JSON {
 				return render.JSON(cmd.OutOrStdout(), "key.show", detail, nil)
 			}
-			return renderKeyDetail(cmd, detail)
+			return renderInvestigatedKeyDetail(cmd, detail)
 		},
 	}
+	cmd.Flags().Bool("investigate", false, investigateFlagUsage)
+	return cmd
+}
+
+// newInvestigateRequest builds --investigate's app.InvestigateRequest exactly as tdd.md §18 and
+// T38/T39 specify: the agent's currently loaded keys (sshagent.List is fail-open by its own
+// contract — no agent, a dead socket, or a protocol error all silently produce a nil slice, never
+// an error this function has to handle), and a passphrase gate whose prompt is wired in only when
+// a real terminal is attached to stdin — never when stdin is a pipe or /dev/null, which is
+// roadmap.md §5.6 exit criterion 5's own no-TTY-degrades case reaching PassphraseGate.Derive as
+// a nil PassphraseFunc rather than a callback that would hang or error against a non-interactive
+// fd. Every caller must `defer req.Gate.Close()` immediately after this call returns — the same
+// pattern internal/cli/new.go:61 uses for `new key`'s own passphrase buffer
+// (`defer zeroBytes(secret)`) — so a return added later on an error path can never accidentally
+// skip zeroing D19's held passphrase.
+func newInvestigateRequest() app.InvestigateRequest {
+	facts := sshagent.List(os.Getenv("SSH_AUTH_SOCK"))
+	gate := &app.PassphraseGate{}
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		gate.Passphrase = promptPassphrase
+	}
+	return app.InvestigateRequest{AgentFacts: facts, Gate: gate}
 }
 
 func newFindKeyCmd() *cobra.Command {
@@ -296,4 +374,74 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// renderInvestigatedKeys is list key --investigate's human form (tdd.md §9's list-key cell,
+// T35-T39): the ordinary key table (renderKeyTable, unchanged, printed by the caller before this
+// runs) followed by one investigation block per key. P7's one-screen answer deliberately does not
+// bind under this flag — tdd.md §9's own words: "deliberately high-friction, and accepted as
+// such" — so every registered scheme is shown in full for every key, never truncated for table
+// brevity the way the plain table's FINGERPRINT column already is.
+func renderInvestigatedKeys(cmd *cobra.Command, keys []app.InvestigatedKey) error {
+	for _, k := range keys {
+		if err := renderInvestigation(cmd, k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renderInvestigation prints one key's --investigate section: every registered scheme in registry
+// order (roadmap.md §5.6 criterion 2 — no scheme silently omitted, criterion 3's confidence value
+// always one of domain.AllConfidences()), its origin evidence ("(none)" when the array is empty,
+// per originsForInvestigate's own rule), and any agent-sourced comment, explicitly labelled as
+// such. Shared by list key --investigate (once per key, after the plain table) and show key
+// --investigate (appended below the existing detail block) so the two renderers can never diverge
+// in *content* — only human vs. --json form (tdd.md §10, T13).
+func renderInvestigation(cmd *cobra.Command, k app.InvestigatedKey) error {
+	w := render.NewTabWriter(cmd.OutOrStdout())
+	if _, err := fmt.Fprintf(w, "\nInvestigation: %s\n", k.Name); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "  SCHEME\tVALUE\tCONFIDENCE\tREASON"); err != nil {
+		return err
+	}
+	for _, sf := range k.Schemes {
+		value := sf.Value
+		if value == "" {
+			value = "unknown"
+		}
+		if _, err := fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n", sf.Scheme, value, sf.Confidence, orDash(string(sf.Reason))); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w, "  Origins:"); err != nil {
+		return err
+	}
+	if len(k.Origins) == 0 {
+		if _, err := fmt.Fprintln(w, "    (none)"); err != nil {
+			return err
+		}
+	}
+	for _, o := range k.Origins {
+		if _, err := fmt.Fprintf(w, "    %s\t%s\n", o.ID, o.Confidence); err != nil {
+			return err
+		}
+	}
+	if k.CommentSource == domain.FactSourceAgent {
+		if _, err := fmt.Fprintf(w, "  Comment (agent-sourced):\t%s\n", orDash(k.AgentComment)); err != nil {
+			return err
+		}
+	}
+	return w.Flush()
+}
+
+// renderInvestigatedKeyDetail is show key --investigate's human form: the existing detail block
+// (renderKeyDetail, unchanged) with --investigate's own section appended below it (tdd.md §9's
+// show-key cell: "the same surface as list key --investigate, scoped to one key").
+func renderInvestigatedKeyDetail(cmd *cobra.Command, d app.InvestigatedKeyDetail) error {
+	if err := renderKeyDetail(cmd, app.KeyDetail{Key: d.Key.Key, Hosts: d.Hosts}); err != nil {
+		return err
+	}
+	return renderInvestigation(cmd, d.Key)
 }

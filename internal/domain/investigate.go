@@ -167,13 +167,15 @@ const (
 // an agent-sourced comment is reported at ConfidenceDerived (it is a plain fact, not a guess)
 // and FactSourceAgent (it is real only for as long as the agent that supplied it keeps running).
 //
-// Forward note, chunk M3.6.4: once FactSource actually reaches --json (it does not yet — this
-// vocabulary is defined here, ahead of its first --investigate caller, for the reason stated
-// below), it becomes a consumer-filterable safety signal in exactly the sense Confidence already
-// is — a consumer deciding whether to trust an agent-sourced, only-real-while-the-agent-runs fact
-// is making the same kind of decision T37 describes for Confidence. It should get the same
-// closed-set golden-list guard test (tdd.md §12) Confidence already has then, not be left to a
-// reviewer's eye the way a smaller, two-value set might tempt someone to skip.
+// Forward note, chunk M3.6.4 — discharged: FactSource now reaches --json, as
+// InvestigatedKey.CommentSource (internal/app/investigate.go). It is exactly the consumer-
+// filterable safety signal this note predicted — a consumer deciding whether to trust an
+// agent-sourced, only-real-while-the-agent-runs comment is making the same kind of decision T37
+// describes for Confidence — and it now carries the same closed-set golden-list guard
+// (AllFactSources below, TestAllFactSources_GoldenList, tdd.md §12) Confidence already has, rather
+// than being left to a reviewer's eye. Left in place, past tense, as a record that the obligation
+// was tracked and paid rather than quietly dropped — the same treatment this project's own
+// culture gives a superseded claim elsewhere (T27, T29) instead of deleting the history.
 //
 // FactSource is intentionally not folded into Confidence's closed four-value set: doing so would
 // either invent a fifth confidence value (forbidden, T37's frozen compatibility-surface row) or
@@ -200,3 +202,12 @@ const (
 	// plain derived bucket above.
 	FactSourceAgent FactSource = "agent-sourced"
 )
+
+// AllFactSources returns the closed FactSource set in a fixed order, mirroring AllConfidences
+// above — chunk M3.6.4's discharge of this file's own forward note (FactSource's doc comment):
+// now that FactSource reaches --json, it gets the identical golden-list guard test treatment
+// (tdd.md §12) as Confidence, so a third source added later, or a silent rename of one of these
+// two, shows up in a diff here rather than reaching a consumer unannounced.
+func AllFactSources() []FactSource {
+	return []FactSource{FactSourcePlainRead, FactSourceAgent}
+}
