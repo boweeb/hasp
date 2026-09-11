@@ -1578,8 +1578,9 @@ the freeze rather than an unresolved prerequisite to it.
 | 5 | The verb×noun grid, and the global flag names and semantics — removing or renaming is breaking, adding is additive | §9, [D10](decision-log.md#d10) |
 | 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | §6, §7, [T10](tech-decision-log.md#t10), [T25](tech-decision-log.md#t25) |
 | 7 | The confidence vocabulary — `derived`, `confirmed`, `possible`, `unknown` — is closed; adding, removing, or redefining a value is breaking | §10, §18, [T37](tech-decision-log.md#t37) |
+| 8 | The `FactSource` vocabulary — the empty plain-read default and `agent-sourced` — is closed on the same terms as row 7 | §10, §18, [T38](tech-decision-log.md#t38) |
 
-Row 6 is the least obvious of the seven and the most damaging, because the artifact it governs
+Row 6 is the least obvious of the eight and the most damaging, because the artifact it governs
 outlives the binary that wrote it — a marked region written by one hasp release still has to parse
 under a much later one. Row 7 is closed for a different reason than row 4's finding `id`s are
 permanent: an `id` gains meaning by never being reused, while `confidence` is closed because a
