@@ -24,7 +24,7 @@ and the whole point of this set is that a settled argument stays settled.
 | [`design.md`](design.md) | **What hasp is and must be true of.** Principles (P1–P10), the domain model, capabilities, journeys (J1–J10), milestones (M1–M4, plus M3.5/M3.6). Says nothing about language, libraries, or mechanism, on purpose | Approved |
 | [`decision-log.md`](decision-log.md) | **Why the design says that.** `D1`–`D22`: the reasoning, the alternatives rejected, and what each decision commits the project to | Approved |
 | [`tdd.md`](tdd.md) | **How a Go program satisfies all of it.** Stack, architecture, the `Plan` model, derivation pipeline, config parsing, command surface, safety stances, testing, versioning, CI/CD, and investigation — schemes, confidence, gated derivation (§18) | Approved |
-| [`tech-decision-log.md`](tech-decision-log.md) | **Why the technical design says that.** `T1`–`T39`, same rules as the D-log, separate namespace | Approved |
+| [`tech-decision-log.md`](tech-decision-log.md) | **Why the technical design says that.** `T1`–`T51`, same rules as the D-log, separate namespace | Approved |
 | [`roadmap.md`](roadmap.md) | **What gets built in what order, and how you know a milestone is done.** Sequencing and exit criteria; deliberately no dates or estimates | Approved |
 | [`project-assessment-2026-08.md`](project-assessment-2026-08.md) | **The Python predecessor, as found in August 2026.** Evidence, not a plan — its roadmap is superseded | Historical |
 | [`user-guide.md`](user-guide.md) | **How to use hasp, by journey (J1–J8, J10).** Real commands and example invocations for each journey `design.md` §7 defines, pointing at the generated CLI reference for exhaustive flag syntax | New |
