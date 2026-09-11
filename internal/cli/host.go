@@ -12,8 +12,9 @@ import (
 
 func newListHostCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "host",
-		Short: "List every host stanza, scoped to one group with --group",
+		Use:     "host",
+		Short:   "List every host stanza, scoped to one group with --group",
+		Aliases: []string{"hosts"},
 	}
 	group := cmd.Flags().String("group", "", "scope to one host group's short name (e.g. \"work\" for work.sshconfig)")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -54,9 +55,10 @@ func newShowHostCmd() *cobra.Command {
 
 func newFindHostCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "host <clue>",
-		Short: "Match by pattern fragment, or by the name/fingerprint of a bound key",
-		Args:  exactArgs(1),
+		Use:     "host <clue>",
+		Short:   "Match by pattern fragment, or by the name/fingerprint of a bound key",
+		Aliases: []string{"hosts"},
+		Args:    exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {
@@ -73,8 +75,9 @@ func newFindHostCmd() *cobra.Command {
 
 func newCheckHostCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "host",
-		Short: "Report dangling, unresolvable, shadowed, or unbound host stanzas",
+		Use:     "host",
+		Short:   "Report dangling, unresolvable, shadowed, or unbound host stanzas",
+		Aliases: []string{"hosts"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			m, flags, err := buildMachine(cmd)
 			if err != nil {

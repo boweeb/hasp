@@ -933,6 +933,18 @@ raises on an unmanaged resource requires `adopt` first, exactly as J5 anticipate
 | **adopt** | Move an unmanaged key into a managed profile directory; leaves a top-level alias so default identity probing still finds it (D13) | Wrap an existing hand-written stanza in hasp's markers | Add a `.hasp` marker to an existing directory that already holds keys |
 | **release** | Move a managed key back out of its profile directory (inverse of `adopt`) | Remove the stanza from hasp's markers, re-inserting it as plain text immediately after the marked region — content is never deleted, only unmanaged ([D18](decision-log.md#d18)) | Remove `.hasp` via a `Remove` change (§4), backed up first (P4); preview shows the marker's own contents first, so removing a note the user wrote is never a silent loss (D15) |
 
+**A plural spelling, not a new grid cell.** `list`, `check`, and `find` register their noun
+subcommand's plural spelling (`keys`, `hosts`, `profiles`) as a Cobra `Aliases` entry
+(`internal/cli/key.go`, `host.go`, `profile.go`) — those three verbs read or search a *set*, while
+`show`, `new`, `edit`, `adopt`, and `release` act on one named instance and carry none. Cobra
+routes both spellings to the identical `*cobra.Command`, so §10's `kind` strings and every flag
+behave identically whichever was typed, and the grid above gains no cell —
+[D10](decision-log.md#d10)'s 3×8 is untouched. The singular stays canonical: neither Cobra's
+man-page and Markdown generators nor its completion engine render `Aliases` at all, so the plural
+is structurally absent from `docs/cli/`, `manpages/`, and `completions/`, and that absence is by
+construction rather than staleness. A script should spell the noun singular — the plural is a
+convenience for typing, not a cell of the grid §16 row 5 freezes.
+
 **Every `check` finding carries a stable `id` and a `severity`** ([T29](tech-decision-log.md#t29),
 schema in §10). The `id` is permanent and is what a consumer filters on; `severity` is advice and
 may be re-tuned between releases. **Severity never affects the exit code** — `check` exits `1` if
