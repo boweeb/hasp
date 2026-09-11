@@ -251,8 +251,16 @@ func unevaluableWarnings(candidates []domain.SchemeID, unevaluable map[domain.Sc
 		// this string must not name a scheduling artifact (a milestone/chunk id) that is
 		// meaningless to an end user and wrong the moment the chunk is renumbered (item 5,
 		// M3.6.3 review). Citing T39 is fine: internal/cli/profile.go:45 already does.
+		//
+		// The remedy this names is a real command, not a promise. It read "--investigate ...
+		// once available" when M3.6.3 wrote it, which was accurate then and stale the moment
+		// chunk M3.6.4 (9e51dc8) shipped the flag — a drift the M3.6 close-out verification
+		// caught before it could reach v1.0.0 telling a user to wait for something already in
+		// their hands. The flag lives on `show key` and `list key` (tdd.md §9, D21), never on
+		// `find key` itself, so the suggestion names the command that actually carries it
+		// rather than leaving a reader to guess which verb to attach it to.
 		out = append(out, fmt.Sprintf(
-			"%s could not be evaluated for %d encrypted key(s): find key never prompts for a passphrase (T39) — decrypt the key yourself to compare by hand, or use hasp's --investigate flag, once available, to attempt decryption interactively",
+			"%s could not be evaluated for %d encrypted key(s): find key never prompts for a passphrase (T39) — decrypt the key yourself to compare by hand, or run `hasp show key <name> --investigate` to attempt decryption interactively",
 			id, n))
 	}
 	return out
