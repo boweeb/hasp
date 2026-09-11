@@ -902,6 +902,20 @@ nouns of their own.
 | `--no-color` | Disables ANSI in the human renderer |
 | `--investigate` | Opt-in investigation mode (§18, D21) on `show key` and `list key`: surfaces every registered fingerprint scheme, a confidence-graded origin, and `ssh-agent`-sourced facts, at the cost of speed and possibly a passphrase prompt. Absent from every other verb×noun cell; never affects default output |
 
+**A registration note on `--investigate`, worth stating plainly rather than leaving to inference
+from the table's own name.** `--key-dir`, `--json`, `--yes`, `--verbose`, and `--no-color` above
+are true global flags: `PersistentFlags()` on the root Cobra command, so every generated reference
+page under `docs/cli/` lists all five regardless of which command it documents
+([T34](tech-decision-log.md#t34)). `--investigate` sits in this table because its *semantics* are
+global in kind — the same consent-gated read (D19) and the same confidence vocabulary (§18, P10)
+would apply anywhere it could appear — but it is registered as a **local** flag on `list key` and
+`show key` alone (`internal/cli/key.go`), not on the root command. This row's own "Absent from
+every other verb×noun cell" is therefore enforced by *where the flag is registered*, not merely by
+what those two commands' handlers choose to do with it: a persistent flag would advertise
+`--investigate` on the generated reference page for `hasp new key`, `hasp check`, and every other
+command, which is exactly the leak "absent from every other cell" promises against
+([T51](tech-decision-log.md#t51)).
+
 ### The grid
 
 `check` (J5 — *"tell me what's untidy... help me fix each one deliberately"*) is advisory
@@ -912,7 +926,7 @@ raises on an unmanaged resource requires `adopt` first, exactly as J5 anticipate
 | --- | --- | --- | --- |
 | **list** | Every key found (managed + unmanaged): name, algorithm, fingerprint (or `unknown`), format, encrypted?, profiles, comment. **`--investigate`** (§18, [T35](tech-decision-log.md#t35)–[T39](tech-decision-log.md#t39)) adds every registered scheme's value, a confidence-graded origin, and any `ssh-agent`-sourced fact, per key — deliberately high-friction, and accepted as such: an investigation is purposeful, and its cost (speed, possibly a passphrase prompt) is paid knowingly, not by accident. Absent the flag, output is byte-identical to a pre-`--investigate` read (P7) | Every host stanza across all groups, or `--group=<g>` to scope one: pattern, resolved bindings — explicit and implicit-default, labelled (§5, T16) — derived profile(s) | Every directory carrying `.hasp`, with key/host counts |
 | **show** `<handle>` | Full detail for one key: identity, every location (aliases), profiles, hosts that bind it (J8). **`--investigate`** (§18) is the same surface as `list key --investigate`, scoped to one key — every scheme, confidence-graded origin, agent-sourced facts, and, if a passphrase is offered and a TTY is present, whatever it unlocks ([T39](tech-decision-log.md#t39)) | Full stanza detail: directives, resolved `IdentityFile` targets, derived profile(s), which host group it lives in | Keys and hosts, **aggregated across child profiles by default** ([T21](tech-decision-log.md#t21)) — `show profile work` includes `work.foobarco` and `work.acme`, per J8's own offboarding example; `--no-recurse` scopes to the profile alone |
-| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) — and, per D20, across every registered fingerprint **scheme** ([T35](tech-decision-log.md#t35), [T36](tech-decision-log.md#t36)): the clue's length and alphabet route it to a candidate scheme before any key is examined, and which scheme matched is itself confidence-graded origin evidence (§18) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
+| **find** `<clue>` | Identify a key from a fingerprint fragment, normalizing punctuation and case (J2) — and, per D20, across every registered fingerprint **scheme** ([T35](tech-decision-log.md#t35), [T36](tech-decision-log.md#t36)): the clue's length and alphabet route it to a candidate scheme before any key is examined, and which scheme matched is itself confidence-graded origin evidence (§18). **Never prompts for a passphrase** ([T48](tech-decision-log.md#t48)) — `--investigate` is the only flag licensed to ask; a candidate scheme a clue's shape admits but that cannot be evaluated for lack of a decrypted private key is reported as an explicit warning, never a silent gap (D20) | Match by pattern fragment, or by the name/fingerprint of a bound key | Match by name fragment |
 | **new** | Generate a keypair (`ed25519` by default, [T1](tech-decision-log.md#t1)), optionally in a profile (`--profile`); passphrase flags below. Fails closed if the target path already exists — `new key` never overwrites ([T22](tech-decision-log.md#t22), §11) | Create a stanza (`--key=<name>`, `--group=<g>`) inside a marked region | Create the directory (`mkdir -p` semantics for intermediate segments) and, for the leaf, a `.hasp` marker with a `#` header (D15) |
 | **edit** | Rename (`--name`); `--add-alias`/`--remove-alias`; `--replace-material=<path>`; move between profiles (`--profile`) | Change directives; move between groups (`--group`); rebind (`--key`) | Rename (moves the directory, D13); nothing else — key/host membership is edited on the key/host, not here |
 | **check** | Duplicates confirmed (same fingerprint) or unconfirmed ([T12](tech-decision-log.md#t12)); missing public half; key in no profile; fingerprint `unknown` | Dangling `IdentityFile` targets; unresolvable tokens (§5); relative `IdentityFile` values, whose resolution diverges from `ssh`'s ([T28](tech-decision-log.md#t28)); unreachable stanzas shadowed by `Include` order ([T11](tech-decision-log.md#t11)); host bound to no key — fires only when **neither** an explicit **nor** a resolvable implicit-default binding exists (§5, T16); a stanza present in more than one host group, or a stanza missing from all of them, after a `Plan` that touched more than one file only partially applied ([T13](tech-decision-log.md#t13)) | Empty profile directories; a directory that looks like a profile (holds keys) but carries no `.hasp` |
@@ -1032,6 +1046,24 @@ type Envelope struct {
 }
 ```
 
+### Array-typed fields are never `null` ([T52](tech-decision-log.md#t52))
+
+Every array-typed field anywhere in `--json` output is always an array — `[]` for "no results,"
+never JSON `null` — at every nesting depth, not only at `data` itself. This is enforced in exactly
+one place: `internal/cli/render/json.go`'s `marshalData` recursively normalizes every nil Go slice
+it can reach inside the value it is handed (through struct fields, slice elements, map values,
+pointers, and interfaces) before marshaling, so an `internal/app` use case is free to return the
+ordinary, idiomatic Go `nil` for "nothing here" and never has to hand-construct an empty slice
+itself to keep a `--json` consumer's `jq '.data[]'` from erroring on `null` (T14's own pipeline
+contract). A `[]byte`-shaped field is the one deliberate exception — it base64-encodes to a
+string, and a nil one is correctly `null`, never `[]`, matching `encoding/json`'s own documented
+behavior — and a type that implements `json.Marshaler` is never touched by this normalization at
+all, since it owns its own wire output completely. See T52 for the full argument, including why
+this was not always true: `render.marshalData` originally normalized a nil slice only at the
+top-level `data` value, which is why `domain.Key.Profiles` ("profiles") and `app.KeyDetail.Hosts`
+("hosts") both used to reach the wire as a literal `null` despite this same section's own
+contract.
+
 ### `check.report` findings ([T29](tech-decision-log.md#t29))
 
 `check`'s `data` is an array of findings, each with a **permanent** `id` and a **re-tunable**
@@ -1060,6 +1092,33 @@ internal read-model value ([T13](tech-decision-log.md#t13)'s single read aggrega
 path computes an answer, two display it, so the two forms can diverge in formatting but never in
 content.
 
+### `key.find` matches ([T36](tech-decision-log.md#t36), [T48](tech-decision-log.md#t48))
+
+`find key`'s `data` is an array of matches, one per key the clue's shape-admitted candidate schemes
+matched under — never flattened to a bare key list, because which scheme matched is itself
+confidence-graded evidence (§18's "Multi-scheme `find`") that a consumer branching on `confidence`
+needs to see:
+
+```json
+{
+  "key": {"name": "id_rsa_legacy", "identity": {"kind": "fingerprint", "value": "..."}, "..."},
+  "origins": [
+    {"id": "aws-ec2-created", "confidence": "confirmed", "because": ["scheme=aws-created-rsa"]}
+  ]
+}
+```
+
+`key` is the full `domain.Key` value (§3), identical in shape to `key.list`/`key.show`'s own —
+`find` invents no new key representation. `origins` is one or more T37 origin-evidence entries, one
+per matched scheme for that key (§18: two for the same key is possible at the MD5 shape's own
+ambiguity, T36's collision case); `because[0]` is always `"scheme=<id>"`, the one machine-readable
+way to recover which registered scheme actually produced a given origin entry, since `Origin.ID`
+itself only names the scheme directly for the two non-AWS schemes (§18's "Multi-scheme `find`",
+above). The envelope's `warnings` array ([T14](tech-decision-log.md#t14)) carries
+[T48](tech-decision-log.md#t48)'s explicit "could not evaluate" notices — a scheme the clue's shape
+admitted but that a candidate key's missing decrypted private key made unevaluable, never silently
+absent from `data` instead.
+
 ### `--investigate` output: the `origins` array and its `confidence` field ([T37](tech-decision-log.md#t37))
 
 Full argument, and the closed vocabulary it draws on (P10): §18. Every fact `--investigate`
@@ -1069,15 +1128,66 @@ surfaces beyond a plain read carries a **confidence status** from a closed, perm
 ```json
 "origins": [
   {"id": "aws-ec2-created", "confidence": "possible",
-   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+   "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
 ]
 ```
 
 `because` is an array of **machine-readable evidence tokens**, never prose — a consumer branches
-on them directly; the human renderer is the only place a token becomes a sentence. Unlike
-`severity` above, which [T29](tech-decision-log.md#t29) makes deliberately re-tunable, the
-confidence vocabulary is **closed**: adding, removing, or redefining a value is a breaking change
-(§16), because a consumer filtering on `derived` is making a safety decision, not a display choice.
+on them directly; the human renderer is the only place a token becomes a sentence. The `algorithm=`
+and `format=` tokens above carry `domain.Key`'s own literal field values (`Algorithm`,
+`Format.String()`), not a simplified spelling — `KeyFormat.String()`'s closed set is
+`openssh`/`pkcs1`/`pkcs8`/`sec1`/`dsa` and never `"pem"` — a precision on this subsection's own
+earlier, illustrative spelling, recorded as such in
+[T51](tech-decision-log.md#t51) rather than silently corrected. Unlike `severity` above, which
+[T29](tech-decision-log.md#t29) makes deliberately re-tunable, the confidence vocabulary is
+**closed**: adding, removing, or redefining a value is a breaking change (§16), because a consumer
+filtering on `derived` is making a safety decision, not a display choice.
+
+**The full per-key shape ([T51](tech-decision-log.md#t51)), landed by chunk M3.6.4.**
+`--investigate` does not introduce a new envelope `kind` — `list key --investigate` and
+`show key --investigate` still emit `key.list` and `key.show` respectively (§16 row 3's frozen
+surface is unchanged) — it is additive on the same per-key object those kinds already emit,
+`app.InvestigatedKey` embedding `domain.Key` so every plain-read field marshals exactly as before
+and gains four new sibling fields:
+
+```json
+{
+  "name": "id_rsa_legacy",
+  "algorithm": "ssh-rsa",
+  "...": "...every other domain.Key field, unchanged...",
+  "schemes": [
+    {"scheme": "aws-created-rsa", "value": "", "confidence": "unknown", "reason": "private-key-unavailable"},
+    {"scheme": "aws-imported-rsa", "value": "a1:b2:...", "confidence": "derived"},
+    {"scheme": "ssh-native-sha256", "value": "SHA256:...", "confidence": "derived"},
+    {"scheme": "legacy-ssh-md5", "value": "a1:b2:...", "confidence": "derived"}
+  ],
+  "origins": [
+    {"id": "aws-ec2-created", "confidence": "possible", "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]},
+    {"id": "aws-ec2-imported", "confidence": "possible", "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
+  ],
+  "agentComment": "jesse@laptop",
+  "commentSource": "agent-sourced"
+}
+```
+
+`schemes` (§18's registry, T35) is every registered scheme's answer, in registry order, never
+fewer — a scheme that could not be computed reports its own honest `confidence: "unknown"` shape
+with a `reason`, rather than being omitted (roadmap.md §5.6 exit criterion 2). `origins` is the
+no-external-clue provenance guess §18 and T51 describe; it is tagged `json:"origins"` with **no**
+`omitempty` and is **always present as an array — `[]`, never JSON `null`**, even for a key with no
+origin evidence at all (a non-RSA algorithm) — the general renderer guarantee this section states
+above (T52) covers it, the same as `profiles` and `hosts` and every other array-typed field.
+`internal/app.originsForInvestigate` itself returns idiomatic `nil` on that branch;
+`domain.Key.Profiles` and `app.KeyDetail.Hosts` need no equivalent hand-written workaround either —
+none of the three needs one anymore, which is T52's whole point. `agentComment` and
+`commentSource` (T38) are the `ssh-agent`-sourced comment fact and its label; both carry
+`omitempty` and are absent from the wire entirely when no agent match was
+found — a consumer's signal for "was there a match" is `commentSource == "agent-sourced"`, never an
+empty-string check on `agentComment` alone, since an agent can legitimately report an empty
+comment. All four new fields use the same lowerCamelCase JSON tag convention `domain.Key`'s own
+fields already use (`schemes`, `origins`, `agentComment`, `commentSource` — not
+`Schemes`/`Origins`/… or `agent_comment`/…), so nothing about `--investigate`'s additive shape asks
+a consumer to learn a second naming convention.
 
 `log/slog` writes to stderr, off by default, enabled by `--verbose`. Nothing else ever writes to
 stdout except the rendered answer.
@@ -1298,11 +1408,27 @@ This is [T2](tech-decision-log.md#t2)'s contract, tested directly rather than as
   `derived`, `confirmed`, `possible`, `unknown` — is asserted by name, so a fifth value anywhere in
   the codebase shows up in a diff rather than in a consumer silently accepting a value outside the
   set it was told was closed.
-- **No scheme performs I/O beyond reading the key file already in memory** ([T35](tech-decision-log.md#t35)).
-  A guard test runs every registered scheme's `Compute` inside a `net.Dialer` whose `Control`
-  callback fails any socket creation, and asserts no scheme ever trips it — the mechanical proof
-  behind [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in
-  prose.
+- **No scheme performs I/O beyond reading the key file already in memory** ([T35](tech-decision-log.md#t35),
+  amended by [T47](tech-decision-log.md#t47)). A `net.Dialer`/`Control`-callback guard was tried
+  first and does not work: nothing under test ever constructs or receives a `net.Dialer`, so the
+  hook can never actually trip, which makes it a guard that cannot fail. The mechanism actually
+  implemented is a `go list`-based assertion, the same mechanical shape
+  [T13](tech-decision-log.md#t13)'s and [T32](tech-decision-log.md#t32)'s layering guards already
+  use: `internal/adapter/fpscheme`'s own **direct** imports (not the full transitive
+  `go list -deps` closure those two guards use — `golang.org/x/crypto/ssh` itself directly
+  imports `net` for unrelated reasons, which would make a transitive check fail permanently)
+  contain none of `net`, `net/http`, or `os/exec`. This is the mechanical proof behind
+  [T35](tech-decision-log.md#t35)'s "never a network call" boundary, not merely a claim in prose.
+- **`PassphraseGate.Close` actually zeroes the held passphrase**
+  ([D19](decision-log.md#d19), [T39](tech-decision-log.md#t39)). D19's fourth constraint —
+  user-initiated, scoped to one operation, held in memory, **zeroed after** — is otherwise the one
+  of the three properties §11 names with no mechanical test: gutting `Close()` to a no-op still
+  left every other `PassphraseGate` test passing (a review finding on M3.6.2). The guard uses the
+  same slice/backing-array-aliasing technique as
+  `internal/adapter/keyfile/generate_test.go`'s `TestGenerate_ZeroesThePassphraseBuffer` and
+  `internal/app/newkey_test.go`: the injected `Passphrase` callback returns the test's own `[]byte`,
+  and the test asserts every byte of that same slice is `0` after `Close` — proof the effect
+  reached the caller's own copy, not merely one internal to the gate.
 
 ---
 
@@ -1452,8 +1578,9 @@ the freeze rather than an unresolved prerequisite to it.
 | 5 | The verb×noun grid, and the global flag names and semantics — removing or renaming is breaking, adding is additive | §9, [D10](decision-log.md#d10) |
 | 6 | The on-disk marker syntax and metadata format — a change that makes an existing hasp-marked region unreadable by the new binary is breaking | §6, §7, [T10](tech-decision-log.md#t10), [T25](tech-decision-log.md#t25) |
 | 7 | The confidence vocabulary — `derived`, `confirmed`, `possible`, `unknown` — is closed; adding, removing, or redefining a value is breaking | §10, §18, [T37](tech-decision-log.md#t37) |
+| 8 | The `FactSource` vocabulary — the empty plain-read default and `agent-sourced` — is closed on the same terms as row 7 | §10, §18, [T38](tech-decision-log.md#t38) |
 
-Row 6 is the least obvious of the seven and the most damaging, because the artifact it governs
+Row 6 is the least obvious of the eight and the most damaging, because the artifact it governs
 outlives the binary that wrote it — a marked region written by one hasp release still has to parse
 under a much later one. Row 7 is closed for a different reason than row 4's finding `id`s are
 permanent: an `id` gains meaning by never being reused, while `confidence` is closed because a
@@ -1582,12 +1709,19 @@ uses to display a fingerprint. hasp's own SSH-native scheme ([T1](tech-decision-
 `FingerprintSHA256`) is one entry among several; AWS alone contributes three distinct schemes to
 the registry:
 
-| Scheme | Hashed input | Hash | Needs |
-| --- | --- | --- | --- |
-| AWS created-RSA | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted |
-| AWS imported-RSA | PKIX/SPKI DER of the **public** key | MD5 | public half only |
-| AWS ED25519 (created *or* imported) | SSH wire-format public key | SHA-256 | public half only |
-| Legacy SSH MD5 | SSH wire-format public key | MD5 | public half only |
+| Scheme | `id` | Hashed input | Hash | Needs |
+| --- | --- | --- | --- | --- |
+| AWS created-RSA | `aws-created-rsa` | PKCS#8 DER of the **private** key | SHA-1 | private key, decrypted |
+| AWS imported-RSA | `aws-imported-rsa` | PKIX/SPKI DER of the **public** key | MD5 | public half only |
+| AWS ED25519 (created *or* imported), and hasp's own SSH-native fingerprint | `ssh-native-sha256` | SSH wire-format public key | SHA-256 | public half only |
+| Legacy SSH MD5 | `legacy-ssh-md5` | SSH wire-format public key | MD5 | public half only |
+
+The `id` column is the literal, permanent wire-format value `domain.SchemeID` carries in
+`--investigate`'s JSON output (`internal/domain/investigate.go`) — `aws-created-rsa` and
+`aws-imported-rsa` are named verbatim by [T36](tech-decision-log.md#t36); `ssh-native-sha256` and
+`legacy-ssh-md5` were this project's own naming judgment call for the two schemes T35's table
+otherwise names only in prose, made explicit here so the TDD, not only a Go doc comment, is the
+identifiers' recorded home.
 
 Every scheme is `func(Key) (Fingerprint, error)`, computed entirely in memory from bytes hasp
 already has — stdlib (`x509.MarshalPKCS8PrivateKey` + `crypto/sha1`,
@@ -1611,9 +1745,41 @@ to SHA-256/SSH-native/ED25519; and 47 characters of colon-hex (32 hex digits) na
 MD5 schemes — AWS imported-RSA and legacy SSH MD5 — which share a shape and differ in value
 because one hashes the PKIX/SPKI DER encoding and the other the SSH wire-format blob. `find`
 computes every scheme the shape admits, which is one for two of the three shapes and two for the
-MD5 shape, keeping the common case — an SSH-native clue — as cheap as it was before this section
-existed. **Shape narrows; it never uniquely determines**, and treating it as though it did would
-reintroduce precisely the silent miss [D20](decision-log.md#d20) exists to eliminate.
+MD5 shape — that is the sense in which the common case (an SSH-native clue) stays as cheap as it
+was before this section existed: **scheme-computation count**, not disk I/O. Those are the same
+claim only for a full-length SSH-native clue, whose sole candidate needs nothing beyond
+`k.Identity`'s own already-derived value (`deriveKeys`/`keyfile.Inspect`, §5) — `find` reopens no
+key file at all for that shape, restoring the zero-disk-I/O behavior `find` had before multi-scheme
+matching existed. Every other shape names at least one AWS scheme as a candidate, and evaluating
+an AWS scheme needs the key's material (`keyfile.OpenMaterial`) regardless of how few schemes are
+computed, so those shapes do read every candidate key's file once per `find` invocation — a real,
+named cost (D19, P3, P8), not the zero-I/O case. **Shape narrows; it never uniquely determines**,
+and treating it as though it did would reintroduce precisely the silent miss
+[D20](decision-log.md#d20) exists to eliminate.
+
+**Normalization and comparison are two separate steps** ([T50](tech-decision-log.md#t50)).
+`fpscheme.Normalize`'s own transformations, above, are exactly [T36](tech-decision-log.md#t36)'s
+spec and no more — in particular, base64 case is preserved, never folded, because folding it would
+silently change which bytes a SHA-256 fingerprint names. J2's *"punctuation and case shouldn't
+matter"* promise still has to hold in full, so `find`'s own comparison step (not `Normalize`, and
+not `CandidateSchemes`' shape routing, both of which still see `Normalize`'s unfolded output) folds
+case **and** separator punctuation such as a hyphen a human inserts for readability on both the
+candidate scheme's computed value and the normalized clue before the substring check. This is safe
+because none of the four registered schemes ever emits `-` or `_` as real content — the two
+colon-hex schemes use hex digits and colons only, and the SSH-native scheme emits standard, not
+URL-safe, base64 — so the fold can only forgive formatting noise, never conflate two genuinely
+distinct values.
+
+**`find` never prompts for a passphrase** ([T48](tech-decision-log.md#t48)). `--investigate`
+(below) is the only flag licensed to ask ([T39](tech-decision-log.md#t39)); `find` always opens a
+candidate key with no passphrase, so `aws-created-rsa` — the one registered scheme that needs the
+decrypted private key — can never be evaluated against an encrypted candidate key through `find`.
+Rather than let that read as a silent "you don't have this key," exactly the failure
+[D20](decision-log.md#d20) exists to eliminate, `find` reports it as an explicit warning naming the
+scheme and how many keys in the search it could not evaluate, distinct from an honest "checked, and
+this key's fingerprint under that scheme does not match." Both renderers surface it — the `--json`
+envelope's existing `warnings` field ([T14](tech-decision-log.md#t14)) and the human renderer's own
+stderr channel.
 
 **Which scheme matched is the origin evidence — for two of the four schemes only.** A match under
 `aws-created-rsa` or `aws-imported-rsa` is deterministic proof of provenance, because AWS computes
@@ -1624,7 +1790,12 @@ proves nothing either — it is only another way of naming the same public key, 
 signal at all. Both of those report `possible`, never `confirmed`. The asymmetry matters most in
 the MD5 shape, where the two candidate schemes land on opposite sides of it: matching
 `aws-imported-rsa` is provenance, matching legacy SSH MD5 is not, and the renderer must not
-flatten them into a single "matched" verdict.
+flatten them into a single "matched" verdict. The human renderer shows the matched scheme itself
+(`SCHEME`) alongside the origin it implies (`ORIGIN`) and its confidence, since `ORIGIN` alone
+would name the scheme only for the two non-AWS schemes (whose origin id *is* the scheme id) and
+not for the two AWS schemes (whose origin id — `aws-ec2-created`/`aws-ec2-imported` — is a
+different namespace from the scheme id that produced it, see `SchemeFingerprint.Scheme`'s own doc
+comment, `internal/domain/investigate.go`).
 
 ### The confidence vocabulary and the `origins` shape
 
@@ -1641,12 +1812,14 @@ read carries a status from P10's closed set:
 ```json
 "origins": [
   {"id": "aws-ec2-created", "confidence": "possible",
-   "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]}
+   "because": ["algorithm=ssh-rsa", "format=pkcs1", "no-console-fingerprint-supplied"]}
 ]
 ```
 
 `because` carries machine-readable evidence tokens, never prose — free text belongs to the human
-renderer alone. The vocabulary is **closed and permanent** (§16, row 7): unlike
+renderer alone; `algorithm=`/`format=` carry `domain.Key`'s own literal field values, a precision
+on this section's earlier, illustrative spelling recorded in
+[T51](tech-decision-log.md#t51). The vocabulary is **closed and permanent** (§16, row 7): unlike
 [T29](tech-decision-log.md#t29)'s deliberately re-tunable `severity`, a value here is a safety
 signal a consumer may filter on, and neither adding a fifth value nor redefining one of the four
 is compatible without a major version bump.
@@ -1663,17 +1836,75 @@ keeps running — the same labelled-not-merged treatment
 [T16](tech-decision-log.md#t16) gives implicit-default bindings. No agent, or the socket unset,
 degrades silently to what is derivable without it (§11) — never an error.
 
+**Forward obligation, recorded rather than assumed — now discharged.** T39's "try the agent first"
+is a call-site ordering requirement — the agent lookup runs, and its result is merged into a
+candidate key's material, *before* `PassphraseGate.Derive` is ever called for that key — not a
+property either source enforces on its own. `internal/app.PassphraseGate` (M3.6.2) does not talk
+to an agent itself and cannot verify it was consulted first; the ordering is discharged entirely by
+chunk M3.6.4's wiring inside `--investigate`'s own call site
+(`internal/app.investigateKey`/`knownMaterialWithAgentFact`, `internal/app/investigate.go`), which
+is the only place both sources are ever invoked together. `roadmap.md` §5.6's M3.6.4 chunk row
+named this explicitly ahead of time, so the obligation had one recorded home rather than being left
+implicit in two chunks that each assumed the other one covered it — and
+[T51](tech-decision-log.md#t51) records how the discharge was actually verified, which is the part
+worth stating here rather than leaving to the commit that did it.
+
+**What pins the ordering is an observable output difference, not the call sequence's own shape.**
+A first implementation split the work into numbered steps that already satisfied the ordering
+structurally — `PassphraseGate.Derive` cannot be called with the merged material before that
+material exists — but the reported `agentComment` was read from a value computed *before*
+`Derive` ran, so a hypothetical call site that quietly re-derived a second, unmerged `Material` and
+handed that to `Derive` instead would have produced identical output: the guard test written
+against that shape passed even with the ordering inverted. `investigateKey` now reads
+`agentComment` from `derived.Material.Comment` — the actual material that flowed through
+`Derive` — guarded on `commentSource == domain.FactSourceAgent` so an ordinary `.pub` sidecar
+comment is never mislabelled agent-sourced ([T38](tech-decision-log.md#t38)'s labelling rule); an
+inverted call site now produces a visibly wrong `agentComment` instead of a silently-still-correct
+one, and `TestInvestigateKey_AgentTriedBeforeDerive` is written to fail against exactly that
+inversion. [T51](tech-decision-log.md#t51) is this decision's permanent record.
+
+**This also corrects an understatement in this section's own earlier account of
+`PassphraseGate.Derive`'s comment-preservation contract.** Sourcing `agentComment` from
+`derived.Material.Comment` only reports the agent's fact correctly if `Derive` actually carries a
+caller-merged comment through its **successful**-unlock path — and, until T51/M3.6.4, it did not:
+`Derive` returned the freshly-decrypted `Material` verbatim on that path, silently erasing a
+caller-merged agent comment exactly when a correct passphrase was also supplied. `Derive` now
+carries `known.Comment` forward onto the freshly-opened material whenever that material has no
+comment of its own, and never overwrites a real, non-empty sidecar comment — see
+[T51](tech-decision-log.md#t51) for the full argument, including why the bug was load-bearing
+rather than cosmetic (T49's finding that the decrypt path itself never recovers the comment at all,
+making the agent the only source for it once a key is encrypted with no `.pub` sidecar).
+
+**A known limitation, not yet worth its own T-log entry:** a `byPath`-identified key ([T1](tech-decision-log.md#t1)'s
+undecidable row — legacy PEM, encrypted, no `.pub` sidecar) has no derivable public key at all, so
+even when the agent holds that exact key loaded, there is no public-key signal on hasp's side left
+to cross-reference the agent's own listing against. [T38](tech-decision-log.md#t38) scopes
+cross-referencing to "by public key" and is silent on this case; the practical consequence is that
+such a key's comment stays `unknown` even with the right agent running, the same way its
+created-RSA fingerprint does without a correct passphrase ([T39](tech-decision-log.md#t39), below,
+as narrowed by [T49](tech-decision-log.md#t49)).
+
 ### Passphrase-gated derivation
 
-Full argument: [T39](tech-decision-log.md#t39). [D19](decision-log.md#d19) generalizes D17's four
-constraints — user-initiated, scoped to one operation, held in memory, zeroed after — from `new
-key`'s write path to any read. Two facts need it: the created-RSA scheme, `unknown` in its
-entirety for any encrypted key with no agent and no passphrase; and, when
-[T38](tech-decision-log.md#t38)'s agent path finds nothing loaded, an OpenSSH-format key's
-comment.
+Full argument: [T39](tech-decision-log.md#t39), narrowed by [T49](tech-decision-log.md#t49).
+[D19](decision-log.md#d19) generalizes D17's four constraints — user-initiated, scoped to one
+operation, held in memory, zeroed after — from `new key`'s write path to any read. **Exactly one
+fact needs it: the created-RSA scheme**, `unknown` in its entirety for any encrypted key with no
+agent-supplied private key and no passphrase. An OpenSSH-format key's comment is a
+**separate, agent-only** fact ([T38](tech-decision-log.md#t38)) — [T49](tech-decision-log.md#t49)
+found that `golang.org/x/crypto/ssh`'s passphrase-decrypt API discards the comment even after a
+correct passphrase, so a prompt can never recover it regardless of whether the agent has anything
+loaded; §18's own earlier text claiming otherwise was wrong, not merely imprecise, and is corrected
+here. The prompt does not *recover* the comment — but `PassphraseGate.Derive` is careful not to
+*destroy* one an agent already supplied while unlocking the created-RSA fact: it carries a
+caller-merged `Material.Comment` forward onto the freshly-decrypted material on its successful-
+unlock path, a fix [T51](tech-decision-log.md#t51) records in full, since an earlier version of
+that path silently dropped the merge on exactly that branch.
 
-hasp tries the agent first. If a passphrase would still unlock something otherwise completely
-`unknown`, and a TTY is attached, `--investigate` prompts once (`x/term.ReadPassword`, the same
+hasp tries the agent first for whatever the agent can supply (the comment, per T38) — not because
+the two sources compete for the created-RSA fact, but because a key already loaded needs no prompt
+for anything the agent already answered. If a passphrase would still unlock the created-RSA scheme
+specifically, and a TTY is attached, `--investigate` prompts once (`x/term.ReadPassword`, the same
 path [T6](tech-decision-log.md#t6) established), and the one passphrase collected is tried across
 every candidate key in the invocation — never one prompt per key.
 

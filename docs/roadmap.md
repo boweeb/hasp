@@ -54,8 +54,8 @@ document's own §8 already forbids.
 | §4 M2 — Curation | Complete | `v0.2.0` | `d009473` |
 | §5 M3 — Configuration | Complete | `v0.3.0` | `4577e17` |
 | *(release plumbing, not a milestone)* | — | `v0.4.0` | `d7699c6` |
-| §5.5 M3.5 — Hardening | Current | `v0.6.0` | `9243f1a` |
-| §5.6 M3.6 — Investigation | Next | — | — |
+| §5.5 M3.5 — Hardening | Complete | `v0.6.0` | `9243f1a` |
+| §5.6 M3.6 — Investigation | Current — chunks 0–5 landed, unmerged; `v1.0.0` not yet cut | — | — |
 | §6 M4 — Identity | Gated | — | — |
 
 `v0.4.0` tags the commit that configured GoReleaser's Gitea publishing and added the repository's
@@ -377,6 +377,32 @@ any of them would break every one of those citations invisibly.
 - **`--investigate` on `show key` and `list key`** ([`tdd.md` §9](tdd.md#9-command-surface--the-38-grid-spelled-out)) —
   opt-in, out of the default read path entirely.
 
+**Chunks**
+
+Sequenced by dependency, the same way [M3.5](#55-m35--hardening)'s table is. **Merge Commit**
+carries the landing commit once a chunk lands, so this stays a completion record rather than the
+task tracker [§8](#8-what-this-document-is-not) rules out.
+
+**A header note, not a silent workaround:** unlike M3.5's table, whose commits are already on
+`main`, chunks 0–5 below landed across two still-unmerged branches, not one. Chunks 0–3 landed on
+`m36-investigation`; chunks 4–5 landed on `m36-closeout`, a worktree branched from
+`m36-investigation`'s own HEAD (`f37a474`) to finish this milestone's remaining close-out work
+without disturbing the branch chunks 0–3 already occupy. `m36-investigation` itself remains
+unmerged into `main` as of this writing. "Merge Commit" is therefore not yet literally accurate for
+any row in this table, and this table does not invent a merge that has not happened. The hashes
+recorded are each chunk's own landing commit on whichever of the two branches it landed on; the
+column keeps its name for consistency with M3.5's own header until both branches actually merge,
+at which point the column is accurate again without needing a rename.
+
+| # | Chunk | After | Merge Commit |
+| --- | --- | --- | --- |
+| M3.6.0 | Default-read baseline — the committed capture of `list key`'s pre-M3.6 output that criterion 7 is asserted against, taken before any behaviour changes and therefore first | — | `551c93f` |
+| M3.6.1 | Vocabulary and registry — P10's closed confidence set and the `origins` shape; the four schemes and each one's declared material requirement; the committed AWS and legacy vectors, the MD5-collision assertion, the confidence golden list, and the no-network guard | 0 | `e07bd40` (fix: `0f99139`) |
+| M3.6.2 | Derivation sources — the `ssh-agent` client and its fake-agent test; passphrase-gated material opening, one prompt per invocation, and the no-TTY degrade | 1 | `5a1b48a` (fixes: `5b4563b`) |
+| M3.6.3 | Multi-scheme `find key` — shape routing, both MD5 candidates computed rather than one guessed, and confidence-graded match evidence in both renderers | 1 | `61877d7` (fixes: `ad842a3`) |
+| M3.6.4 | `--investigate` on `show key` and `list key` — the projection assembled across every source, both renderers, and the guard that the default read is untouched. **Owes the "agent tried first" ordering** ([T39](tech-decision-log.md#t39), [T38](tech-decision-log.md#t38)): `internal/app.PassphraseGate` cannot enforce it itself (`tdd.md` §18's `ssh-agent` subsection), so this chunk's own call site is where the agent lookup must run, and its result merge into a candidate key's material, before `PassphraseGate.Derive` is ever called for that key | 2, 3 | `9e51dc8` |
+| M3.6.5 | Close-out — the regenerated reference surface, narrative documentation, this table's own completion record, and the `v1.0.0` tag criterion 8 reserves for it | all | `4c2ac5d` |
+
 **Explicitly out of scope**
 
 The keyring-backed passphrase cache — considered and rejected for now (`design.md` §10); the
@@ -404,11 +430,54 @@ Anything touching J9 or M4.
 5. `hasp show key --investigate --json </dev/null` with no TTY exits `0`, reports what is
    derivable, and marks the rest `unknown` with `passphrase-required-no-tty`.
 6. The no-network guard passes: no scheme opens a socket.
-7. `hasp list key` **without** `--investigate` is byte-identical to its pre-M3.6 output — the
-   investigation mode never leaks into the default read (P7).
+7. `hasp list key` **without** `--investigate` never diverges because `--investigate` exists — the
+   investigation mode never leaks into the default read (P7). Originally stated, and asserted, as
+   byte-identical to the literal pre-M3.6 golden; [T52](tech-decision-log.md#t52)'s structural fix
+   (`render.marshalData`'s recursive nil-slice normalization, landed on this same branch before the
+   `v1.0.0` tag, while correcting structure is still free per the maintainer's own stated stance)
+   deliberately regenerated that golden — `"profiles": null` becomes `"profiles": []` at both
+   occurrences, the JSON form only, the human form byte-for-byte unchanged. The mechanism is
+   therefore byte-identity against the T52-corrected golden, not literally the pre-M3.6 one; the
+   criterion's *intent* — investigation mode never leaks into the default read — is untouched and
+   still asserted the same way it always was, by `TestDefaultRead_ListKey_Golden`'s byte-for-byte
+   comparison plus its companion below.
 8. **`v1.0.0` is tagged at this milestone's close** — not M3.5's — once criterion 7 above confirms
    the default read is untouched and [M3.5](#55-m35--hardening)'s own exit criteria have already
    passed.
+
+> **Close-out, chunk M3.6.5.** Each of the eight exit criteria above, accounted for:
+>
+> - **1** and **1a** (all four schemes matched by `find key`, correct confidence per scheme; the
+>   MD5 collision resolves both ways) were discharged by chunk M3.6.3
+>   ([T36](tech-decision-log.md#t36)) and re-verified unregressed when chunk M3.6.4 landed
+>   (`9e51dc8`'s own commit message says so directly).
+> - **6** (the no-network guard) was discharged by [T47](tech-decision-log.md#t47), ahead of this
+>   milestone's own investigation surface existing to test, and was likewise re-verified
+>   unregressed by M3.6.4.
+> - **2**, **3**, **4**, **5**, and **7** are each covered by a test named for the criterion it
+>   proves, landed in chunk M3.6.4 (`internal/app/investigate_test.go`,
+>   `internal/cli/investigate_test.go`, `internal/cli/defaultread_golden_test.go`) — criterion 7 in
+>   particular is the default-read golden guard chunk M3.6.0 committed before any
+>   `--investigate` code existed, so "untouched" is asserted against a baseline captured before the
+>   feature, not after it.
+> - **Criterion 7's golden was deliberately regenerated after this chunk landed**, by a
+>   structural-correctness fix ([T52](tech-decision-log.md#t52)) applied on this same branch ahead
+>   of the `v1.0.0` tag: `render.marshalData` now normalizes a nil slice to `[]` at every nesting
+>   depth it can reach, not only at the top-level `data` value, closing a gap T51's own Consequence
+>   named and deferred (`"profiles": null`, `"hosts": null`). `list-key.json.golden` changed —
+>   `"profiles": null` → `"profiles": []`, both occurrences — and `list-key.human.golden` did not
+>   change at all. This is not a silent weakening of criterion 7: its mechanism (byte-for-byte
+>   comparison) and its proof that `--investigate` is not a no-op
+>   (`TestDefaultRead_ListKey_Investigate_DiffersFromGolden`) are both unchanged; only the
+>   golden's own bytes moved, once, deliberately, to match corrected structure — exactly the
+>   maintainer's own stated stance for everything landing before this tag, and exactly the kind of
+>   change the byte-frozen-artifact discipline this same criterion's *language* borrows from
+>   begins enforcing only **at** the tag, not before it.
+> - **8 is explicitly NOT discharged by this chunk, or by this milestone's own work at all.** The
+>   `v1.0.0` tag is the maintainer's to cut, by hand, after `m36-investigation` (carrying chunks
+>   0–3) and `m36-closeout` (carrying chunks 4–5) both merge to `main` — this document does not
+>   tag itself, and no commit in this milestone claims otherwise. Everything above this line is
+>   ready for that merge; the merge and the tag are not part of what M3.6.5 discharges.
 
 ---
 

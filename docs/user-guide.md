@@ -23,9 +23,9 @@ hasp at a different directory (the flag defaults to `~/.ssh`); every command bel
 `--json` for machine-readable output, and every write accepts `--yes` to consent non-interactively
 instead of confirming at a prompt.
 
-This guide covers **J1–J8**. J9 (Git/GPG identity) is a post-v1 direction gated behind M4 and has
-no commands yet; J10 (`--investigate`) belongs to the M3.6 milestone and is not yet built. Neither
-is documented here because neither exists in the CLI today.
+This guide covers **J1–J8** and, as of [M3.6](tech-decision-log.md#t51), **J10**. J9 (Git/GPG
+identity) is still a post-v1 direction gated behind M4 ([D8](decision-log.md#d8)) and has no
+commands yet, so it stays out of this guide until it does.
 
 ## J1 — Survey
 
@@ -189,3 +189,86 @@ hasp release profile work.foobarco
 
 See [`docs/on-disk.md`](on-disk.md#the-full-withdrawal-path) for the complete withdrawal path,
 including what to clean up by hand afterward.
+
+## J10 — Investigate
+
+> I have a clue — a fingerprint, a partial memory, a signal I can't fully interpret — and I want
+> hasp to surface everything it can about it, including facts a plain read would not show and
+> inferences a plain read would never make, clearly marked with how sure hasp is.
+> ([`design.md` §7](design.md#7-journeys))
+
+```sh
+hasp show key id_rsa --investigate
+hasp show key id_rsa --investigate --json
+hasp list key --investigate
+```
+
+`--investigate` is a local flag on `show key` and `list key` alone — it does not exist anywhere
+else, and it never changes what either command reports without it. It is deliberately the
+highest-friction thing hasp does: an investigation is something you ask for on purpose, and its
+cost — more work per key, and possibly a passphrase prompt — is paid knowingly. `hasp list key`
+and `hasp show key` without the flag are byte-identical to a plain read, exactly as if `--investigate`
+never existed.
+
+What the flag adds, per key, is:
+
+- **Every registered fingerprint scheme's value.** hasp's own SHA256 fingerprint is one entry in
+  an open registry, not the only one — a console you've never asked hasp about can compute a
+  fingerprint under a completely different hash and encoding, and `--investigate` computes all of
+  them so a value from anywhere else has something to compare against. On a real key that decision
+  looked like this:
+
+  ```
+  Investigation: id_rsa
+    SCHEME             VALUE                                                        CONFIDENCE  REASON
+    aws-created-rsa    fb:9f:8c:50:18:2b:28:a0:ac:f9:53:03:21:89:12:73:16:36:8c:49  derived     -
+    aws-imported-rsa   b2:ef:06:eb:b1:a0:df:44:30:66:80:33:bb:0c:25:33              derived     -
+    ssh-native-sha256  SHA256:NguyN29o6xX3x9SnR9K0nN6BdEP6iRDuXGf06n5crS0           derived     -
+    legacy-ssh-md5     9b:19:fa:eb:88:13:86:1a:0c:2c:08:7b:17:0c:75:a5              derived     -
+    Origins:
+      aws-ec2-created   possible
+      aws-ec2-imported  possible
+  ```
+
+  `aws-created-rsa` hashes the *decrypted private* key (SHA-1); `aws-imported-rsa` hashes the
+  public key a different way (MD5, PKIX/SPKI encoding); `ssh-native-sha256` is hasp's own scheme
+  and also AWS's ED25519 fingerprint; `legacy-ssh-md5` is the older MD5-over-SSH-wire-format
+  fingerprint some tools still print. If an AWS console, a colleague's terminal, or an old runbook
+  hands you a fingerprint that doesn't match `hasp find key`'s own scheme, it may still match one
+  of the other three — that mismatch is expected, not a sign either side is wrong.
+- **A confidence-graded origin guess**, from a closed, permanent vocabulary: `derived` (read
+  directly), `confirmed` (matched external evidence you supplied — only `find key` can reach this,
+  since `--investigate` has no external clue to match against), `possible` (consistent with the
+  evidence, not proven), or `unknown` (cannot be determined). An RSA key gets both
+  `aws-ec2-created` and `aws-ec2-imported` at `possible`, because both are genuinely consistent
+  with an RSA key's evidence and hasp has no way to prefer one over the other with no console
+  fingerprint in hand. A non-RSA key (Ed25519, ECDSA, DSA) gets an empty `origins` array — neither
+  AWS RSA scheme applies to it, so there is nothing to guess.
+- **Whatever `ssh-agent` knows**, if `SSH_AUTH_SOCK` points at a running one: cross-referenced by
+  public key against the key hasp is looking at, and — when it matches — the loaded key's
+  *comment*, which is the one fact an encrypted OpenSSH-format key's own file can withhold even
+  from hasp itself (`golang.org/x/crypto/ssh`'s own passphrase-decrypt path discards it). That fact
+  is labelled `agent-sourced`, in `--json` as `"commentSource": "agent-sourced"` beside
+  `"agentComment"`, never quietly folded into the key's ordinary `comment` field — it is real only
+  for as long as that agent process keeps running, and the label says so. No agent, or nothing
+  loaded for this key, degrades silently to whatever is derivable without it; it is never an error.
+- **Whatever a passphrase unlocks**, if you have a TTY attached and one is still needed: exactly
+  one registered scheme needs the decrypted private key (`aws-created-rsa`), and if nothing else —
+  not a plain read, not the agent — has already produced it, hasp asks once, interactively
+  (`Passphrase: `, no local echo), and tries that one answer against every key in the invocation
+  that still needs it. It never asks per key. With no TTY attached — the default for a script or a
+  pipeline — the read degrades instead of failing: whatever is derivable is reported, and the rest
+  is marked `unknown` with the machine-readable reason `passphrase-required-no-tty`. The table
+  above is the same key *after* a passphrase was supplied at a prompt; run non-interactively, its
+  `aws-created-rsa` row instead reads `unknown` / `unknown` / `passphrase-required-no-tty` while
+  the other three rows are unchanged, since those need only the public half. The command still
+  exits `0` either way — an honest `unknown` is a better answer than refusing to run.
+
+`--json` carries the identical facts under the same `key.list`/`key.show` envelope kinds a plain
+read already uses — `--investigate` adds fields (`schemes`, `origins`, `agentComment`,
+`commentSource`) rather than a different shape entirely, so a script that already parses
+`hasp show key --json` keeps working unmodified if it never looks at the new fields.
+
+None of this is quiet. A plain `hasp list key` or `hasp show key` stays exactly as fast and exactly
+as untouched as it always was — `--investigate` is where the cost of a deeper answer lives, and it
+lives nowhere else.

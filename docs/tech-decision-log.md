@@ -87,7 +87,7 @@ are actually in use, not this line.
 | [T36](#t36) | `find` matches across every registered scheme; the clue's shape routes the search | Accepted — amends `tdd.md` §9 |
 | [T37](#t37) | Confidence is a closed, permanent vocabulary in the output contract | Accepted — amends [T14](#t14), [T29](#t29), [T31](#t31) |
 | [T38](#t38) | `ssh-agent` is a derivation source for public facts, and its contribution is labelled | Accepted |
-| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6) |
+| [T39](#t39) | Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY | Accepted — amends [T6](#t6); amended by [T49](#t49) |
 | [T40](#t40) | The public origin is GitHub; T33's shared blocker resolves and distribution restages | Accepted — amends [T31](#t31), [T32](#t32), [T33](#t33) |
 | [T41](#t41) | `CI`'s `mg.Deps` aggregate excludes `Fixtures`: non-deterministic fixtures race `Test` and break `TestFullInventory` | Accepted — amends [T32](#t32) |
 | [T42](#t42) | Signing covers both the release checksum and the `kos`-built container image, via two GoReleaser sections | Accepted — amends [T9](#t9) |
@@ -95,6 +95,13 @@ are actually in use, not this line.
 | [T44](#t44) | `edit key --replace-material` routes through `WriteKeyFile{AllowOverwrite: true}`, not a separate move rule | Accepted — amends [T22](#t22) |
 | [T45](#t45) | The clean-room test: `tools/cleanroom`, a `CleanRoom` Mage target, a post-release CI job, and a shared `internal/snapshot` package | Accepted |
 | [T46](#t46) | Container base image moves from Chainguard to Google's distroless (`cgr.dev/chainguard/static` → `gcr.io/distroless/static:nonroot`) after Chainguard gated free registry access behind a business-email requirement | Accepted |
+| [T47](#t47) | The fingerprint-scheme no-network guard is a `go list` direct-import assertion, not the `net.Dialer`-`Control` mechanism `tdd.md` §12 originally named | Accepted — amends [T35](#t35) |
+| [T48](#t48) | `find key` never prompts for a passphrase; an inapplicable-for-that-reason scheme is an explicit warning, not a silent miss | Accepted |
+| [T49](#t49) | Narrowing §18/T39's comment-recovery claim: a passphrase prompt cannot recover an OpenSSH-format key's comment; only `ssh-agent` can | Accepted — amends [T39](#t39) |
+| [T50](#t50) | `find`'s comparison folds case and separator punctuation at compare time; `fpscheme.Normalize` stays exactly as it is | Accepted |
+| [T51](#t51) | Four M3.6.4 decisions: additive `--investigate` JSON, the no-clue origin rule, literal-value `because` tokens, and the agent-before-derive ordering fix | Accepted — gap closed by [T52](#t52) |
+| [T52](#t52) | `render.marshalData`'s nil-slice normalization becomes a recursive walk, deep enough to cover every field, present and future | Accepted — refined by [T53](#t53) |
+| [T53](#t53) | [T52](#t52)'s end-to-end guard overstated its own coverage; corrected, not merely noted | Accepted |
 
 ---
 
@@ -2692,7 +2699,7 @@ first preference [T27](#t27) already established, both intact.
 <a id="t39"></a>
 ## T39 — Passphrase-gated derivation: explicit, lazy, one passphrase per invocation, degrades without a TTY
 
-**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6)
+**Date:** 2026-09-03 · **Status:** Accepted · **Amends:** [T6](#t6) · **Amended by:** [T49](#t49)
 
 ### Context
 
@@ -3271,6 +3278,15 @@ maintainers are not the audience it is priced for. Wiring a login step and a tok
 `release.yml` to work around that would trade a one-line `base_image:` swap for an ongoing
 account-maintenance dependency this project has no organizational backing to sustain.
 
+**This entry serves [P6](design.md#4-principles) directly — the same clause [T40](#t40) already
+invoked for the module path.** T40's own rationale is that a publicly resolvable module path is
+what makes P6's "nothing hasp knows may be trapped inside it" promise reachable by someone who is
+not the author; a container image gated behind a business-email signup is exactly the same kind
+of barrier applied to a different artifact, `ko`'s published image rather than `go install`'s
+module path. An image nobody but a signed-up account can pull is, in practice, a released artifact
+only the author can use — the same failure mode P6 already names for anything hasp would keep
+only to itself, applied here to distribution rather than to data.
+
 ### Consequence
 
 - `.goreleaser.yaml`'s `kos:` block now points at `gcr.io/distroless/static:nonroot`; its comment
@@ -3280,3 +3296,686 @@ account-maintenance dependency this project has no organizational backing to sus
   specific registry or vendor, so nothing there was inaccurate to begin with.
 - `v0.6.0` is re-cut a second time against this fix, expected to clear the `ko` publish step and
   reach [T45](#t45)'s clean-room job on the now-public repository.
+
+---
+
+<a id="t47"></a>
+## T47 — The fingerprint-scheme no-network guard is a direct-import assertion, not a `net.Dialer` `Control` hook
+
+**Date:** 2026-09-09 · **Status:** Accepted — amends [T35](#t35)
+
+### Context
+
+`tdd.md` §12 states the no-network guard for [T35](#t35)'s fingerprint scheme registry in these
+terms: *"A guard test runs every registered scheme's `Compute` inside a `net.Dialer` whose
+`Control` callback fails any socket creation, and asserts no scheme ever trips it."* Implementing
+`internal/adapter/fpscheme` for [M3.6.1](roadmap.md#56-m36--investigation) this session, that
+mechanism turned out not to work at all: a `net.Dialer` constructed inside a test has no effect on
+code under test that never holds a reference to it. Every `Scheme.Compute` function in this
+package operates purely on bytes already in memory (`crypto/x509`, `crypto/sha1`, `crypto/md5`,
+and `golang.org/x/crypto/ssh`'s wire-format marshaling) — none of them accepts a `net.Dialer`, a
+`context.Context`, or any other hook a test could use to intercept a dial that is never attempted.
+A `Control`-callback guard would pass unconditionally regardless of whether the code under test
+ever opened a socket, which makes it worthless as a guard: it cannot fail.
+
+A second, unrelated problem surfaced while designing the replacement: this package's own required
+dependency, `golang.org/x/crypto/ssh` (needed for `ssh.FingerprintSHA256` and SSH wire-format
+marshaling — [T35](#t35)'s own table), itself directly imports `"net"` for its unrelated
+`Dial`/`Listen`/`Conn` machinery elsewhere in that package. Verified this session:
+`go list -deps golang.org/x/crypto/ssh` includes `net`, `net/netip`, and `net/url`. A guard built
+the way [T13](#t13)'s `internal/domain` layering guard and [T32](#t32)'s `cmd/hasp` layering guard
+both work — `go list -deps .`, the full transitive closure — would therefore fail permanently the
+moment `fpscheme` imports `ssh` at all, for a reason completely unconnected to whether this
+package's own code ever dials.
+
+**What this guard actually stands in for.** [T35](#t35)'s "never a network call" boundary is not
+incidental to the scheme registry — it is what keeps `design.md` §3.2's *"Not a key distribution
+mechanism"* boundary intact even though matching a console fingerprint is, on its face, about an
+external system. That boundary is itself [P3](design.md#4-principles)'s scope half: hasp manages
+arrangement, not secrets, and a scheme that phoned out to verify a fingerprint against a console
+would be hasp acting as exactly the distribution mechanism §3.2 forbids. This entry exists only to
+make that boundary mechanically checkable rather than a claim resting on review discipline, so it
+cites [P3](design.md#4-principles) directly, not only the T35/T13/T32 entries that shape its
+mechanism.
+
+### Decision
+
+Replace the `net.Dialer`/`Control` mechanism with a `go list`-based guard, the same mechanical
+shape [T13](#t13)'s and [T32](#t32)'s layering guards already use, but scoped to
+**`internal/adapter/fpscheme`'s own direct imports** rather than its full transitive dependency
+graph: `go list -f '{{ join .Imports "\n" }}' .` (non-transitive — direct imports only,
+production code only, test files excluded), asserted to contain none of `net`, `net/http`, or
+`os/exec`.
+
+The direct-vs-transitive distinction is the load-bearing part of this decision, not an
+implementation detail: a transitive check is factually impossible to pass while this package
+depends on `golang.org/x/crypto/ssh` (Context above), so the only assertion that can ever be both
+true and useful is "this package's own source code never imports a networking or subprocess
+package" — which is exactly [T35](#t35)'s actual claim ("no scheme ever opens a socket").
+
+### Rationale
+
+An alternative considered: keep the `net.Dialer`/`Control` mechanism as a best-effort documentation
+device even though it cannot fail. Rejected — a test that cannot fail is worse than no test, since
+it reads as coverage in a diff and in `go test -v` output without providing any. [T13](#t13) and
+[T32](#t32) already establish this codebase's preferred alternative to "review discipline" for a
+layering claim: a `go list`-based mechanical assertion. Reusing that exact shape here, adjusted
+only for the transitive/direct distinction the `x/crypto/ssh` dependency forces, keeps the guard
+consistent with two precedents already in the tree rather than inventing a third pattern.
+
+### Consequence
+
+- `internal/adapter/fpscheme/layering_test.go`'s `TestNoNetworkGuard` implements this mechanism,
+  with a doc comment explaining both why the `tdd.md` §12 mechanism cannot work and why the check
+  is direct-import rather than transitive.
+- `tdd.md` §12's no-network guard bullet is updated to describe this mechanism, citing this entry,
+  per this log's own rule that `tdd.md` reflects every accepted entry as current truth.
+- The assertion's scope is narrower than "nothing in this package's entire dependency tree can
+  dial" — it is "this package's own code never asks to." That is deliberate: the broader claim was
+  never true of `golang.org/x/crypto/ssh` even before this package existed, and pretending
+  otherwise would make the guard fail for a fact this project has no intention of changing (T35's
+  registry needs `x/crypto/ssh`, full stop).
+
+---
+
+<a id="t48"></a>
+## T48 — `find key` never prompts for a passphrase; an inapplicable-for-that-reason scheme is an explicit warning, not a silent miss
+
+**Date:** 2026-09-10 · **Status:** Accepted
+
+### Context
+
+[T36](#t36) supplies multi-scheme `find`'s matching algorithm — which schemes a clue's shape
+admits, and that both MD5 candidates are computed rather than one guessed — but does not say
+whether `find` may prompt for a passphrase to evaluate a candidate key against a scheme that needs
+the decrypted private key. One registered scheme does: `aws-created-rsa`
+([T35](#t35)) hashes the *decrypted* private key, so a 40-hex-digit clue routes to a scheme that,
+for an encrypted candidate key with no already-derivable private material, cannot be evaluated at
+all without exactly the passphrase [T39](#t39) scopes prompting to `--investigate` alone.
+`tdd.md` §9's global-flag table already lists `--investigate`'s own cost as *"speed, and possibly
+a passphrase prompt"* and states the flag is absent from every other verb×noun cell — `find`
+included — but nothing said what `find` should report when it hits exactly the case that flag
+exists to unlock.
+
+### Decision
+
+`find key` never prompts for a passphrase, under any circumstance. [T39](#t39)'s prompt is scoped
+entirely to `--investigate`; `find` is not that flag, and does not borrow its consent. A key that
+cannot be evaluated against a candidate scheme because the decrypted private key is unavailable —
+concretely, [T35](#t35)'s `aws-created-rsa` scheme against an encrypted candidate key — is **never
+silently absent from the result**: it is reported as an explicit warning, naming the scheme and
+how many keys in the search could not be evaluated against it, distinct from an honest "this key's
+fingerprint under this scheme does not match."
+
+### Rationale
+
+[D20](decision-log.md#d20)'s own rationale is that a false negative during `find` reads as "you
+don't have this key," which is a confidently wrong answer, not a missing one. Treating "never
+evaluated" identically to "evaluated and did not match" reintroduces that exact failure one layer
+inside the search itself: a user holding the right key, encrypted, sees no signal distinguishing
+"hasp checked and this isn't it" from "hasp never actually looked." An explicit warning keeps that
+distinction visible without asking `find` to do what only `--investigate` is licensed to do — one
+passphrase, held for one operation, that operation being `--investigate`, not `find`
+([D19](decision-log.md#d19), [P3](design.md#4-principles)). This also keeps `find` fast and
+non-interactive, matching [J2](design.md#7-journeys)'s framing of identification as an ordinary,
+low-friction lookup — the opposite of [J10](design.md#7-journeys)'s deliberately higher-friction
+investigation.
+
+### Consequence
+
+- `internal/app.FindKeys` returns `(matches []FindMatch, warnings []string)` rather than a bare
+  slice: `keyfile.OpenMaterial` is always called with a `nil` passphrase, and a scheme reporting
+  `domain.ReasonPrivateKeyUnavailable` for a candidate key increments that scheme's own warning
+  count rather than being dropped.
+- Both renderers surface the warning: `render.JSON`'s existing `warnings` field
+  ([T14](#t14)) needs no contract change, and the human renderer gains its own channel (stderr,
+  after the results table — advisory, not part of the answer stdout carries, `tdd.md` §10).
+- `tdd.md` §9's `find` cell for **key** and §18's "Multi-scheme `find`" subsection are amended to
+  state this plainly.
+
+---
+
+<a id="t49"></a>
+## T49 — Narrowing §18/T39's comment-recovery claim: a passphrase prompt cannot recover an OpenSSH-format key's comment; only `ssh-agent` can
+
+**Date:** 2026-09-10 · **Status:** Accepted — amends [T39](#t39)
+
+### Context
+
+`tdd.md` §18's "Passphrase-gated derivation" subsection and [T39](#t39) both state that, when
+[T38](#t38)'s agent path finds nothing loaded, a passphrase prompt is one of two facts
+passphrase-gated derivation exists to recover — the other being [T35](#t35)'s created-RSA scheme —
+implying an OpenSSH-format encrypted key's comment is recoverable either way: from the agent, or
+by prompting and decrypting.
+
+That second path does not exist. Verified this session against
+`$(go env GOMODCACHE)/golang.org/x/crypto@v0.56.0/ssh/keys.go` (the exact version this module
+pins, `go.mod`): `parseOpenSSHPrivateKey` parses an OpenSSH-format key's on-wire comment into one
+of `openSSHRSAPrivateKey`, `openSSHEd25519PrivateKey`, or `openSSHECDSAPrivateKey` — each of those
+three structs carries its own `Comment string` field — but `parseOpenSSHPrivateKey` itself returns
+only `(crypto.PrivateKey, error)`, and its caller, the exported
+`ParseRawPrivateKeyWithPassphrase`, returns only `(interface{}, error)`. Neither return type
+carries the comment anywhere a caller of the public decrypt API can reach — it is parsed, used
+internally, and then discarded before the function returns. `internal/adapter/keyfile.OpenMaterial`
+calls exactly this function ([T35](#t35)'s own read path), so no amount of decrypting through
+hasp's own code, with a correct passphrase or otherwise, ever recovers this comment. `ssh-agent`
+recovers it by a completely different mechanism ([T38](#t38)): the agent protocol exposes a
+loaded key's comment directly, with no decryption performed by hasp at all, which is why that path
+works when this one cannot.
+
+### Decision
+
+The passphrase-gated path's scope is **`aws-created-rsa` alone**. An OpenSSH-format encrypted
+key's comment is **agent-only** ([T38](#t38)): if `ssh-agent` has nothing loaded for that key,
+the comment stays `unknown`, full stop — a passphrase prompt is not a fallback for it, because
+there is no code path by which a correct passphrase would ever produce it.
+
+### Rationale
+
+This is a narrowing forced by a fact about a dependency's own API shape
+([P3](design.md#4-principles), [D19](decision-log.md#d19)): D19's consent gate licenses *reading*
+private key material the user explicitly asked for, but licensing the read does not manufacture a
+return value the library used to perform it never exposes. A subprocess wrapping `ssh-keygen`
+directly could recover the comment (it parses the same on-wire structure independently), but
+[T1](#t1) forbids subprocessing for exactly the reasons that rule exists — pure-Go derivation,
+no shelling out — so that route is not available either. [J10](design.md#7-journeys)'s promise is
+to surface everything hasp *can* determine, clearly marked with how sure hasp is; stating a
+capability the code cannot actually deliver would be the opposite of that promise, not a detail in
+service of it.
+
+### Consequence
+
+- `tdd.md` §18's "Passphrase-gated derivation" subsection is corrected: "two facts need
+  [passphrase-gated derivation]" becomes one (`aws-created-rsa`), and the comment gap is described
+  as agent-only, closing over the incorrect claim rather than leaving it as current truth.
+- `tdd.md` §18's `ssh-agent` subsection gains a note that a `byPath`-identified key ([T1](#t1)'s
+  undecidable row) has no derivable public key at all, so even a loaded agent has no signal on
+  hasp's side left to cross-reference against — a related, previously unrecorded limitation this
+  same reassessment surfaced.
+- Chunk [M3.6.4](roadmap.md#56-m36--investigation), which wires `PassphraseGate` and the agent
+  source together at a shared call site, implements exactly one passphrase-recoverable fact
+  (`aws-created-rsa`) rather than two — a smaller implementation surface than §18 previously
+  described, not a smaller one than [T39](#t39)'s own mechanics (one prompt per invocation, degrade
+  without a TTY) required regardless.
+
+---
+
+<a id="t50"></a>
+## T50 — `find`'s comparison folds case and separator punctuation at compare time; `fpscheme.Normalize` stays exactly as it is
+
+**Date:** 2026-09-10 · **Status:** Accepted
+
+### Context
+
+[J2](design.md#7-journeys) promises *"Punctuation and case shouldn't matter,"* and
+[D20](decision-log.md#d20) widens that promise to span every registered fingerprint scheme rather
+than only spellings of one. [T36](#t36) specifies `fpscheme.Normalize`'s own transformations —
+strip colons and internal whitespace, lowercase hex digits, strip base64 `=` padding, tolerate a
+`SHA256:`/`MD5:` prefix — and `internal/adapter/fpscheme/normalize.go` implements exactly that,
+deliberately **not** lowercasing base64: base64 is case-sensitive, so folding its case would
+silently change which bytes a SHA-256 fingerprint names, not merely how it is spelled. That
+implementation is correct on its own terms — a normalized value is also the value compared and
+displayed, and corrupting it would be a real, not cosmetic, defect.
+
+But J2's promise and base64's case-sensitivity are individually correct and jointly
+unsatisfiable as a single-function contract: `hasp find key sha256:T4RN-6Go9-uzGH` (this
+project's own committed `testdata/script/key-find.txtar` case, predating this chunk) must match
+the key whose real fingerprint is `SHA256:t4rn6Go9uzGHCyff1lwYWtX+swf+EQhuqmE2dHSqkFE` — different
+case throughout, and separator hyphens (`internal/cli/fullinventory_test.go`'s own case,
+`T4RN-6go9`, is the same shape) that never appear as real content in any value a registered scheme
+actually computes. `fpscheme.Normalize`, applied faithfully to [T36](#t36)'s spec, preserves both
+the case difference and the hyphens verbatim — neither is a colon, whitespace, padding character,
+or scheme prefix — so a direct comparison against `Normalize`'s own output silently fails on both
+committed cases at once, a regression introduced when `internal/app.FindKeys` (M3.6.3's WIP) moved
+from an older, single-scheme normalizer that folded both away unconditionally.
+
+### Decision
+
+Leave `fpscheme.Normalize` exactly as [T36](#t36) specifies it — its case- and shape-preserving
+behavior remains correct for what it is actually for: [T36](#t36)'s own `CandidateSchemes` shape
+routing needs an exact, uncorrupted length and alphabet to route a full-length clue to the right
+candidate scheme, and a scheme's own `Compute` output must not be silently rewritten either.
+
+`find`'s own comparison step folds **both** operands — a candidate scheme's computed value and the
+normalized clue — down to lowercase letters and digits only, immediately before the substring
+check, in a helper local to `internal/app.FindKeys` (`compareFold`) rather than inside
+`fpscheme.Normalize` itself. This folds away case, exactly as J2 promises, and — necessarily
+broader than the case tension alone — separator punctuation such as a hyphen a human inserts
+purely for readability, since none of [T35](#t35)'s four registered schemes ever emits `-` or `_`
+as real content: the two colon-hex schemes use only hex digits and colons, and the SSH-native
+scheme emits standard, not URL-safe, base64 (`+`, `/`).
+
+### Rationale
+
+The residual risk this fold accepts is a theoretical false positive: two distinct base64
+fingerprints, or two distinct values otherwise, differing only in a fold this comparison forgives.
+Across a 43-character base64 digest or a 32/40-digit hex digest that is effectively impossible, and
+even if it occurred, `find` returns a list the user disambiguates rather than acting unattended —
+whereas a false *negative* is exactly the silent miss [D20](decision-log.md#d20) exists to
+eliminate. The asymmetry favours folding, the same judgment [P10](design.md#4-principles)'s
+confidence vocabulary already makes structurally: `find`'s match evidence is reported as
+`confirmed` or `possible`, never asserted beyond what the evidence supports, so a comparison that
+occasionally over-matches is caught by the very origin-evidence distinction [T36](#t36) already
+requires the renderer to preserve, not silently trusted as certain.
+
+Folding at the comparison step, not inside `Normalize`, keeps [T36](#t36)'s shape-routing
+contract — and every existing test asserting `Normalize`'s and `CandidateSchemes`' exact output —
+intact and unchanged; this is an additive change to how `find` compares two already-normalized
+values, not a redefinition of what "normalized" means.
+
+### Consequence
+
+- `internal/app.FindKeys`'s match comparison uses `compareFold` on both the candidate scheme's
+  computed value and the normalized clue, in place of a direct substring check against
+  `fpscheme.Normalize`'s own output.
+- `tdd.md` §18's "Multi-scheme `find`" subsection gains a sentence stating that `find`'s own
+  comparison step folds case and separator punctuation, distinct from `Normalize`'s own,
+  narrower, shape-preserving transformations.
+- `internal/cli/testdata/script/key-find.txtar`'s and `internal/cli/fullinventory_test.go`'s
+  existing mangled-clue assertions — both predating this chunk — pass unmodified; neither needed a
+  golden-value change, only this fix to what compares them.
+
+---
+
+<a id="t51"></a>
+## T51 — Four M3.6.4 decisions: additive `--investigate` JSON, the no-clue origin rule, literal-value `because` tokens, and the agent-before-derive ordering fix
+
+**Date:** 2026-09-10 · **Status:** Accepted
+
+### Context
+
+Chunk [M3.6.4](roadmap.md#56-m36--investigation) (`internal/app/investigate.go`,
+`internal/cli/key.go`) landed `--investigate` on `show key` and `list key` — `tdd.md` §18's and
+[T35](#t35)–[T39](#t39)'s abstract design, wired into actual code and an actual wire format for
+the first time. Wiring it forced four questions neither `tdd.md` §18 nor any prior `T`-log entry
+had settled at the precision an implementation needs: what JSON shape the new facts take, what
+`--investigate` may say about a key's provenance when the user has supplied no external clue at
+all, what the evidence tokens behind that guess actually contain, and how the chunk's own
+"agent tried before a passphrase is asked" ordering obligation (§18's `ssh-agent` subsection,
+`roadmap.md` §5.6's M3.6.4 chunk row) is made a property of the code rather than a claim about it.
+This entry is the permanent record of how each was settled, so the reasoning has one recorded home
+rather than living only in a commit message (`9e51dc8`) and Go doc comments that could drift from
+it unnoticed.
+
+### Decision
+
+**1. `--investigate`'s output is additive under the existing `key.list`/`key.show` kinds — no new
+`kind` strings.** `app.InvestigatedKey` embeds `domain.Key` rather than duplicating its fields.
+`domain.Key` carries no `MarshalJSON` of its own (only its field types do —
+`KeyFormat`, `KeyIdentity`'s `byFingerprint`/`byPath`), so embedding marshals every existing field
+flat, at its existing JSON path, unchanged: an existing `key.list`/`key.show` consumer sees nothing
+new unless it also reads one of `InvestigatedKey`'s additive fields (`schemes`, `origins`,
+`agentComment`, `commentSource`). The rejected alternative — `key.list.investigate` and
+`key.show.investigate` as two new `kind` strings — was considered and set aside: it would add two
+permanent entries to `tdd.md` §16 row 3's frozen `kind` surface, force every consumer of either
+verb to branch on two kinds to answer what is still fundamentally "list/show a key," and buy
+nothing a flag check on the existing kind does not already give a `--json` consumer for free. This
+was the maintainer's own decision, made explicitly during M3.6.4, not a default arrived at by
+omission.
+
+**2. The no-clue origin rule: an RSA key yields both `aws-ec2-created` and `aws-ec2-imported` at
+`possible`; a non-RSA key yields an empty array.** `internal/app.originsForInvestigate`'s own doc
+comment states the reasoning this entry ratifies: `--investigate` has no external clue to match at
+all (unlike `find`, T36), so it can never report `ConfidenceConfirmed` — the strongest claim
+available is `possible`. An RSA key is genuinely consistent with *both* AWS RSA schemes — a
+created key is PEM-encoded PKCS#8/PKCS1 and an imported key can be too ([T35](#t35)'s table) — so
+reporting only one origin would falsely imply the other is inconsistent with the evidence, which is
+not true; both are reported, each carrying the same `because` evidence for a consumer to weigh. A
+non-RSA key has neither AWS RSA scheme apply to it at all
+(`fpscheme.IsRSAAlgorithm`), so there is no provenance signal to grade at all, and the array is
+empty — inventing one would be exactly the guess `design.md` §5.1 / [D12](decision-log.md#d12)
+forbid. `tdd.md` §10's / [T37](#t37)'s worked example —
+`{"id": "aws-ec2-created", "confidence": "possible", "because": [...]}` — shows the shape of
+exactly one element of the two-element array this rule produces for an RSA key; that shape stays
+exactly right under this decision.
+
+**3. The `because` tokens carry the key's literal field values — `algorithm=ssh-rsa`,
+`format=pkcs1` — not the simplified `algorithm=rsa`, `format=pem` of `tdd.md` §10's / T37's worked
+example.** `domain.KeyFormat.String()` never returns `"pem"` at all — its closed set is
+`openssh`/`pkcs1`/`pkcs8`/`sec1`/`dsa` (`internal/domain/key.go`) — and `domain.Key.Algorithm`
+holds the SSH wire algorithm name hasp actually derives (`ssh-rsa`), never a bare `rsa`. The
+worked example in `tdd.md` §10 and T37 was always illustrative of *shape* — an array of
+machine-readable `key=value` tokens plus a fixed reason — not a promise of its literal string
+content, and emitting the type system's real values is the honest reading of that shape: a
+machine-readable token naming a value `domain.KeyFormat` cannot actually produce (`"pem"`) would be
+worse than useless to a consumer that tries to match on it. **This is a precision on T37's example,
+not a contradiction of it** — the example's citation in `tdd.md` §10 gains a note pointing here so
+a reader does not mistake the literal strings shown there for a compatibility promise.
+
+**4. The "agent before derive" ordering obligation is pinned by an observable consequence, not by
+decomposition alone.** `tdd.md` §18's `ssh-agent` subsection and `roadmap.md` §5.6's M3.6.4 chunk
+row both require the agent lookup to merge into a candidate key's material before
+`PassphraseGate.Derive` runs for that key. The chunk's first implementation split this into
+numbered steps (`internal/app.knownMaterialWithAgentFact` then `investigateKey`) that already
+satisfied the ordering structurally — step 4 (`gate.Derive`) cannot compile without step 3's merged
+`known` already in hand — but the reported `AgentComment` was read from
+`knownMaterialWithAgentFact`'s own local return value, not from what `gate.Derive` actually
+produced, so the output never changed even when a hypothetical call site quietly re-derived a
+second, pre-merge `Material` and handed *that* to `Derive` instead: `TestInvestigateKey_AgentTriedBeforeDerive`'s
+first draft passed against an inverted ordering, which the verification gate flagged as a guard
+that proved nothing. The fix reads `AgentComment` from `derived.Material.Comment` instead — the
+material that actually flowed through `gate.Derive` — guarded on `commentSource ==
+domain.FactSourceAgent` so a `.pub` sidecar comment already present in `known.Comment` is never
+mislabelled agent-sourced, per [T38](#t38)'s labelling rule. That source switch is what makes an
+inverted call site produce a visibly wrong `AgentComment` (empty, or stale) rather than a silently
+still-correct one.
+
+Making that switch exposed a real bug it needed to be correct: `PassphraseGate.Derive`'s
+successful-unlock path returned `openFn`'s freshly-opened `Material` verbatim, which erased a
+caller-merged agent comment exactly when a correct passphrase was also supplied — the one branch
+where the caller had done the most work to get there. This is load-bearing, not cosmetic:
+[T49](#t49) established that `golang.org/x/crypto/ssh`'s passphrase-decrypt API discards an
+OpenSSH-format key's on-wire comment even after a correct passphrase, so `ssh-agent` is the *only*
+source for that fact once a key is encrypted with no `.pub` sidecar — a `Derive` that silently drops
+a caller-merged agent comment on its one successful path would make the ordering obligation
+worthless in exactly the case it exists to serve. `Derive` now carries `known.Comment` forward onto
+the freshly-opened material whenever that material has no comment of its own (`mat.Comment == ""`),
+and never overwrites a real, non-empty sidecar comment already present on `mat`.
+
+### Rationale
+
+All four decisions share one thread: an abstract correctness property (additive JSON, an honest
+no-clue confidence ceiling, evidence tokens a consumer can actually rely on, an ordering obligation
+that holds) is only as real as the mechanism that makes it observable. Decision 1 keeps `tdd.md`
+§16's frozen `kind` surface frozen by construction (Go's own `MarshalJSON` resolution), not by
+convention a future PR could violate unnoticed. Decision 2 keeps P10's confidence discipline
+honest — `possible`, not `confirmed`, is the only claim the evidence supports with no external
+clue — while still reporting real, weighable evidence rather than an empty gesture. Decision 3
+chooses truthful machine-readable content over a documentation example's literal spelling, which is
+the same judgment [D12](decision-log.md#d12) and `design.md` §5.1 already make against any kind of
+invented fact. Decision 4 is this entry's most direct instance of the thread: a comment asserting
+an ordering is not a test of that ordering, and [P3](design.md#4-principles)/[D19](decision-log.md#d19)'s
+consent-gated access rule is only as trustworthy as the guarantee that the fact a caller already
+holds (an agent-sourced comment) survives the very call (`Derive`) that rule licenses.
+
+### Consequence
+
+- `internal/app.InvestigatedKey`, `internal/app.originsForInvestigate`, and
+  `internal/app.investigateKey`/`knownMaterialWithAgentFact` (`internal/app/investigate.go`)
+  implement decisions 1, 2, and 4 respectively, exactly as landed in `9e51dc8`.
+- `internal/app.PassphraseGate.Derive` (`internal/app/passphrasegate.go`) carries a caller-merged
+  `Material.Comment` forward on its successful-unlock path — the decision-4 bug fix — and its own
+  doc comment states the contract in full, including the branch that used to violate it.
+- `tdd.md` §9, §10, and §18 are updated to state these four shapes as current truth, each citing
+  this entry.
+- **A named, deliberately-deferred item.** `render.marshalData`
+  (`internal/cli/render/json.go`) normalizes a nil slice to `[]` only at the top-level `data` value
+  passed to `render.JSON`, never at a nested struct field. `origins` reaches `--json` as `[]` for a
+  non-RSA key only because `originsForInvestigate` returns an empty slice at the source (decision 2
+  above) — but `"profiles": null` (`domain.Key.Profiles`, visible in the committed pre-M3.6 golden
+  `internal/cli/testdata/golden/list-key.json.golden`) and `"hosts": null`
+  (`app.KeyDetail.Hosts`, on `show key --json`) both still reach the wire as JSON `null`, the same
+  [T14](#t14) pipeline-contract wart `originsForInvestigate`'s own doc comment names and does not
+  fix generally. Neither was touched in M3.6.4, deliberately: `roadmap.md` §5.6 exit criterion 7
+  pins `list key`'s default output byte-for-byte against that golden, so changing `profiles` would
+  fail the milestone's own gate, and fixing only `hosts` would leave the two inconsistent with each
+  other for no principled reason. **This is a decision the maintainer must make before `v1.0.0` is
+  tagged**, because the tag freezes it (`tdd.md` §16).
+
+---
+
+<a id="t52"></a>
+## T52 — `render.marshalData`'s nil-slice normalization becomes a recursive walk, deep enough to cover every field, present and future
+
+**Date:** 2026-09-11 · **Status:** Accepted
+
+### Context
+
+This entry closes the item [T51](#t51)'s own `### Consequence` left open — the maintainer's
+decision, deferred there by name, on `"profiles": null` and `"hosts": null` both still reaching
+`--json`'s wire form despite [T14](#t14)'s stated pipeline contract (*"`hasp list key --json | jq`
+has to keep working release over release"*). This entry does not edit T51 — the logs are
+append-only — it names T51's open item and answers it, the same mechanism [T49](#t49) uses against
+[T39](#t39) and [T37](#t37) uses against [T29](#t29)/[T14](#t14).
+
+`internal/cli/render/json.go`'s `marshalData` has, since its own introduction (pre-dating this
+log's earliest entries), normalized a nil Go slice to JSON `"[]"` — but only when that slice *is*
+the top-level `data` value `render.JSON` is handed, never when it is a field nested inside a
+struct. Confirmed at the binary, as of this writing: `"profiles": null`
+(`domain.Key.Profiles`) in `key.list`, `key.show`, and `key.find`; `"hosts": null`
+(`app.KeyDetail.Hosts`) in `key.show`. `internal/app.originsForInvestigate`'s own doc comment (the
+one T51's Consequence names) had already worked around one instance of this — constructing
+`[]domain.Origin{}` by hand at the one call site M3.6.4 introduced — specifically *because*
+`marshalData` was not recursive, and said so in as many words: "marshalData is deliberately NOT
+made recursive to fix this class of defect generally... the fix belongs here, at the one call
+site." That was a correct, scoped decision for M3.6.4's own boundaries (roadmap.md §5.6 exit
+criterion 7 pinned `list key`'s default output byte-for-byte against a golden that still carried
+the pre-existing `"profiles": null`, so widening the fix would have failed M3.6.4's own gate) — but
+it left the actual defect in place at every other call site, present and future, each one relying
+on its own author remembering to hand-construct an empty slice rather than writing the idiomatic
+Go `return nil`.
+
+### Decision
+
+Replace `marshalData`'s top-level-only special case with a recursive walk,
+`normalizeNilSlices(reflect.Value) reflect.Value`, that reaches every nil slice `data` contains at
+any depth — through struct fields, slice elements, map values, pointers, and interfaces — and
+rewrites each one to a non-nil, zero-length slice of the same type, so it marshals as `"[]"`
+instead of `encoding/json`'s default `"null"`. This is now the one mechanism that discharges
+[T14](#t14)'s array-typed-field guarantee everywhere at once, rather than one guarantee in the
+renderer (the top-level case) plus a hand-maintained special case at each call site that happens to
+need it (`originsForInvestigate`'s pre-T52 construction, and every future field a use case might
+add) — the same "fix the class, not the instance" judgment this project already applies elsewhere
+(T18's CST-defects-as-data, T30's witness-based race detection).
+
+Four traps make the walk's correctness non-obvious, each guarded explicitly (the full argument
+lives in `normalizeNilSlices`'s own doc comment, `internal/cli/render/json.go`):
+
+1. **`json.RawMessage` never enters this walk.** `marshalData` only ever receives the payload
+   `render.JSON`'s caller hands it — the value about to become `Envelope.Data` — never the
+   `Envelope` itself, verified directly against `JSON`'s own body (`raw, err :=
+   marshalData(data)`, with `Envelope.Data: raw` assigned only afterward). One less hazard to
+   guard than a naive reading of "this walks arbitrary JSON-bound Go values" would suggest.
+2. **`[]byte` is `encoding/json`'s one documented exception to "slices are JSON arrays"** — it
+   base64-encodes to a string, and a nil one is `"null"`, correctly, not `"[]"`. The walk checks
+   the slice's *element* Kind (`Uint8`), not its exact type, matching `encoding/json`'s own rule,
+   and leaves such a slice — nil or not — completely untouched. This is the sharpest edge in the
+   function: inverting the check (testing the slice's own Kind instead of its element's) would
+   silently corrupt every `[]byte`-shaped field's wire *type*, not merely its value. No such field
+   exists in this tree today; the guard is unconditional regardless.
+3. **A type implementing `json.Marshaler` owns its output completely and is never rebuilt.** The
+   walk checks both a value's own type and a pointer to it against `json.Marshaler` (a
+   pointer-receiver method only attaches to the pointer type) and returns any match untouched
+   rather than reconstructing it field-by-field — which would, among other things, silently drop
+   its unexported state (see point 5). This covers every enum-shaped type in the tree as of this
+   writing: `domain.KeyFormat`, `domain.BindingKind`, `domain.ProfilePath`, `domain.Confidence`,
+   `domain.SchemeID`, `domain.KeyIdentity`'s `byFingerprint`/`byPath`, `app.Severity`, and
+   `app.DiffKind`. `domain.Origin.Because` (`[]domain.ReasonToken`) stays in scope regardless:
+   `ReasonToken` itself carries no `MarshalJSON` (it is a plain string on the wire), so it is the
+   *slice's element type* owning a marshaler that disqualifies descending into that element, never
+   merely the slice containing elements of some other, ordinary type.
+4. **A nil map is left as-is, never rewritten to a non-nil empty map.** [T14](#t14)'s stated
+   contract is about arrays (`jq '.data[]'` choking on `null`); nothing in it, or in any entry
+   amending it, extends to JSON objects. The one map in this tree, `app.Finding.Detail`
+   (`map[string]any`), is tagged `omitempty`, so this case is currently unreachable on the wire —
+   recorded as a decision, not an oversight, precisely because a future non-`omitempty` map field
+   would otherwise raise the same question again with no citation to answer it. A non-nil map's
+   *values* are still walked (`Finding.Detail`'s own documented `{"paths": [...]}` shape, a
+   `[]string` inside a `map[string]any` value, is exactly as normalized as any other reachable nil
+   slice).
+
+Unexported struct fields are skipped during the walk (`reflect.Value.CanSet` reports `false` for
+one, by the `reflect` package's own visibility rule) rather than zero-valued by omission — recorded
+explicitly as lossless, not overlooked, because `encoding/json` never marshals an unexported field
+either, so the two facts compose to make skipping one free of any wire-visible effect. A nil
+pointer and a nil interface both pass through unchanged (only a nil *slice* is ever rewritten; a
+pointer or an interface names a single optional value, not a "no results" collection). The walk
+never mutates the value it is handed — every slice, map, struct, pointer, and interface it
+recurses into is copied fresh (`reflect.New`/`MakeSlice`/`MakeMapWithSize`) before being written
+to, so a caller that reuses the same Go value after a `render.JSON` call observes it unchanged
+(`TestMarshalData_DoesNotMutateInput`, `internal/cli/render/json_test.go`) — `marshalData`'s
+contract with `internal/app` is to render what it is given, not to rewrite it out from under a
+caller that might hold onto it.
+
+`internal/app.originsForInvestigate`'s hand-maintained `[]domain.Origin{}` construction is retired
+back to idiomatic `return nil` now that the guarantee it was standing in for is general — its own
+doc comment is rewritten to cite this entry rather than argue for a special case that no longer
+exists (`internal/app/investigate.go`).
+
+### Rationale
+
+P8 scopes hasp to one laptop and tens of keys, never a service processing bulk JSON at volume —
+performance is explicitly not a design constraint this entry weighs against correctness, and the
+walk's per-call allocation of a fresh copy at every level is a deliberate trade for the
+trap-proof, no-mutation guarantee above, not an oversight to optimize later.
+
+One mechanism, applied uniformly by the renderer, is more structurally consistent than the
+alternative this project already tried and found wanting: a per-field discipline where each
+producer in `internal/app` must remember, unprompted, to construct `[]T{}` instead of the
+idiomatic `nil` its own use case would otherwise return. `originsForInvestigate` is the concrete
+proof that discipline does not scale even across the *existing* surface — `domain.Key.Profiles`
+and `app.KeyDetail.Hosts` sat unfixed in production output at the very moment T51 documented the
+one field M3.6.4 *did* remember to fix — and every future field a use case adds would need the same
+manual attention, forever, with no test able to catch a forgotten instance short of enumerating
+every field by hand. A recursive walk in the one place every `--json` payload already passes
+through closes the class of defect once, the same argument [T18](#t18) and [T30](#t30) already
+settled for their own domains: fix the mechanism that produces every instance, not the instance
+that happened to get noticed first.
+
+### Consequence
+
+- `internal/cli/render/json.go`'s `marshalData` and its new helper `normalizeNilSlices` implement
+  the recursive walk described above; `internal/cli/render/json_test.go` gains one unit test per
+  trap named in the Decision section, plus `TestMarshalData_DoesNotMutateInput` proving the
+  no-mutation guarantee.
+- `internal/app/investigate.go`'s `originsForInvestigate` returns idiomatic `return nil` on its
+  non-RSA branch, and its doc comment cites this entry rather than arguing against recursion.
+  `internal/app/investigate_test.go`'s `TestOriginsForInvestigate_JSON_NeverNull` — which asserted
+  the pre-T52 workaround directly via a bare `json.Marshal`, bypassing `render.JSON` entirely — is
+  replaced by `TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil`, pinning the new, idiomatic
+  app-layer shape; the wire-level guarantee it used to protect now lives, correctly, one layer up.
+- `internal/cli/jsonnullguard_test.go` adds `TestJSONKinds_NeverEmitArrayTypedNull`, a mechanical
+  end-to-end guard running every `--json` kind hasp exposes (`key.list`, `key.show`, `key.find`,
+  `host.list`, `host.show`, `host.find`, `profile.list`, `profile.show`, `profile.find`,
+  `check.report`, and the two `--investigate` variants) against a fixture built so every
+  array-typed field each kind can carry comes back genuinely empty, asserting on raw response
+  bytes (never round-tripped through `encoding/json`, which conflates `null` and `[]` on decode)
+  that no array-typed field is ever rendered as JSON `null`.
+- `internal/cli/testdata/golden/list-key.json.golden` is regenerated: `"profiles": null` becomes
+  `"profiles": []` at both occurrences. `internal/cli/testdata/golden/list-key.human.golden` is
+  byte-identical, unchanged — this fix is JSON-only, exactly as
+  `TestDefaultRead_ListKey_Golden`'s own byte-for-byte comparison on both files already proves.
+  Regenerating a golden to match a deliberately corrected structure, rather than preserving it
+  byte-for-byte against the fix, is the maintainer's own stated stance for this project's
+  pre-`v1.0.0` window specifically: correcting structure here is free, and test data — goldens
+  included — is expected to track the correction, not pin the defect. That posture is explicitly
+  temporary: the byte-frozen-artifact discipline `roadmap.md` §5.6 exit criterion 7 and
+  [T31](#t31)/[T37](#t37)'s compatibility-surface freeze describe begins **at** the `v1.0.0` tag,
+  not before it — this entry lands deliberately ahead of that tag so the fix is free to make now
+  and impossible to make later without a major-version bump.
+- `tdd.md` §10 states the corrected contract plainly, citing this entry: every array-typed field
+  in `--json` output is always an array, never `null`, at every nesting depth, enforced centrally
+  in the renderer.
+- `roadmap.md` §5.6's exit criterion 7 and its M3.6.5 close-out note are updated to state honestly
+  that the golden this criterion is asserted against was deliberately regenerated by this entry,
+  and why that does not weaken the criterion's own intent (the default read still never diverges
+  from `--investigate`'s absence, proven by the regenerated golden plus
+  `TestDefaultRead_ListKey_Investigate_DiffersFromGolden`, unchanged).
+
+---
+
+<a id="t53"></a>
+## T53 — [T52](#t52)'s end-to-end guard overstated its own coverage; corrected, not merely noted
+
+**Date:** 2026-09-11 · **Status:** Accepted
+
+### Context
+
+A v1.0.0-gate code review (revision cycle 1) of [T52](#t52) found that
+`internal/cli/jsonnullguard_test.go`'s `TestJSONKinds_NeverEmitArrayTypedNull` — [T52](#t52)'s own
+Consequence section describes it as "a mechanical end-to-end guard running every `--json` kind hasp
+exposes ... against a fixture built so every array-typed field each kind can carry comes back
+genuinely empty" — did not, in fact, do that for three of the twelve kinds it enumerates.
+`profile.list` and `profile.find` carry `app.ProfileSummary` (`internal/app/profile.go`) and
+`domain.Profile` (`internal/domain/profile.go`) respectively, and neither type has a nested
+array-typed field at all: the only array either kind's payload can ever carry is the top-level
+`data` envelope array, already covered by `marshalData`'s pre-[T52](#t52) top-level-only special
+case. Those two subtests cannot fail for the defect class [T52](#t52) exists to catch, no matter
+what `normalizeNilSlices` does — they were true before [T52](#t52)'s recursive walk existed and
+remain true regardless of it.
+
+`check.report` is the more consequential gap. `app.Finding.Detail` (`map[string]any`) is the one
+genuine map-nested-slice case in this tree — [T52](#t52)'s own Decision section cites it by name as
+proof the map-values-are-walked guarantee matters (`internal/app/check_key.go` populates
+`Detail["paths"]` with a `[]string` on a duplicate-key finding) — but
+`jsonNullGuardArrayFields` never listed `"paths"`, and the guard's shared fixture (one key, one
+bare host stanza, one empty profile) never produced a duplicate-key finding in the first place, so
+nothing about that map-nested case was ever exercised end-to-end. `check.report`'s subtest was a
+bare `assertNoArrayTypedNull` call with no fixture-specific positive assertion, unlike every other
+subtest in the same test function.
+
+The identical overstated claim — that the guard proves the guarantee "for every kind" — also
+appears in two other places written at the same time as [T52](#t52): this log's own [T52](#t52)
+Consequence section (quoted above) and `internal/app/investigate.go`'s `originsForInvestigate` doc
+comment, which cites the guard as proving the wire guarantee "through the full --json pipeline for
+every kind including this one."
+
+### Decision
+
+**1. `check.report`'s subtest now genuinely exercises the map-nested-slice path.**
+`TestJSONKinds_NeverEmitArrayTypedNull`'s shared fixture gains a second, independent real file
+(`custom_ed25519_dup`) carrying the exact same key bytes as the existing `custom_ed25519` fixture
+key. `internal/app.deriveKeys` (`internal/app/pipeline.go`) groups the two by fingerprint into one
+`domain.Key` with two non-alias `Locations` — `internal/app/check_key.go`'s own
+`detectDuplicateKeyConfirmed` trigger ("two or more non-alias Locations") — so `check --json` now
+raises a real `duplicate-key-confirmed` finding whose `Detail["paths"]` carries both files' paths.
+`jsonNullGuardArrayFields` gains `"paths"`, and `check.report`'s subtest gains a fixture-specific
+positive assertion (`"paths": [` present, and the second file's name present inside it) matching
+the pattern every other subtest already follows.
+
+**2. The three overstated-coverage sites are corrected, not merely footnoted.** `jsonnullguard_test.go`'s
+own doc comment now states plainly that `profile.list` and `profile.find` are **structural no-ops**
+for this regression class — their payload types carry no nested array field, so neither subtest can
+fail for a [T52](#t52)-class defect — and that they are enumerated anyway so a future field added to
+either payload type is caught the moment it starts carrying a nested array, not silently. This
+log's [T52](#t52) entry is append-only and is not edited; its Index-row Status gains a `refined by
+[T53](#t53)` relation clause instead, the same mechanism [T26](#t26)'s row already uses. `internal/app/investigate.go`'s
+doc comment is reworded to the same accurate claim: the guard proves the wire guarantee for
+`--investigate`'s own `origins` field specifically, and for every other kind's own genuinely
+nested array fields, while naming `profile.list`/`profile.find` as this entry's recorded, deliberate
+exception rather than leaving the prior, broader claim standing uncorrected.
+
+**3. The strengthened guard's actual bite is recorded honestly, not assumed.** Verification for this
+revision required neutering `normalizeNilSlices` to `return v` and confirming `check.report`'s
+subtest newly fails. It does not. Both `Detail["paths"]`-producing detectors in
+`internal/app/check_key.go` — `detectDuplicateKeyConfirmed` and `detectDuplicateKeyUnconfirmed` —
+only ever construct their `paths`/`allPaths` slice, and only ever raise their finding at all, after
+first establishing `len(paths) >= 2` (each detector's own firing precondition, guarding against
+reporting a "duplicate" of one). That precondition makes `Detail["paths"]` structurally
+non-nil at the moment either finding carries it, in the codebase as it stands today — so a fully
+neutered `normalizeNilSlices` still renders `"paths": [...]` correctly for this fixture, by
+accident of the source value never being nil, not because the walk did anything. `check.report`'s
+subtest therefore adds genuine end-to-end coverage of the map-nested-slice shape reaching the wire
+through the real detector pipeline (proving the walk does not corrupt a real, non-synthetic
+map-nested value, and guarding against a future detector change that could produce a nil `paths`),
+but it is not, today, a guard that would have caught [T52](#t52)'s original defect for this specific
+field — that proof remains `TestNormalizeNilSlices_MapValueNilSliceNormalized`
+(`internal/cli/render/json_test.go`), which constructs the nil case directly rather than relying on
+a detector that cannot produce one.
+
+### Rationale
+
+A coverage claim that reads as broader than what the code actually proves is a liability at exactly
+the moment [D12](decision-log.md#d12)/`design.md` §5.1 already treat as universal: an assertion
+should never claim more than its evidence supports, the identical discipline [P10](design.md#4-principles)'s
+closed confidence vocabulary enforces for a domain fact, applied here to a test's own claim about
+itself. A maintainer auditing test coverage before cutting `v1.0.0` needs `profile.list`/`profile.find`'s
+enumeration to read as the recorded, intentional no-op it is — not as evidence of something the code
+cannot demonstrate — and needs `check.report`'s subtest to actually exercise the one map-nested case
+[T52](#t52) itself cited as load-bearing, not merely gesture at it. Both halves of this entry serve
+that one principle: say only what is true, and make what should be true actually exercised where
+the class of defect could hide.
+
+### Consequence
+
+- `internal/cli/jsonnullguard_test.go`: the shared fixture gains `custom_ed25519_dup`;
+  `jsonNullGuardArrayFields` gains `"paths"`; `check.report`'s subtest gains a fixture-specific
+  positive assertion; the function's own doc comment, and the `profile.list`/`profile.find`
+  subtests' comments, state the structural-no-op fact plainly instead of implying uniform coverage.
+- `internal/app/investigate.go`'s `originsForInvestigate` doc comment no longer claims the guard
+  covers "every kind including this one" without qualification; it names the recorded exception.
+- This log's [T52](#t52) Index row gains a `refined by [T53](#t53)` Status clause; [T52](#t52)'s own
+  entry prose is unedited, per this log's append-only rule.
+- No production code changes: this entry is test-and-documentation-only, correcting what the guard
+  proves and what three doc comments claimed it proves, and closing the one genuine coverage gap
+  (`check.report`'s map-nested slice) the correction surfaced.

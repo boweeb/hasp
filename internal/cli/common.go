@@ -69,12 +69,24 @@ func resolveKeyClue(m app.Machine, clue string) (domain.Key, error) {
 	if detail, ok := app.ShowKey(m, clue); ok {
 		return detail.Key, nil
 	}
-	matches := app.FindKeys(m, clue)
+	// resolveKeyClue backs adopt (adopt.go:43), release (release.go:37), edit (edit.go:48,162),
+	// and new --key (new.go:117) — every one of them a single-key lookup, not `find key`'s own
+	// multi-match report. On the case-0 path below, D20's failure mode (a false negative reading
+	// as "you don't have this key") reappears one layer in: an encrypted candidate key against a
+	// scheme that needs the decrypted private key (aws-created-rsa, T48) yields zero matches with
+	// no signal distinguishing "checked, doesn't match" from "never evaluated." T48's warnings
+	// carry exactly that signal, so a not-found here folds them into the error rather than
+	// discarding them; case 1 and the multi-match default need no such folding since they already
+	// have a positive or disambiguating answer.
+	matches, warnings := app.FindKeys(m, clue)
 	switch len(matches) {
 	case 0:
+		if len(warnings) > 0 {
+			return domain.Key{}, fmt.Errorf("key %q not found (%s)", clue, strings.Join(warnings, "; "))
+		}
 		return domain.Key{}, fmt.Errorf("key %q not found", clue)
 	case 1:
-		return matches[0], nil
+		return matches[0].Key, nil
 	default:
 		return domain.Key{}, fmt.Errorf("%q matches %d keys; use a more specific clue", clue, len(matches))
 	}
