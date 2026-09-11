@@ -37,7 +37,7 @@ var jsonNullGuardArrayFields = []string{
 // jsonNullGuardArrayFields. It operates on raw bytes rather than decoding raw back into Go
 // values, deliberately: encoding/json decodes both a JSON "null" and a JSON "[]" into the same
 // nil/zero-length Go slice, so a round trip through json.Unmarshal cannot distinguish the two —
-// exactly the defect T52 exists to catch, and exactly what internal/cli/defaultread_golden_test.go's
+// exactly the defect T52 exists to catch, and exactly what internal/app/investigate_test.go's
 // TestOriginsForInvestigate_NonRSA_ReturnsIdiomaticNil-adjacent tests already knew, one call site
 // at a time, before T52 made the guarantee general.
 func assertNoArrayTypedNull(t *testing.T, kind string, raw []byte) {
