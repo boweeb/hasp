@@ -289,7 +289,13 @@ func refineSchemeReasons(schemes []domain.SchemeFingerprint, derived DerivedMate
 // this comment argued at length for keeping that special case specifically *because* marshalData
 // was not yet recursive; T52 made it recursive, so the argument, and the special case it defended,
 // are both retired. Nothing about the wire output changes: a non-RSA key's `origins` field still
-// marshals as `[]`, never `null` — see TestOriginsForInvestigate_JSON_NeverNull.
+// marshals as `[]`, never `null` — proven where that guarantee now actually lives, one layer up,
+// by internal/cli/render's own unit tests and by internal/cli's end-to-end guard
+// (TestJSONKinds_NeverEmitArrayTypedNull, internal/cli/jsonnullguard_test.go), which asserts it
+// through the full --json pipeline for every kind including this one. This sentence cited a
+// TestOriginsForInvestigate_JSON_NeverNull that T52 itself deleted — it tested the retired
+// workaround via a bare json.Marshal that bypassed the renderer entirely, so it could not have
+// proven the claim it was cited for even had it survived.
 //
 // tdd.md §10's / T37's worked example — {"id": "aws-ec2-created", "confidence": "possible",
 // "because": ["algorithm=rsa", "format=pem", "no-console-fingerprint-supplied"]} — shows the shape
