@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -45,6 +46,9 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	markHelpOnly(root)
+	root.SetUsageTemplate(hideRunnableUsageLine(root.UsageTemplate()))
+
 	root.PersistentFlags().String("key-dir", defaultKeyDir(), "key directory (default ~/.ssh)")
 	root.PersistentFlags().Bool("json", false, "machine-readable output")
 	root.PersistentFlags().Bool("verbose", false, "enable diagnostic logging to stderr")
@@ -56,16 +60,50 @@ func NewRootCmd() *cobra.Command {
 	root.PersistentFlags().Bool("yes", false, "consent to apply a write non-interactively")
 
 	root.AddCommand(newVersionCmd())
-	root.AddCommand(newListCmd())
-	root.AddCommand(newShowCmd())
-	root.AddCommand(newFindCmd())
-	root.AddCommand(newCheckCmd())
-	root.AddCommand(newNewCmd())
-	root.AddCommand(newAdoptCmd())
-	root.AddCommand(newReleaseCmd())
-	root.AddCommand(newEditCmd())
+	for _, parent := range []*cobra.Command{
+		newListCmd(),
+		newShowCmd(),
+		newFindCmd(),
+		newCheckCmd(),
+		newNewCmd(),
+		newAdoptCmd(),
+		newReleaseCmd(),
+		newEditCmd(),
+	} {
+		if parent.Run == nil && parent.RunE == nil {
+			markHelpOnly(parent)
+		} else {
+			parent.Args = rejectUnexpectedArgs
+		}
+		root.AddCommand(parent)
+	}
+
+	preserveUnknownHelpTopic(root)
 
 	return root
+}
+
+// preserveUnknownHelpTopic keeps `hasp help bogus` behaving as it did before root had Args.
+// cobra's built-in help command detects an unknown topic via root.Find returning an error, but
+// Find only calls legacyArgs for a root without Args, so with Args set it returns (root, ["bogus"])
+// and the help command would print root help to stdout instead of "Unknown help topic" on stderr.
+// The wrapper reproduces cobra's own unknown-topic output (same calls, same stream) and delegates
+// every other case unchanged, including `help list bogus`.
+func preserveUnknownHelpTopic(root *cobra.Command) {
+	root.InitDefaultHelpCmd()
+	help, _, err := root.Find([]string{"help"})
+	if err != nil || help == root || help.Run == nil {
+		panic("cli: cobra's default help command not found")
+	}
+	orig := help.Run
+	help.Run = func(c *cobra.Command, args []string) {
+		if found, rest, err := c.Root().Find(args); err == nil && found == c.Root() && len(rest) > 0 {
+			c.Printf("Unknown help topic %#q\n", args)
+			cobra.CheckErr(c.Root().Usage())
+			return
+		}
+		orig(c, args)
+	}
 }
 
 func defaultKeyDir() string {
@@ -121,6 +159,89 @@ func configureLogging(verbose bool) {
 		out = os.Stderr
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(out, nil)))
+}
+
+// helpOnlyAnnotation marks a command whose only job is to show its own help and to reject unknown
+// positional arguments (root and every verb parent without a real RunE). Cobra runs Args
+// validation only on Runnable commands, so such a command is given a RunE (showHelp) purely to
+// make it validate — see markHelpOnly. The annotation lets the usage template and the doc
+// generator treat it as if it were not Runnable, so help and docs/cli stay byte-identical to a
+// tree with no such RunE (docs/tech-decision-log.md#t54).
+const helpOnlyAnnotation = "hasp.help-only"
+
+// markHelpOnly makes cmd a help-only command: unknown args are a usage error, no args shows help,
+// and the annotation is set in the same place as the RunE so the two cannot drift.
+func markHelpOnly(cmd *cobra.Command) {
+	cmd.Args = rejectUnexpectedArgs
+	cmd.RunE = showHelp
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[helpOnlyAnnotation] = "true"
+}
+
+// StripHelpOnlyRunners clears Run/RunE on every help-only command in the tree rooted at root so
+// cmd.Runnable() reports false for it, as it did before those commands were given showHelp. It is
+// for tools/gendocs only: cobra/doc's generators print a "hasp list [flags]" synopsis for any
+// Runnable command, which would misdescribe a help-only parent. Never call it on a tree that will
+// be executed.
+func StripHelpOnlyRunners(root *cobra.Command) {
+	if _, ok := root.Annotations[helpOnlyAnnotation]; ok {
+		root.Run, root.RunE = nil, nil
+	}
+	for _, c := range root.Commands() {
+		StripHelpOnlyRunners(c)
+	}
+}
+
+// runnableUsageCond is the exact opening of cobra's default usage template that prints the
+// "hasp list [flags]" line; hideRunnableUsageLine narrows it.
+const runnableUsageCond = "Usage:{{if .Runnable}}"
+
+// hideRunnableUsageLine returns tmpl with the Usage line suppressed for help-only commands.
+// It panics if cobra's template no longer contains the expected text, so a cobra upgrade that
+// changes it fails every test rather than silently reintroducing the misleading line.
+func hideRunnableUsageLine(tmpl string) string {
+	if !strings.Contains(tmpl, runnableUsageCond) {
+		panic("cli: cobra usage template no longer contains " + runnableUsageCond)
+	}
+	return strings.Replace(tmpl, runnableUsageCond,
+		"Usage:{{if and .Runnable (not (index .Annotations \""+helpOnlyAnnotation+"\"))}}", 1)
+}
+
+// rejectUnexpectedArgs makes a leftover positional argument on a command with subcommands a usage
+// error (exit 2). cobra's own legacyArgs validator only checks the root, and cobra.NoArgs omits
+// the "Did you mean" suggestions legacyArgs adds, so they are restored here in cobra's format.
+func rejectUnexpectedArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.NoArgs(cmd, args); err != nil {
+		return fmt.Errorf("%w: %v%s", app.ErrUsage, err, suggestionsText(cmd, args[0]))
+	}
+	return nil
+}
+
+// suggestionsText mirrors cobra's unexported Command.findSuggestions, including its bump of a
+// non-positive SuggestionsMinimumDistance to 2 (SuggestionsFor uses the raw field).
+func suggestionsText(cmd *cobra.Command, arg string) string {
+	if cmd.DisableSuggestions {
+		return ""
+	}
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2
+	}
+	suggestions := cmd.SuggestionsFor(arg)
+	if len(suggestions) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\nDid you mean this?\n")
+	for _, s := range suggestions {
+		fmt.Fprintf(&sb, "\t%v\n", s)
+	}
+	return sb.String()
+}
+
+func showHelp(cmd *cobra.Command, _ []string) error {
+	return cmd.Help()
 }
 
 // exactArgs wraps cobra.ExactArgs so a missing/extra positional argument reports as app.ErrUsage

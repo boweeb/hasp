@@ -1027,6 +1027,13 @@ use that phrase.
 | `2` | Usage — bad flags/arguments, or a fail-closed non-interactive precondition (§11) | Any command |
 | `3` | Error — hasp could not complete the operation | Any command |
 
+An unrecognized root verb or noun under a verb is a usage error: `hasp bogusverb` and `hasp list bogus`
+exit `2`, print one diagnostic line naming the unrecognized token and its command (followed by
+cobra-style "Did you mean this?" suggestion lines when a close match exists), and write
+nothing to stdout. Registered noun aliases remain valid; omitting a noun from a verb parent still
+shows that command's help, except bare `check`, which runs the aggregate check. See
+[T54](tech-decision-log.md#t54) for the mechanism.
+
 Cobra never calls `os.Exit` itself; `cmd/hasp`'s `main()` maps the error `rootCmd.Execute()`
 returns to one of the four codes via a small sentinel-error taxonomy. `check` is the **only**
 use case permitted to resolve to `1` — no other verb ever does, so `if hasp check ...; then`

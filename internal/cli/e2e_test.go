@@ -7,7 +7,10 @@
 package cli_test
 
 import (
+	"errors"
 	"os"
+	"os/exec"
+	"strconv"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
@@ -22,5 +25,36 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
-	testscript.Run(t, testscript.Params{Dir: "testdata/script"})
+	testscript.Run(t, testscript.Params{
+		Dir: "testdata/script",
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			"assert-exit-code": assertExitCode,
+		},
+	})
+}
+
+func assertExitCode(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("assert-exit-code does not support negation")
+	}
+	if len(args) < 2 {
+		ts.Fatalf("usage: assert-exit-code <code> <command> [args...]")
+	}
+	expected, err := strconv.Atoi(args[0])
+	if err != nil {
+		ts.Fatalf("invalid exit code %q: %v", args[0], err)
+	}
+
+	err = ts.Exec(args[1], args[2:]...)
+	actual := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			ts.Fatalf("run %q: %v", args[1], err)
+		}
+		actual = exitErr.ExitCode()
+	}
+	if actual != expected {
+		ts.Fatalf("%q exited with code %d, want %d", args[1], actual, expected)
+	}
 }

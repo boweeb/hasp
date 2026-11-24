@@ -1,0 +1,129 @@
+mkdir $WORK/home/.ssh
+env HOME=$WORK/home
+
+# Unknown nouns under verb parents, including check's aggregate parent, are usage errors.
+assert-exit-code 2 hasp check keyz --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*keyz.*hasp check.*$'
+
+assert-exit-code 2 hasp list bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp list.*$'
+
+assert-exit-code 2 hasp show bogus x --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp show.*$'
+
+assert-exit-code 2 hasp find bogus x --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp find.*$'
+
+assert-exit-code 2 hasp new bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp new.*$'
+
+assert-exit-code 2 hasp adopt bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp adopt.*$'
+
+assert-exit-code 2 hasp release bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp release.*$'
+
+assert-exit-code 2 hasp edit bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogus.*hasp edit.*$'
+
+# Cobra's root unknown-command error is mapped through the same usage-error sentinel.
+assert-exit-code 2 hasp bogusverb --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: .*bogusverb.*hasp.*$'
+
+# Bare commands and help continue to work; bare check still runs the aggregate.
+exec hasp --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp list --key-dir $WORK/home/.ssh
+stdout 'List every resource of one kind'
+exec hasp show --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp find --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp check --key-dir $WORK/home/.ssh
+stdout 'clean'
+exec hasp new --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp adopt --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp release --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp edit --key-dir $WORK/home/.ssh
+stdout 'Usage:'
+exec hasp help list
+stdout 'List every resource of one kind'
+exec hasp list --help
+stdout 'List every resource of one kind'
+exec hasp completion bash
+stdout 'bash completion V2 for hasp'
+exec hasp __complete list ''
+stdout 'key'
+stdout 'host'
+stdout 'profile'
+
+# Registered plural aliases still reach their noun commands rather than the parent validator.
+assert-exit-code 0 hasp list keys --key-dir $WORK/home/.ssh
+stdout 'NAME'
+assert-exit-code 0 hasp list hosts --key-dir $WORK/home/.ssh
+stdout 'PATTERN'
+assert-exit-code 0 hasp list profiles --key-dir $WORK/home/.ssh
+stdout 'PROFILE'
+assert-exit-code 0 hasp find keys absent --key-dir $WORK/home/.ssh
+stdout 'NAME'
+assert-exit-code 0 hasp find hosts absent --key-dir $WORK/home/.ssh
+stdout 'PATTERN'
+assert-exit-code 0 hasp find profiles absent --key-dir $WORK/home/.ssh
+stdout 'PROFILE'
+assert-exit-code 0 hasp check keys --key-dir $WORK/home/.ssh
+stdout 'clean'
+assert-exit-code 0 hasp check hosts --key-dir $WORK/home/.ssh
+stdout 'clean'
+assert-exit-code 0 hasp check profiles --key-dir $WORK/home/.ssh
+stdout 'clean'
+
+# Unknown-noun errors keep cobra's "Did you mean" suggestions, still exit 2.
+assert-exit-code 2 hasp lsit --key-dir $WORK/home/.ssh
+! stdout .
+stderr 'Did you mean this\?'
+stderr 'list'
+assert-exit-code 2 hasp list kye --key-dir $WORK/home/.ssh
+! stdout .
+stderr 'Did you mean this\?'
+stderr 'key'
+
+# Help-only commands are Runnable internally but must not advertise a "[flags]" usage line.
+exec hasp --help
+! stdout 'hasp \[flags\]'
+exec hasp --key-dir $WORK/home/.ssh
+! stdout 'hasp \[flags\]'
+exec hasp list --help
+! stdout 'hasp list \[flags\]'
+exec hasp list --key-dir $WORK/home/.ssh
+! stdout 'hasp list \[flags\]'
+
+# Flag placement and the "--" terminator do not bypass validation.
+assert-exit-code 2 hasp --json list bogus --key-dir ''
+! stdout .
+stderr 'usage error'
+assert-exit-code 2 hasp list --json bogus --key-dir ''
+! stdout .
+stderr 'usage error'
+assert-exit-code 2 hasp list --key-dir '' -- bogus
+! stdout .
+stderr 'usage error'
+assert-exit-code 2 hasp --key-dir '' -- bogus
+! stdout .
+stderr 'usage error'
+
+# `help <unknown>` keeps its pre-validation behaviour: topic error on stderr, nothing on stdout.
+exec hasp help bogus
+! stdout .
+stderr 'Unknown help topic'
