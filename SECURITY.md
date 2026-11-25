@@ -41,8 +41,8 @@ These boundaries are hard, and none of them is new here — they're restated fro
 
 ## The two access exceptions, and their constraints
 
-Both exceptions are bound by the same four constraints — [D17](docs/decision-log.md#d17)'s,
-generalized by [D19](docs/decision-log.md#d19) from a single write path to every read:
+Both exceptions are bound by the same four constraints — [D17](backlog/decisions/decision-D17.md)'s,
+generalized by [D19](backlog/decisions/decision-D19.md) from a single write path to every read:
 
 1. **Explicit request only.** hasp never prompts or reads as a side effect of an operation that
    didn't ask for it.

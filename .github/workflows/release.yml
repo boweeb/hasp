@@ -45,8 +45,8 @@ jobs:
     # Runs after release publishes, so this tag and its artifacts already exist (roadmap.md §5.5
     # exit criterion 6) — a fresh job/VM with no actions/cache sharing with the release job above,
     # so the go install step below is isolated from that job's own build/module cache by
-    # construction, with no container: needed to get that isolation (docs/tech-decision-log.md,
-    # the T45 entry recording this job's design).
+    # construction, with no container: needed to get that isolation (backlog/decisions/decision-T45.md,
+    # the entry recording this job's design).
     needs: release
     runs-on: ubuntu-latest
     permissions:

@@ -27,7 +27,7 @@ Related:
 > If a future argument about implementation cannot be settled by appeal to something in
 > §4 (Principles), §5 (Domain Model), or §8 (Decisions), then this document has a gap and
 > should be amended rather than reinterpreted. Every settled question, and the reasoning
-> behind it, is recorded permanently in `docs/decision-log.md`.
+> behind it, is recorded permanently in the decision log (its rules are in `docs/decision-log.md`; the entries are under `backlog/decisions/`).
 
 ---
 
@@ -733,8 +733,8 @@ how confident it is (P10).*
 ## 8. Decisions
 
 The questions this document raised have been reviewed and **all twenty-two are ratified**.
-Settled decisions live in **`docs/decision-log.md`** — the reasoning, the alternatives rejected,
-and what each one commits the project to. That file is the permanent record and the place to
+Settled decisions live in the decision log, one file per entry under **`backlog/decisions/`** (rules in `docs/decision-log.md`) — the reasoning, the alternatives rejected,
+and what each one commits the project to. That log is the permanent record and the place to
 look when asking "why is it like this?"; this document is the current truth.
 
 **D1** profile is the single organizing concept · **D2** keys and hosts may belong to many

@@ -1,0 +1,23 @@
+project_name: "hasp"
+default_status: "To Do"
+statuses: ["To Do", "In Progress", "Done"]
+labels: ["effort", "uat", "v1-blocker", "backfill", "docs", "ci", "release", "cli", "write-path", "hosts", "profiles", "keys", "check", "investigation", "m4"]
+definition_of_done:
+  - "`go run mage.go ci` passes"
+  - "Docs updated where affected (`go run mage.go docs` clean)"
+  - "New choices recorded as a hand-authored decision-Dn/decision-Tn in backlog/decisions/"
+  - "Follow-ups filed as tasks or drafts"
+  - "Verification evidence in notes or final summary"
+date_format: yyyy-mm-dd
+max_column_width: 120
+default_editor: "/usr/bin/subl"
+auto_open_browser: false
+default_port: 6420
+remote_operations: true
+auto_commit: false
+zero_padded_ids: 4
+filesystem_only: false
+bypass_git_hooks: false
+check_active_branches: false
+active_branch_days: 30
+task_prefix: "task"

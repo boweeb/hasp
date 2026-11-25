@@ -1,24 +1,38 @@
 // Command docscheck runs the documentation-verification checks this documentation set's own
 // culture depends on (docs/tdd.md §17 "The `Docs` target", docs/roadmap.md §5.5 M3.5.3): broken
-// markdown links and anchors, every `Dn`/`Tn` citation resolving to a real `<a id>` (and zero `Fn`
-// references, since no F-log has ever existed), the decision-log/tech-decision-log per-log
-// invariants (anchor IDs contiguous from 1, index row count matching anchor count, every entry
-// carrying a `### Consequence`), and citation-anchored verbatim-quotation checking. It is a
-// development-time tool, run via `go run ./tools/docscheck` from the repo root and wired as the
-// `Docs` Mage target — never imported by hasp itself, and never exec'd by hasp at runtime.
+// markdown links and anchors, every `Dn`/`Tn` citation resolving to a real decision file (and zero
+// `Fn` references, since no F-log has ever existed), the per-namespace decision invariants
+// (contiguous IDs from 1, front matter agreeing with the filename, every entry carrying a
+// `### Consequence`), and citation-anchored verbatim-quotation checking. It is a development-time
+// tool, run via `go run ./tools/docscheck` from the repo root and wired as the `Docs` Mage target —
+// never imported by hasp itself, and never exec'd by hasp at runtime.
 //
-// It walks every file matching docs/*.md (non-recursive) and accumulates every finding from all
-// four checks before deciding pass/fail, rather than stopping at the first. Two gotchas this tool
-// exists to get right, both called out in tdd.md §17: GitHub's anchor-slug algorithm gives each
-// space its own hyphen and never collapses repeats, so an em-dash heading (the em-dash rune is
-// dropped entirely, leaving two adjacent spaces) yields a double hyphen; and a verbatim quotation
-// can wrap across source lines, so comparison must join a paragraph's lines with single spaces
-// before matching.
+// The decision logs live one entry per file at backlog/decisions/decision-{D,T}<n>.md (T56); the
+// docs/decision-log.md and docs/tech-decision-log.md stubs keep only the rules. Scope differs by
+// check, deliberately:
+//
+//   - Check A (links) reads docs/*.md, backlog/decisions, the backlog task/draft/milestone/doc/
+//     completed folders, and the root *.md files, resolving every link relative to the file it
+//     appears in.
+//   - Check B (citations) reads the same set, so a task citing a nonexistent T99 is caught. Its
+//     zero-F-refs rule exempts exactly the UAT finding ID shape `U<n>.F<m>` (tasks carry those).
+//   - Check C (invariants) reads backlog/decisions only.
+//   - Check D (quotations) reads docs/*.md and backlog/decisions only: backlog tasks quote text
+//     from outside the repository (the UAT log), which this tool cannot and should not verify.
+//
+// It accumulates every finding from every check before deciding pass/fail, rather than
+// stopping at the first. Two gotchas this tool exists to get right, both called out in tdd.md §17:
+// GitHub's anchor-slug algorithm gives each space its own hyphen and never collapses repeats, so an
+// em-dash heading (the em-dash rune is dropped entirely, leaving two adjacent spaces) yields a
+// double hyphen; and a verbatim quotation can wrap across source lines, so comparison must join a
+// paragraph's lines with single spaces before matching.
 package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -27,7 +41,23 @@ import (
 	"unicode"
 )
 
-const docsDir = "docs"
+const (
+	docsDir      = "docs"
+	decisionsDir = "backlog/decisions"
+)
+
+// scanDirs are the directories (relative to the repo root, non-recursive) whose *.md files are
+// loaded; "." is the root, for README.md, SECURITY.md, CLAUDE.md, and AGENTS.md.
+var scanDirs = []string{
+	".",
+	docsDir,
+	decisionsDir,
+	"backlog/tasks",
+	"backlog/drafts",
+	"backlog/milestones",
+	"backlog/docs",
+	"backlog/completed",
+}
 
 // finding is one reported problem, rendered as "path:line: message".
 type finding struct {
@@ -40,9 +70,8 @@ func (f finding) String() string {
 	return fmt.Sprintf("%s:%d: %s", f.path, f.line, f.msg)
 }
 
-// docFile holds one docs/*.md file's content, both raw and split into lines, keyed by base name
-// (e.g. "decision-log.md") for cross-file resolution the way links in this corpus are written —
-// always a bare filename inside docs/.
+// docFile holds one markdown file's content, both raw and split into lines, keyed by its
+// slash-separated path relative to the repo root (e.g. "docs/design.md") for cross-file resolution.
 type docFile struct {
 	path    string // e.g. "docs/decision-log.md"
 	base    string // e.g. "decision-log.md"
@@ -50,24 +79,20 @@ type docFile struct {
 	lines   []string
 }
 
+func (f *docFile) dir() string { return path.Dir(f.path) }
+
+// inQuoteScope reports whether Check D reads this file (see the package doc).
+func (f *docFile) inQuoteScope() bool {
+	d := f.dir()
+	return d == docsDir || d == decisionsDir
+}
+
 func main() {
-	files, err := loadDocFiles(docsDir)
+	findings, err := run(".")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "docscheck:", err)
 		os.Exit(1)
 	}
-
-	byBase := make(map[string]*docFile, len(files))
-	for _, f := range files {
-		byBase[f.base] = f
-	}
-
-	var findings []finding
-	findings = append(findings, checkLinks(files, byBase)...)
-	findings = append(findings, checkCitations(files, byBase)...)
-	findings = append(findings, checkLogInvariants(byBase)...)
-	findings = append(findings, checkQuotations(files, byBase)...)
-
 	for _, f := range findings {
 		fmt.Println(f.String())
 	}
@@ -77,32 +102,56 @@ func main() {
 	}
 }
 
-// loadDocFiles reads every file directly inside dir matching *.md — non-recursive, exactly the
-// files the task describes.
-func loadDocFiles(dir string) ([]*docFile, error) {
-	entries, err := os.ReadDir(dir)
+// run loads every in-scope file under root and returns the findings of every check.
+func run(root string) ([]finding, error) {
+	files, err := loadFiles(root)
 	if err != nil {
 		return nil, err
 	}
+	byPath := make(map[string]*docFile, len(files))
+	for _, f := range files {
+		byPath[f.path] = f
+	}
+
+	var findings []finding
+	findings = append(findings, checkLinks(root, files, byPath)...)
+	findings = append(findings, checkCitations(files, byPath)...)
+	findings = append(findings, checkLogInvariants(byPath)...)
+	findings = append(findings, checkQuotations(files, buildSources(byPath))...)
+	return findings, nil
+}
+
+// loadFiles reads every *.md file directly inside each scanDirs entry (non-recursive). A missing
+// directory is skipped: backlog/tasks and friends need not exist.
+func loadFiles(root string) ([]*docFile, error) {
 	var out []*docFile
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		b, err := os.ReadFile(p)
+	for _, dir := range scanDirs {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			return nil, err
 		}
-		content := string(b)
-		out = append(out, &docFile{
-			path:    p,
-			base:    e.Name(),
-			content: content,
-			lines:   strings.Split(content, "\n"),
-		})
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			rel := path.Join(dir, e.Name())
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				return nil, err
+			}
+			content := string(b)
+			out = append(out, &docFile{
+				path:    rel,
+				base:    e.Name(),
+				content: content,
+				lines:   strings.Split(content, "\n"),
+			})
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].base < out[j].base })
+	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
 	return out, nil
 }
 
@@ -201,12 +250,18 @@ func buildAnchorInfo(f *docFile) anchorInfo {
 // Check A: link/anchor resolution
 // ---------------------------------------------------------------------------------------------
 
-var linkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)]+)\)`)
+// linkRe matches inline links. A target may be wrapped in angle brackets (`[x](<a b.md>)`, the
+// CommonMark form for a target containing spaces); the brackets are stripped before resolution.
+// A link title (`[x](url "title")`) is not supported: this corpus uses none.
+var linkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\((<[^>]*>|[^)]+)\)`)
 
-func checkLinks(files []*docFile, byBase map[string]*docFile) []finding {
+// checkLinks resolves every inline markdown link relative to the file it appears in. A target that
+// is a loaded markdown file gets full fragment checking; a target that exists on disk but is not
+// loaded (a directory, a Go file, a generated docs/cli page) is only checked for existence.
+func checkLinks(root string, files []*docFile, byPath map[string]*docFile) []finding {
 	anchors := make(map[string]anchorInfo, len(files))
 	for _, f := range files {
-		anchors[f.base] = buildAnchorInfo(f)
+		anchors[f.path] = buildAnchorInfo(f)
 	}
 
 	var findings []finding
@@ -214,7 +269,7 @@ func checkLinks(files []*docFile, byBase map[string]*docFile) []finding {
 		for lineIdx, line := range f.lines {
 			lineNo := lineIdx + 1
 			for _, m := range linkRe.FindAllStringSubmatch(line, -1) {
-				bang, target := m[1], m[3]
+				bang, target := m[1], strings.TrimSuffix(strings.TrimPrefix(m[3], "<"), ">")
 				if bang == "!" {
 					continue
 				}
@@ -229,37 +284,32 @@ func checkLinks(files []*docFile, byBase map[string]*docFile) []finding {
 					filePart, fragPart, hasFrag = target[:idx], target[idx+1:], true
 				}
 
-				targetBase := filePart
-				if targetBase == "" {
-					targetBase = f.base
-				}
-
+				targetPath := f.path
 				if filePart != "" {
-					if _, ok := byBase[filePart]; !ok {
-						findings = append(findings, finding{f.path, lineNo,
-							fmt.Sprintf("link target file %q does not exist under docs/", filePart)})
+					// Backlog task files have spaces in their names, which links write as %20.
+					if un, err := url.PathUnescape(filePart); err == nil {
+						filePart = un
+					}
+					targetPath = path.Join(f.dir(), filePart)
+					if _, ok := byPath[targetPath]; !ok {
+						if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(targetPath))); err != nil {
+							findings = append(findings, finding{f.path, lineNo,
+								fmt.Sprintf("link target file %q does not exist (resolved to %s)", filePart, targetPath)})
+						}
 						continue
 					}
 				}
 
-				if !hasFrag {
-					continue
-				}
-				if fragPart == "" {
+				if !hasFrag || fragPart == "" {
 					continue
 				}
 
-				info, ok := anchors[targetBase]
-				if !ok {
-					// Should not happen: targetBase either passed the existence check above or
-					// is f.base itself, which is always present.
-					continue
-				}
+				info := anchors[targetPath]
 				if info.ids[fragPart] || info.slugs[fragPart] {
 					continue
 				}
 				findings = append(findings, finding{f.path, lineNo,
-					fmt.Sprintf("link fragment %q does not resolve in %s", fragPart, targetBase)})
+					fmt.Sprintf("link fragment %q does not resolve in %s", fragPart, targetPath)})
 			}
 		}
 	}
@@ -275,44 +325,44 @@ func checkLinks(files []*docFile, byBase map[string]*docFile) []finding {
 // scan raw, unstripped content. tdd.md's fenced Go-snippet blocks embed real Dn/Tn citations in
 // their doc comments (e.g. references to D5, D9, D13, T1, T12 inside struct-definition examples),
 // and this project's culture wants those kept honest too — so leaving them in view is intentional,
-// not an oversight. No fenced block in this corpus currently contains a log heading, a
-// "### Consequence" line, or a quotation span, so Checks C and D have no live exposure to this
-// asymmetry either way.
+// not an oversight. No fenced block in this corpus currently contains a "### Consequence" line or
+// a quotation span, so Checks C and D have no live exposure to this asymmetry either way.
 
 var (
-	anchorNumRe = regexp.MustCompile(`(?i)<a id="([dt])(\d+)">`)
-	citeDRe     = regexp.MustCompile(`\bD(\d+)\b`)
-	citeTRe     = regexp.MustCompile(`\bT(\d+)\b`)
-	citeFRe     = regexp.MustCompile(`\bF(\d+)\b`)
+	decisionFileRe = regexp.MustCompile(`^decision-([DT])(\d+)\.md$`)
+	citeDRe        = regexp.MustCompile(`\bD(\d+)\b`)
+	citeTRe        = regexp.MustCompile(`\bT(\d+)\b`)
+	citeFRe        = regexp.MustCompile(`\bF(\d+)\b`)
+
+	// uatFindingRe is the UAT finding ID shape (`U4.F1`). Backlog tasks carry those, and the
+	// zero-F-refs rule exists to catch a citation of a log that never existed, not these.
+	uatFindingRe = regexp.MustCompile(`\bU\d+\.F\d+\b`)
 )
 
-// validAnchorNumbers collects the set of valid N from every <a id="letterN"> in f, matching
-// letter case-insensitively (the corpus writes lowercase "d1"/"t1").
-func validAnchorNumbers(f *docFile, letter byte) map[int]bool {
-	valid := map[int]bool{}
-	for _, m := range anchorNumRe.FindAllStringSubmatch(f.content, -1) {
-		if strings.EqualFold(m[1], string(letter)) {
-			n, err := strconv.Atoi(m[2])
-			if err == nil {
-				valid[n] = true
-			}
+// decisionFiles returns every decision-{D,T}<n>.md file in byPath, grouped by prefix ("D"/"T") and
+// number. Files in backlog/decisions that do not match the name shape are reported by Check C.
+func decisionFiles(byPath map[string]*docFile) map[string]map[int][]*docFile {
+	out := map[string]map[int][]*docFile{"D": {}, "T": {}}
+	for _, f := range byPath {
+		if f.dir() != decisionsDir {
+			continue
 		}
+		m := decisionFileRe.FindStringSubmatch(f.base)
+		if m == nil {
+			continue
+		}
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			continue
+		}
+		out[m[1]][n] = append(out[m[1]][n], f)
 	}
-	return valid
+	return out
 }
 
-func checkCitations(files []*docFile, byBase map[string]*docFile) []finding {
+func checkCitations(files []*docFile, byPath map[string]*docFile) []finding {
 	var findings []finding
-
-	dLog, hasD := byBase["decision-log.md"]
-	tLog, hasT := byBase["tech-decision-log.md"]
-	var validD, validT map[int]bool
-	if hasD {
-		validD = validAnchorNumbers(dLog, 'd')
-	}
-	if hasT {
-		validT = validAnchorNumbers(tLog, 't')
-	}
+	valid := decisionFiles(byPath)
 
 	for _, f := range files {
 		for lineIdx, line := range f.lines {
@@ -320,19 +370,19 @@ func checkCitations(files []*docFile, byBase map[string]*docFile) []finding {
 
 			for _, m := range citeDRe.FindAllStringSubmatch(line, -1) {
 				n, _ := strconv.Atoi(m[1])
-				if !hasD || !validD[n] {
+				if len(valid["D"][n]) == 0 {
 					findings = append(findings, finding{f.path, lineNo,
-						fmt.Sprintf("citation D%d does not resolve to an entry in decision-log.md", n)})
+						fmt.Sprintf("citation D%d does not resolve to %s/decision-D%d.md", n, decisionsDir, n)})
 				}
 			}
 			for _, m := range citeTRe.FindAllStringSubmatch(line, -1) {
 				n, _ := strconv.Atoi(m[1])
-				if !hasT || !validT[n] {
+				if len(valid["T"][n]) == 0 {
 					findings = append(findings, finding{f.path, lineNo,
-						fmt.Sprintf("citation T%d does not resolve to an entry in tech-decision-log.md", n)})
+						fmt.Sprintf("citation T%d does not resolve to %s/decision-T%d.md", n, decisionsDir, n)})
 				}
 			}
-			for _, m := range citeFRe.FindAllStringSubmatch(line, -1) {
+			for _, m := range citeFRe.FindAllStringSubmatch(uatFindingRe.ReplaceAllString(line, ""), -1) {
 				findings = append(findings, finding{f.path, lineNo,
 					fmt.Sprintf("F-log reference %q found; no F-log has ever existed in this project", m[0])})
 			}
@@ -342,136 +392,152 @@ func checkCitations(files []*docFile, byBase map[string]*docFile) []finding {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Check C: per-log invariants (decision-log.md / D, tech-decision-log.md / T)
+// Check C: per-namespace decision invariants (backlog/decisions, D and T)
 // ---------------------------------------------------------------------------------------------
 
-func checkLogInvariants(byBase map[string]*docFile) []finding {
+var (
+	frontMatterKeyRe = regexp.MustCompile(`^(id|title|date|status):\s*(.*)$`)
+	isoDateRe        = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}`)
+	consequenceRe    = regexp.MustCompile(`^### Consequence`)
+)
+
+func checkLogInvariants(byPath map[string]*docFile) []finding {
 	var findings []finding
-	if f, ok := byBase["decision-log.md"]; ok {
-		findings = append(findings, checkOneLog(f, "D")...)
+
+	// Every file in backlog/decisions must be a hand-authored decision-D<n>/T<n> file: anything
+	// else is what `backlog decision create` mints (T56) — a third ID namespace.
+	var paths []string
+	for p, f := range byPath {
+		if f.dir() == decisionsDir {
+			paths = append(paths, p)
+		}
 	}
-	if f, ok := byBase["tech-decision-log.md"]; ok {
-		findings = append(findings, checkOneLog(f, "T")...)
+	sort.Strings(paths)
+	for _, p := range paths {
+		f := byPath[p]
+		m := decisionFileRe.FindStringSubmatch(f.base)
+		if m == nil {
+			findings = append(findings, finding{f.path, 0,
+				"decision file name must be decision-D<n>.md or decision-T<n>.md (hand-authored; never `backlog decision create`, T56)"})
+			continue
+		}
+		if n, _ := strconv.Atoi(m[2]); strconv.Itoa(n) != m[2] {
+			findings = append(findings, finding{f.path, 0, "decision number must not be zero-padded"})
+		}
+		findings = append(findings, checkEntryFile(f, m[1], m[2])...)
+	}
+
+	// IDs contiguous from 1, per namespace, no duplicates.
+	grouped := decisionFiles(byPath)
+	for _, prefix := range []string{"D", "T"} {
+		maxN := 0
+		for n, fs := range grouped[prefix] {
+			if n > maxN {
+				maxN = n
+			}
+			if len(fs) > 1 {
+				findings = append(findings, finding{fs[0].path, 0,
+					fmt.Sprintf("%s%d appears in %d files (duplicate)", prefix, n, len(fs))})
+			}
+		}
+		// Walk the numbers that exist, not 1..maxN: a stray decision-D999999999.md must not make
+		// this loop (or the report) enormous. Report the first few missing IDs and a remainder.
+		var nums []int
+		for n := range grouped[prefix] {
+			nums = append(nums, n)
+		}
+		sort.Ints(nums)
+		const maxListed = 5
+		var listed []string
+		missing, prev := 0, 0
+		for _, n := range nums {
+			for g := prev + 1; g < n && len(listed) < maxListed; g++ {
+				listed = append(listed, fmt.Sprintf("%s%d", prefix, g))
+			}
+			if n > prev+1 {
+				missing += n - prev - 1
+			}
+			if n > prev {
+				prev = n
+			}
+		}
+		if missing > 0 {
+			verb := "is"
+			if len(listed) > 1 {
+				verb = "are"
+			}
+			msg := fmt.Sprintf("%s %s missing (gap in %s1..%s%d)", strings.Join(listed, ", "), verb, prefix, prefix, maxN)
+			if missing > len(listed) {
+				msg = fmt.Sprintf("%s and %d more are missing (gap in %s1..%s%d)", strings.Join(listed, ", "), missing-len(listed), prefix, prefix, maxN)
+			}
+			findings = append(findings, finding{decisionsDir, 0, msg})
+		}
 	}
 	return findings
 }
 
-func checkOneLog(f *docFile, prefix string) []finding {
+// unquote strips one layer of matching single or double quotes from a front matter value.
+func unquote(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) >= 2 && (v[0] == '\'' && v[len(v)-1] == '\'' || v[0] == '"' && v[len(v)-1] == '"') {
+		return v[1 : len(v)-1]
+	}
+	return v
+}
+
+// checkEntryFile verifies one decision file: front matter whose id agrees with the filename and
+// that carries a title, an ISO date, and a status; and a body with a line starting
+// "### Consequence" (a prefix match, so the "### Consequence if accepted" variant counts too).
+func checkEntryFile(f *docFile, prefix, num string) []finding {
 	var findings []finding
+	wantID := "decision-" + prefix + num
 
-	anchorLineRe := regexp.MustCompile(`(?i)<a id="` + strings.ToLower(prefix) + `(\d+)">`)
-	entryHeadingRe := regexp.MustCompile(`^## ` + prefix + `(\d+) `)
-	consequenceRe := regexp.MustCompile(`^### Consequence`)
-	indexHeadingRe := regexp.MustCompile(`^## `)
-	indexRowRe := regexp.MustCompile(`^\|\s*\[` + prefix + `\d+\]\(#` + strings.ToLower(prefix) + `\d+\)`)
-
-	// 1. Anchor numbers: exactly {1, ..., max}, no gaps, no duplicates.
-	type anchorHit struct {
-		n    int
-		line int
+	if len(f.lines) == 0 || f.lines[0] != "---" {
+		return []finding{{f.path, 1, "decision file has no YAML front matter"}}
 	}
-	var anchorHits []anchorHit
-	for lineIdx, line := range f.lines {
-		m := anchorLineRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		n, err := strconv.Atoi(m[1])
-		if err != nil {
-			continue
-		}
-		anchorHits = append(anchorHits, anchorHit{n, lineIdx + 1})
-	}
-
-	seen := map[int]int{} // n -> count
-	maxN := 0
-	for _, h := range anchorHits {
-		seen[h.n]++
-		if h.n > maxN {
-			maxN = h.n
-		}
-	}
-	for n, count := range seen {
-		if count > 1 {
-			findings = append(findings, finding{f.path, 0,
-				fmt.Sprintf("%s%d anchor appears %d times (duplicate)", prefix, n, count)})
-		}
-	}
-	for n := 1; n <= maxN; n++ {
-		if seen[n] == 0 {
-			findings = append(findings, finding{f.path, 0,
-				fmt.Sprintf("%s%d anchor is missing (gap in %s1..%s%d)", prefix, n, prefix, prefix, maxN)})
-		}
-	}
-	numAnchors := len(anchorHits)
-
-	// 2. Index table row count == anchor count.
-	inIndex := false
-	numIndexRows := 0
-	for _, line := range f.lines {
-		trimmed := strings.TrimRight(line, " \t")
-		if !inIndex {
-			if trimmed == "## Index" {
-				inIndex = true
-			}
-			continue
-		}
-		if indexHeadingRe.MatchString(line) {
+	end := -1
+	for i := 1; i < len(f.lines); i++ {
+		if f.lines[i] == "---" {
+			end = i
 			break
 		}
-		if indexRowRe.MatchString(line) {
-			numIndexRows++
-		}
 	}
-	if numIndexRows != numAnchors {
-		findings = append(findings, finding{f.path, 0,
-			fmt.Sprintf("## Index has %d row(s) for %s but %d anchor(s) exist", numIndexRows, prefix, numAnchors)})
+	if end == -1 {
+		return []finding{{f.path, 1, "decision file front matter is never closed"}}
 	}
 
-	// 3. Every entry (span from "## <prefix>N " heading to the next such heading, or EOF)
-	// contains a line starting with "### Consequence" (covers the "### Consequence if accepted"
-	// variant too — a prefix match is intentional).
-	type entrySpan struct {
-		n         int
-		startLine int // 0-indexed
-		endLine   int // exclusive, 0-indexed
+	got := map[string]string{}
+	for _, line := range f.lines[1:end] {
+		if m := frontMatterKeyRe.FindStringSubmatch(line); m != nil {
+			got[m[1]] = unquote(m[2])
+		}
 	}
-	var entryHeadingLines []int
-	var entryNums []int
-	for lineIdx, line := range f.lines {
-		m := entryHeadingRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		n, err := strconv.Atoi(m[1])
-		if err != nil {
-			continue
-		}
-		entryHeadingLines = append(entryHeadingLines, lineIdx)
-		entryNums = append(entryNums, n)
+	if got["id"] != wantID {
+		findings = append(findings, finding{f.path, 1,
+			fmt.Sprintf("front matter id %q does not match filename (want %q)", got["id"], wantID)})
 	}
-	var spans []entrySpan
-	for i, startLine := range entryHeadingLines {
-		endLine := len(f.lines)
-		if i+1 < len(entryHeadingLines) {
-			endLine = entryHeadingLines[i+1]
-		}
-		spans = append(spans, entrySpan{n: entryNums[i], startLine: startLine, endLine: endLine})
+	if got["title"] == "" {
+		findings = append(findings, finding{f.path, 1, "front matter has no title"})
 	}
-	for _, span := range spans {
-		hasConsequence := false
-		for _, line := range f.lines[span.startLine:span.endLine] {
-			if consequenceRe.MatchString(line) {
-				hasConsequence = true
-				break
-			}
-		}
-		if !hasConsequence {
-			findings = append(findings, finding{f.path, span.startLine + 1,
-				fmt.Sprintf("%s%d has no line starting with \"### Consequence\"", prefix, span.n)})
-		}
+	if !isoDateRe.MatchString(got["date"]) {
+		findings = append(findings, finding{f.path, 1,
+			fmt.Sprintf("front matter date %q is not an ISO date", got["date"])})
+	}
+	if got["status"] == "" {
+		findings = append(findings, finding{f.path, 1, "front matter has no status"})
 	}
 
+	hasConsequence := false
+	for _, line := range f.lines[end+1:] {
+		if consequenceRe.MatchString(line) {
+			hasConsequence = true
+			break
+		}
+	}
+	if !hasConsequence {
+		findings = append(findings, finding{f.path, end + 2,
+			fmt.Sprintf("%s%s has no line starting with \"### Consequence\"", prefix, num)})
+	}
 	return findings
 }
 
@@ -480,10 +546,16 @@ func checkOneLog(f *docFile, prefix string) []finding {
 // ---------------------------------------------------------------------------------------------
 
 var (
-	// project-assessment-2026-08.md is included alongside the other four cross-referenced docs:
-	// tech-decision-log.md's T27 links and quotes it directly (docs/project-assessment-2026-08.md
-	// §6's Phase 1/2 text), so it is a real, checkable citation target in this corpus too.
-	citeLinkRe   = regexp.MustCompile(`\]\((design\.md|tdd\.md|roadmap\.md|decision-log\.md|tech-decision-log\.md|project-assessment-2026-08\.md)(?:#[^)]*)?\)`)
+	// project-assessment-2026-08.md is included alongside the other cross-referenced docs:
+	// T27's entry links and quotes it directly (docs/project-assessment-2026-08.md §6's Phase 1/2
+	// text), so it is a real, checkable citation target in this corpus too.
+	//
+	// Links are written relative to the citing file ("../../docs/design.md" from a decision file,
+	// "../backlog/decisions/decision-D9.md" from docs/), so the regexp accepts any directory prefix
+	// and captures only the base name. A link to a single decision file is attributed to its whole
+	// namespace (see buildSources), exactly as a bare Dn/Tn token is — the pre-T56 behavior, when
+	// the namespace was one file.
+	citeLinkRe   = regexp.MustCompile(`\]\((?:[^)\s#]*/)?(design\.md|tdd\.md|roadmap\.md|decision-log\.md|tech-decision-log\.md|project-assessment-2026-08\.md|decision-[DT]\d+\.md)(?:#[^)]*)?\)`)
 	citeBacktick = regexp.MustCompile("`(design\\.md|tdd\\.md|roadmap\\.md|decision-log\\.md|tech-decision-log\\.md|project-assessment-2026-08\\.md)`")
 	citeBareD    = regexp.MustCompile(`\bD(\d+)\b`)
 	citeBareT    = regexp.MustCompile(`\bT(\d+)\b`)
@@ -653,8 +725,53 @@ func sealedByParen(spans []closedParenSpan, start, end int) bool {
 	return false
 }
 
-// findCitationSource looks for the six citation patterns (a markdown link to one of the five
-// docs, a bare backtick-quoted filename, or a bare Dn/Tn/Pn/Jn token) within before, and returns
+// sourceKey maps a cited file's base name to the key buildSources indexes it under: a decision
+// file collapses to its namespace's log name.
+func sourceKey(base string) string {
+	if m := decisionFileRe.FindStringSubmatch(base); m != nil {
+		if m[1] == "D" {
+			return "decision-log.md"
+		}
+		return "tech-decision-log.md"
+	}
+	return base
+}
+
+// buildSources returns the checkable text behind each citation source key. The two log keys are
+// the concatenation of the docs/ stub (which still carries the log's rules) and every decision
+// file of that namespace, so a quotation of a log rule or of any entry verifies the same way it
+// did when the log was one file.
+func buildSources(byPath map[string]*docFile) map[string]string {
+	src := map[string]string{}
+	for _, name := range []string{"design.md", "tdd.md", "roadmap.md", "project-assessment-2026-08.md"} {
+		if f, ok := byPath[docsDir+"/"+name]; ok {
+			src[name] = f.content
+		}
+	}
+	for prefix, key := range map[string]string{"D": "decision-log.md", "T": "tech-decision-log.md"} {
+		var sb strings.Builder
+		if f, ok := byPath[docsDir+"/"+key]; ok {
+			sb.WriteString(f.content)
+		}
+		groups := decisionFiles(byPath)[prefix]
+		var nums []int
+		for n := range groups {
+			nums = append(nums, n)
+		}
+		sort.Ints(nums)
+		for _, n := range nums {
+			for _, f := range groups[n] {
+				sb.WriteString("\n")
+				sb.WriteString(f.content)
+			}
+		}
+		src[key] = sb.String()
+	}
+	return src
+}
+
+// findCitationSource looks for the citation patterns (a markdown link to a tracked doc or decision
+// file, a bare backtick-quoted filename, or a bare Dn/Tn/Pn/Jn token) within before, and returns
 // the source file named by whichever match ends closest to (nearest before) the quotation. It
 // returns ok=false if none of the patterns appear anywhere in before.
 //
@@ -679,10 +796,10 @@ func findCitationSource(before string) (source string, ok bool) {
 	}
 
 	for _, m := range citeLinkRe.FindAllStringSubmatchIndex(before, -1) {
-		consider(m[0], m[1], before[m[2]:m[3]])
+		consider(m[0], m[1], sourceKey(before[m[2]:m[3]]))
 	}
 	for _, m := range citeBacktick.FindAllStringSubmatchIndex(before, -1) {
-		consider(m[0], m[1], before[m[2]:m[3]])
+		consider(m[0], m[1], sourceKey(before[m[2]:m[3]]))
 	}
 	for _, m := range citeBareD.FindAllStringSubmatchIndex(before, -1) {
 		consider(m[0], m[1], "decision-log.md")
@@ -784,7 +901,7 @@ var knownHistoricalQuotes = []knownHistoricalQuote{
 		// chase design.md's current text would falsify the historical record T7 is deliberately
 		// keeping; leaving tech-decision-log.md untouched is exactly what M3.5.3's own scope
 		// restricts this task to.
-		file:   "tech-decision-log.md",
+		file:   "decision-T7.md",
 		quoted: "Only as a last resort, a hasp settings file — and no case has yet required one.",
 	},
 	{
@@ -794,7 +911,7 @@ var knownHistoricalQuotes = []knownHistoricalQuote{
 		// own next sentence names the amendment explicitly ("docs/design.md §4 states the amended
 		// form"), so this is not a checker-missed drift: design.md's current P9 (§4) no longer
 		// carries this clause on purpose.
-		file:   "decision-log.md",
+		file:   "decision-D16.md",
 		quoted: "No case has yet required one",
 	},
 	{
@@ -804,7 +921,7 @@ var knownHistoricalQuotes = []knownHistoricalQuote{
 		// longer carries a deferred implementation-stack item because T27 is exactly the decision
 		// that resolved it (Go, per docs/tdd.md §2), so its absence from the current doc is the
 		// intended outcome T27 records, not drift.
-		file:   "tech-decision-log.md",
+		file:   "decision-T27.md",
 		quoted: "**Implementation stack** — language, runtime, distribution, dependencies. Nothing in this document assumes any of them.",
 	},
 }
@@ -818,9 +935,12 @@ func isKnownHistoricalQuote(file, quoted string) bool {
 	return false
 }
 
-func checkQuotations(files []*docFile, byBase map[string]*docFile) []finding {
+func checkQuotations(files []*docFile, sources map[string]string) []finding {
 	var findings []finding
 	for _, f := range files {
+		if !f.inQuoteScope() {
+			continue
+		}
 		for _, para := range splitParagraphs(f) {
 			for _, q := range findQuotes(para.text) {
 				before := sentenceWindow(para.text[:q.start])
@@ -828,11 +948,11 @@ func checkQuotations(files []*docFile, byBase map[string]*docFile) []finding {
 				if !ok {
 					continue // unattributed/external quote: not this tool's to check
 				}
-				srcFile, haveSource := byBase[source]
+				srcContent, haveSource := sources[source]
 				if !haveSource {
-					continue // the named source file doesn't exist in docs/; Check A covers that
+					continue // the named source file doesn't exist; Check A covers that
 				}
-				if wordNormalize(q.quoted) == "" || quoteMatchesSource(q.quoted, srcFile.content) {
+				if wordNormalize(q.quoted) == "" || quoteMatchesSource(q.quoted, srcContent) {
 					continue
 				}
 				if isKnownHistoricalQuote(f.base, q.quoted) {

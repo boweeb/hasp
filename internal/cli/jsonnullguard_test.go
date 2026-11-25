@@ -60,7 +60,7 @@ func assertNoArrayTypedNull(t *testing.T, kind string, raw []byte) {
 // host.find, profile.list, profile.show, profile.find, check.report, and both --investigate
 // variants tdd.md §18 adds on top of key.list/key.show — but enumeration is not the same claim as
 // coverage: profile.list and profile.find are **structural no-ops** for this regression class
-// (revision cycle 1, verifier finding 2, recorded permanently at T53, docs/tech-decision-log.md).
+// (revision cycle 1, verifier finding 2, recorded permanently at T53, backlog/decisions/decision-T53.md).
 // app.ProfileSummary and domain.Profile (internal/app/profile.go, internal/domain/profile.go)
 // carry no nested array-typed field at all — the only array either kind's payload can ever carry
 // is the top-level `data` envelope array itself, which was already covered by marshalData's

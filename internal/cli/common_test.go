@@ -45,7 +45,7 @@ func commonTestCopyFixture(t *testing.T, fixturesDir, name, destPath string) {
 // aws-created-rsa can never evaluate without a passphrase find/resolveKeyClue never ask for
 // (T48, T39) — landed on FindKeys' case-0 branch with T48's warning silently discarded, producing
 // a bare "not found" indistinguishable from "you don't have this key" (D20's own failure mode,
-// reproduced one layer in, docs/decision-log.md:1259-1262). It must instead name the unevaluable
+// reproduced one layer in, backlog/decisions/decision-D20.md). It must instead name the unevaluable
 // scheme.
 func TestResolveKeyClue_EncryptedKeyUnderCreatedRSAClue_ReportsUnevaluableScheme(t *testing.T) {
 	fixturesDir := commonTestFixturesDir(t)

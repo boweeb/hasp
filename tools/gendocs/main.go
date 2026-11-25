@@ -1,13 +1,13 @@
 // Command gendocs generates hasp's user-facing reference surface — man pages, shell completions,
 // and a CLI reference under docs/cli/ — from the cobra command tree itself
-// (docs/tech-decision-log.md#t34, docs/tdd.md §17 "The `Docs` target"). T34's decision is that
+// (backlog/decisions/decision-T34.md, docs/tdd.md §17 "The `Docs` target"). T34's decision is that
 // this surface is generated wherever it can drift out of step with the binary, and CI fails if the
 // committed copy has gone stale. It is a development-time tool, run via `go run ./tools/gendocs`
 // from the repo root and wired as the `GenDocs` (regenerate) and `Docs` (`-check`, staleness gate)
 // Mage targets — never imported by hasp itself, and never exec'd by hasp at runtime.
 //
 // Help-only commands: root and every verb parent without a real RunE carry a showHelp RunE so
-// cobra validates their args (unknown nouns exit 2; docs/tech-decision-log.md#t54). cobra/doc
+// cobra validates their args (unknown nouns exit 2; backlog/decisions/decision-T54.md). cobra/doc
 // prints a "hasp list [flags]" synopsis for any Runnable command, which would misdescribe those
 // parents, so generateAll calls cli.StripHelpOnlyRunners on its private tree first and the
 // generated reference stays identical to what a non-Runnable parent produces.

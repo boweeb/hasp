@@ -294,7 +294,7 @@ func refineSchemeReasons(schemes []domain.SchemeFingerprint, derived DerivedMate
 // (TestJSONKinds_NeverEmitArrayTypedNull, internal/cli/jsonnullguard_test.go), which asserts it
 // through the full --json pipeline for this kind's own `origins` field specifically, and for every
 // other --json kind's own genuinely nested array fields the same way — T53
-// (docs/tech-decision-log.md) records, as a corrected and deliberate fact rather than an
+// (backlog/decisions/decision-T53.md) records, as a corrected and deliberate fact rather than an
 // oversight, that two of the guard's twelve enumerated kinds (profile.list, profile.find) are
 // structural no-ops for this regression class: their payload types carry no nested array field at
 // all, so neither can fail for this class of defect regardless of what normalizeNilSlices does. An

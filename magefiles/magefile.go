@@ -75,7 +75,7 @@ func Fixtures() error {
 }
 
 // GenDocs regenerates the generated reference surface — docs/cli/, manpages/, and completions/ —
-// from the cobra command tree (docs/tech-decision-log.md#t34); see tools/gendocs's own package doc
+// from the cobra command tree (backlog/decisions/decision-T34.md); see tools/gendocs's own package doc
 // for what it produces. Like Fixtures, this is a standalone dev-time "regenerate and commit"
 // target, run manually via `go run mage.go gendocs` — CI instead runs the read-only `-check` mode
 // via Docs below, so a regenerate never nondeterministically rewrites tracked files mid-CI-run.
@@ -86,7 +86,7 @@ func GenDocs() error {
 // Docs runs both halves of docs/tdd.md §17's "Docs target": the documentation-verification checks
 // (docs/roadmap.md §5.5) — broken links and anchors, every Dn/Tn citation resolving to a real
 // entry, the D-log/T-log per-log invariants, and citation-anchored verbatim-quotation checking —
-// and the generated-reference staleness check (docs/tech-decision-log.md#t34), which diffs a fresh
+// and the generated-reference staleness check (backlog/decisions/decision-T34.md), which diffs a fresh
 // regeneration of docs/cli/, manpages/, and completions/ against their committed copies and fails
 // if they disagree. It fails on whichever check fails first.
 func Docs() error {

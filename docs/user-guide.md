@@ -16,15 +16,15 @@ Related:
 > stories. It is not a flag reference — every generated page under `docs/cli/` is regenerated
 > from the binary itself and checked for staleness in CI, so it is the byte-exact source of truth
 > for syntax. This guide exists to show *how* and *why*, in real invocations,
-> and to point at the generated reference for the rest ([T34](tech-decision-log.md#t34)).
+> and to point at the generated reference for the rest ([T34](../backlog/decisions/decision-T34.md)).
 
 Every example below assumes a `~/.ssh` you want to inspect or manage. Pass `--key-dir` to point
 hasp at a different directory (the flag defaults to `~/.ssh`); every command below also accepts
 `--json` for machine-readable output, and every write accepts `--yes` to consent non-interactively
 instead of confirming at a prompt.
 
-This guide covers **J1–J8** and, as of [M3.6](tech-decision-log.md#t51), **J10**. J9 (Git/GPG
-identity) is still a post-v1 direction gated behind M4 ([D8](decision-log.md#d8)) and has no
+This guide covers **J1–J8** and, as of [M3.6](../backlog/decisions/decision-T51.md), **J10**. J9 (Git/GPG
+identity) is still a post-v1 direction gated behind M4 ([D8](../backlog/decisions/decision-D8.md)) and has no
 commands yet, so it stays out of this guide until it does.
 
 ## J1 — Survey
@@ -113,7 +113,7 @@ hasp check profile
 across managed *and* unmanaged resources alike — duplicate keys, keys missing a public half,
 orphaned or unaffiliated keys, dangling or shadowed host references, and empty or unmarked profile
 directories. Reporting works on anything it finds. Fixing an unmanaged resource requires adopting
-it first, since unmanaged resources are read-only by design ([D14](decision-log.md#d14)):
+it first, since unmanaged resources are read-only by design ([D14](../backlog/decisions/decision-D14.md)):
 
 ```sh
 hasp adopt key <name-or-clue> --profile work.foobarco

@@ -20,14 +20,14 @@ inventory of every artifact hasp leaves behind, and, at the end, the complete pa
 ## `.hasp` marker files
 
 A **profile** is a directory under your key directory that carries a `.hasp` marker file
-([D14](decision-log.md#d14)). The marker is what makes the difference between an unmanaged
+([D14](../backlog/decisions/decision-D14.md)). The marker is what makes the difference between an unmanaged
 directory (hasp only ever reports on it) and a managed one (hasp has full write access, and
 features that depend on complete metadata become available).
 
 On disk, it is exactly what it looks like: an empty-or-nearly-empty file named `.hasp` sitting in
 the profile directory, e.g. `~/.ssh/work/foobarco/.hasp`. Run `ls -la` in a profile directory and
 you'll see it sitting next to the keys it contains. hasp reads only whether the file
-*exists* — never its contents ([D15](decision-log.md#d15)). That means:
+*exists* — never its contents ([D15](../backlog/decisions/decision-D15.md)). That means:
 
 - **You may write in it.** hasp never parses, validates, or reports on anything you put there.
   It's yours — a note to your future self is a perfectly good use of it.
@@ -48,7 +48,7 @@ A **host**'s managed status is marked differently — see the next section.
 Configuration files like `~/.ssh/config` are different from a profile directory: they're **co-
 owned**, written in by hand long before hasp ever saw them. hasp's rule for a co-owned file is
 that it owns only the regions it explicitly marks as its own, and everything else is preserved
-byte for byte ([D7](decision-log.md#d7)).
+byte for byte ([D7](../backlog/decisions/decision-D7.md)).
 
 Two shapes appear on disk, depending on whether hasp created the file outright or is sharing it:
 
@@ -87,13 +87,13 @@ A region may also carry structured facts as plain comments, in the form `#:hasp 
 
 hasp reads one optional settings file, at a location the Go standard library already defines —
 `os.UserConfigDir()/hasp/settings.toml`, i.e. `~/.config/hasp/settings.toml` on Linux or
-`~/Library/Application Support/hasp/settings.toml` on Darwin ([T7](tech-decision-log.md#t7)).
+`~/Library/Application Support/hasp/settings.toml` on Darwin ([T7](../backlog/decisions/decision-T7.md)).
 It lives deliberately outside `~/.ssh` — it is not key material and not arrangement, so it has no
 business in the directory hasp otherwise confines itself to.
 
 Today it holds exactly one thing: the default passphrase mode `new key` falls back to when you
 don't pass `--passphrase`, `--no-passphrase`, or `--passphrase-stdin` explicitly
-([D16](decision-log.md#d16)):
+([D16](../backlog/decisions/decision-D16.md)):
 
 ```toml
 # ~/.config/hasp/settings.toml
@@ -111,7 +111,7 @@ attached), so hasp works fully with zero configuration.
 
 Before hasp modifies anything it did not create, it copies the current file into
 `~/.ssh/.hasp-backups/`, timestamped — for example, `.hasp-backups/config.20260828T140501Z`
-([T8](tech-decision-log.md#t8)). The directory inherits your key directory's own `0700`
+([T8](../backlog/decisions/decision-T8.md)). The directory inherits your key directory's own `0700`
 permissions, and restoring a backup is a plain `mv` — no hasp command needed, no special tooling,
 just the copy sitting there in a directory `ls` already shows you.
 
@@ -128,7 +128,7 @@ only you get to make.
 
 Because every managed resource got that way by explicit `adopt`, undoing hasp's presence
 completely is a literal, mechanical process rather than an aspiration — this is
-[D14](decision-log.md#d14)'s "two-way door" and [P6](design.md#4-principles)'s "the user loses a
+[D14](../backlog/decisions/decision-D14.md)'s "two-way door" and [P6](design.md#4-principles)'s "the user loses a
 convenience and nothing else," made concrete:
 
 1. **Release every adopted resource.** For each managed key, host, and profile:

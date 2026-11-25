@@ -191,7 +191,7 @@ func configureLogging(verbose bool) {
 // validation only on Runnable commands, so such a command is given a RunE (showHelp) purely to
 // make it validate — see markHelpOnly. The annotation lets the usage template and the doc
 // generator treat it as if it were not Runnable, so help and docs/cli stay byte-identical to a
-// tree with no such RunE (docs/tech-decision-log.md#t54).
+// tree with no such RunE (backlog/decisions/decision-T54.md).
 const helpOnlyAnnotation = "hasp.help-only"
 
 // markHelpOnly makes cmd a help-only command: unknown args are a usage error, no args shows help,

@@ -26,7 +26,7 @@ Related:
 >
 > **It assesses the Python implementation of hasp**, which was not carried forward. hasp was
 > re-implemented in Go, in this repository, per
-> [`T27`](tech-decision-log.md#t27) — which cites this document as its own evidence and records
+> [`T27`](../backlog/decisions/decision-T27.md) — which cites this document as its own evidence and records
 > why the repair roadmap in §6 below was not taken. In short: `D12` removed persisted state
 > entirely, which dissolved Phase 1's plan to decide the store and Phase 2's goal to finish
 > `sync key` — the two phases §6 identifies as the bulk of the work and the MVP.
@@ -41,11 +41,11 @@ Related:
 >
 > | §5 question | Settled by |
 > | --- | --- |
-> | 1. TOML or SQLite? | [`D12`](decision-log.md#d12) — **neither.** hasp persists nothing and derives everything, so there is no store to choose |
-> | 2. Verb×resource matrix or `factory/`? | The matrix survives — [`D10`](decision-log.md#d10) classifies the nouns, [`T3`](tech-decision-log.md#t3) registers commands from a table. `factory/` is not carried forward |
+> | 1. TOML or SQLite? | [`D12`](../backlog/decisions/decision-D12.md) — **neither.** hasp persists nothing and derives everything, so there is no store to choose |
+> | 2. Verb×resource matrix or `factory/`? | The matrix survives — [`D10`](../backlog/decisions/decision-D10.md) classifies the nouns, [`T3`](../backlog/decisions/decision-T3.md) registers commands from a table. `factory/` is not carried forward |
 > | 3. Is the Borg pattern earning its keep? | **No.** [`tdd.md` §12](tdd.md) makes the key directory an explicitly injected value, never a global — named there as the discipline that structurally rules out this document's own "why it had zero tests" finding |
-> | 4. What is an "alias", exactly? | [`D5`](decision-log.md#d5) — an additional *name* for a key, materialized as a link, sharing one flat namespace with names |
-> | 5. Groups vs. the README's profiles | [`D1`](decision-log.md#d1) — one concept, hierarchically named. "Key group" and "profile group" are retired; [`D9`](decision-log.md#d9) reinstates "host group" with a container meaning |
+> | 4. What is an "alias", exactly? | [`D5`](../backlog/decisions/decision-D5.md) — an additional *name* for a key, materialized as a link, sharing one flat namespace with names |
+> | 5. Groups vs. the README's profiles | [`D1`](../backlog/decisions/decision-D1.md) — one concept, hierarchically named. "Key group" and "profile group" are retired; [`D9`](../backlog/decisions/decision-D9.md) reinstates "host group" with a container meaning |
 
 ---
 
