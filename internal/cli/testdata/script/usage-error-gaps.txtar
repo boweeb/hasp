@@ -1,0 +1,68 @@
+# T55: every flag parse error and every extra positional on a zero-argument leaf is a usage error
+# (exit 2, empty stdout, `hasp: usage error:` on stderr). A real, empty --key-dir is passed so no
+# case can reach exit 2 through requireKeyDir instead of the guard under test.
+mkdir $WORK/home/.ssh
+env HOME=$WORK/home
+
+# Unknown flags: root, a verb parent, and a leaf. cobra's own message text is kept.
+assert-exit-code 2 hasp --bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unknown flag: --bogus$'
+
+assert-exit-code 2 hasp list --bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unknown flag: --bogus$'
+
+assert-exit-code 2 hasp list key --bogus --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unknown flag: --bogus$'
+
+# A bad flag value.
+assert-exit-code 2 hasp list key --json=maybe --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: invalid argument "maybe" for "--json" flag'
+
+# --version is not a flag (U4.F9); `hasp version` is the command.
+assert-exit-code 2 hasp --version
+! stdout .
+stderr '^hasp: usage error: unknown flag: --version$'
+
+# Extra positionals on every zero-argument leaf.
+assert-exit-code 2 hasp version bogus
+! stdout .
+stderr '^hasp: usage error: unexpected argument "bogus" for "hasp version"$'
+
+assert-exit-code 2 hasp list key extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp list key"$'
+
+assert-exit-code 2 hasp list host extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp list host"$'
+
+assert-exit-code 2 hasp list profile extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp list profile"$'
+
+assert-exit-code 2 hasp check key extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp check key"$'
+
+assert-exit-code 2 hasp check host extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp check host"$'
+
+assert-exit-code 2 hasp check profile extra --key-dir $WORK/home/.ssh
+! stdout .
+stderr '^hasp: usage error: unexpected argument "extra" for "hasp check profile"$'
+
+# Controls: the same leaves and a valid flag value still succeed against the same --key-dir.
+exec hasp version
+stdout .
+exec hasp list key --json=true --key-dir $WORK/home/.ssh
+exec hasp list key --key-dir $WORK/home/.ssh
+exec hasp list host --key-dir $WORK/home/.ssh
+exec hasp list profile --key-dir $WORK/home/.ssh
+exec hasp check key --key-dir $WORK/home/.ssh
+exec hasp check host --key-dir $WORK/home/.ssh
+exec hasp check profile --key-dir $WORK/home/.ssh

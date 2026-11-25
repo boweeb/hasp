@@ -70,3 +70,26 @@ func TestEveryParentValidatesArgs(t *testing.T) {
 	}
 	walk(NewRootCmd())
 }
+
+// TestEveryRunnableCommandValidatesArgs: a Runnable command with nil Args accepts any positional
+// silently — cobra skips legacyArgs for a command without subcommands — so every Runnable command
+// must declare a validator (T55). cobra's own help (its positionals are a topic path), completion,
+// and __complete (flag parsing disabled; args are the line being completed) are skipped: hasp does
+// not own their argument contracts. completion and __complete are only added during Execute, so
+// they are skipped here by name in case that ever changes.
+func TestEveryRunnableCommandValidatesArgs(t *testing.T) {
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		switch c.Name() {
+		case "help", "completion", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return
+		}
+		if c.Runnable() && c.Args == nil {
+			t.Errorf("%s is Runnable but has nil Args", c.CommandPath())
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(NewRootCmd())
+}

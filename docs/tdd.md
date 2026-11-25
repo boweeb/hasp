@@ -1034,6 +1034,12 @@ nothing to stdout. Registered noun aliases remain valid; omitting a noun from a 
 shows that command's help, except bare `check`, which runs the aggregate check. See
 [T54](tech-decision-log.md#t54) for the mechanism.
 
+Malformed flags and extra arguments are usage errors on every command, the same way: an unknown
+flag (including `--version`; the command is `hasp version`), a bad flag value, or a flag missing
+its value, and any positional argument given to a command that takes none (`hasp version bogus`,
+`hasp check key extra`), exit `2` with one `hasp: usage error:` line on stderr and nothing on
+stdout. See [T55](tech-decision-log.md#t55).
+
 Cobra never calls `os.Exit` itself; `cmd/hasp`'s `main()` maps the error `rootCmd.Execute()`
 returns to one of the four codes via a small sentinel-error taxonomy. `check` is the **only**
 use case permitted to resolve to `1` — no other verb ever does, so `if hasp check ...; then`

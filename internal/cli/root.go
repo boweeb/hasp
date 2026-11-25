@@ -78,9 +78,34 @@ func NewRootCmd() *cobra.Command {
 		root.AddCommand(parent)
 	}
 
+	// Both run before preserveUnknownHelpTopic adds cobra's help command, which takes a topic as
+	// its positional args and must keep doing so (T55).
+	root.SetFlagErrorFunc(flagUsageError)
+	rejectArgsWhereUndeclared(root)
+
 	preserveUnknownHelpTopic(root)
 
 	return root
+}
+
+// flagUsageError makes every cobra flag parse error — unknown flag, bad flag value, missing flag
+// value — a usage error (exit 2, tdd.md §10's "bad flags/arguments") on any command: cobra
+// consults the root's FlagErrorFunc when a child sets none. cobra's own message text is kept.
+func flagUsageError(_ *cobra.Command, err error) error {
+	return fmt.Errorf("%w: %w", app.ErrUsage, err)
+}
+
+// rejectArgsWhereUndeclared gives every Runnable command in the tree that declares no Args
+// validator rejectUnexpectedArgs, so a leaf that takes no positionals refuses one instead of
+// silently ignoring it: cobra skips its legacyArgs check entirely for a command with no
+// subcommands. Commands that declare Args (exactArgs, minimumArgs, help-only parents) keep theirs.
+func rejectArgsWhereUndeclared(cmd *cobra.Command) {
+	if cmd.Runnable() && cmd.Args == nil {
+		cmd.Args = rejectUnexpectedArgs
+	}
+	for _, sub := range cmd.Commands() {
+		rejectArgsWhereUndeclared(sub)
+	}
 }
 
 // preserveUnknownHelpTopic keeps `hasp help bogus` behaving as it did before root had Args.
@@ -209,10 +234,15 @@ func hideRunnableUsageLine(tmpl string) string {
 		"Usage:{{if and .Runnable (not (index .Annotations \""+helpOnlyAnnotation+"\"))}}", 1)
 }
 
-// rejectUnexpectedArgs makes a leftover positional argument on a command with subcommands a usage
-// error (exit 2). cobra's own legacyArgs validator only checks the root, and cobra.NoArgs omits
-// the "Did you mean" suggestions legacyArgs adds, so they are restored here in cobra's format.
+// rejectUnexpectedArgs makes a leftover positional argument a usage error (exit 2). On a command
+// with subcommands the token is an unknown noun: cobra's own legacyArgs validator only checks the
+// root, and cobra.NoArgs omits the "Did you mean" suggestions legacyArgs adds, so they are restored
+// here in cobra's format. On a leaf (T55) the token is just an extra argument, and cobra.NoArgs's
+// "unknown command" wording would mislead, so the message says so plainly.
 func rejectUnexpectedArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 && !cmd.HasSubCommands() {
+		return fmt.Errorf("%w: unexpected argument %q for %q", app.ErrUsage, args[0], cmd.CommandPath())
+	}
 	if err := cobra.NoArgs(cmd, args); err != nil {
 		return fmt.Errorf("%w: %v%s", app.ErrUsage, err, suggestionsText(cmd, args[0]))
 	}
